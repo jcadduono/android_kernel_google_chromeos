@@ -320,6 +320,7 @@ struct hid_item {
  * Vendor specific HID device groups
  */
 #define HID_GROUP_WACOM				0x0101
+#define HID_GROUP_LOGITECH_DJ_DEVICE		0x0102
 
 /*
  * This is the global environment of the parser. This information is
