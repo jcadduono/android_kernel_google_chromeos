@@ -769,14 +769,11 @@ static int uvc_ioctl_streamon(struct file *file, void *fh,
 	struct uvc_streaming *stream = handle->stream;
 	int ret;
 
-	if (type != stream->type)
-		return -EINVAL;
-
 	if (!uvc_has_privileges(handle))
 		return -EBUSY;
 
 	mutex_lock(&stream->mutex);
-	ret = uvc_queue_enable(&stream->queue, 1);
+	ret = uvc_queue_streamon(&stream->queue, type);
 	mutex_unlock(&stream->mutex);
 
 	return ret;
@@ -788,14 +785,11 @@ static int uvc_ioctl_streamoff(struct file *file, void *fh,
 	struct uvc_fh *handle = fh;
 	struct uvc_streaming *stream = handle->stream;
 
-	if (type != stream->type)
-		return -EINVAL;
-
 	if (!uvc_has_privileges(handle))
 		return -EBUSY;
 
 	mutex_lock(&stream->mutex);
-	uvc_queue_enable(&stream->queue, 0);
+	uvc_queue_streamoff(&stream->queue, type);
 	mutex_unlock(&stream->mutex);
 
 	return 0;
