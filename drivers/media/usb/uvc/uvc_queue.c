@@ -37,6 +37,12 @@
  * the driver.
  */
 
+static inline struct uvc_streaming *
+uvc_queue_to_stream(struct uvc_video_queue *queue)
+{
+	return container_of(queue, struct uvc_streaming, queue);
+}
+
 /* -----------------------------------------------------------------------------
  * videobuf2 queue operations
  */
@@ -47,8 +53,7 @@ static int uvc_queue_setup(struct vb2_queue *vq, const void *parg,
 {
 	const struct v4l2_format *fmt = parg;
 	struct uvc_video_queue *queue = vb2_get_drv_priv(vq);
-	struct uvc_streaming *stream =
-			container_of(queue, struct uvc_streaming, queue);
+	struct uvc_streaming *stream = uvc_queue_to_stream(queue);
 
 	/* Make sure the image size is large enough. */
 	if (fmt && fmt->fmt.pix.sizeimage < stream->ctrl.dwMaxVideoFrameSize)
