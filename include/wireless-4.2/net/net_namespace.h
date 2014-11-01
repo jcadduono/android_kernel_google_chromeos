@@ -63,7 +63,7 @@ struct net {
 	spinlock_t		nsid_lock;
 	struct idr		netns_ids;
 
-	unsigned int		proc_inum;
+	struct ns_common	ns;
 
 	struct proc_dir_entry 	*proc_net;
 	struct proc_dir_entry 	*proc_net_stat;
