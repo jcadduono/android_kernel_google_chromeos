@@ -1158,6 +1158,9 @@ print_graph_comment(struct trace_seq *s, struct trace_entry *ent,
 			return ret;
 	}
 
+	if (trace_seq_has_overflowed(s))
+		goto out;
+
 	/* Strip ending newline */
 	if (s->buffer[s->seq.len - 1] == '\n') {
 		s->buffer[s->seq.len - 1] = '\0';
@@ -1165,7 +1168,7 @@ print_graph_comment(struct trace_seq *s, struct trace_entry *ent,
 	}
 
 	trace_seq_puts(s, " */\n");
-
+ out:
 	return trace_handle_return(s);
 }
 
