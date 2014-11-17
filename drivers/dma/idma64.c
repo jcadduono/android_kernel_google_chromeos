@@ -556,7 +556,7 @@ static int idma_device_slave_caps(struct dma_chan *dchan,
 	    struct dma_slave_caps *caps)
 {
 	caps->src_addr_widths = IDMA64_BUSWIDTHS;
-	caps->dstn_addr_widths = IDMA64_BUSWIDTHS;
+	caps->dst_addr_widths = IDMA64_BUSWIDTHS;
 	caps->directions = BIT(DMA_DEV_TO_MEM) | BIT(DMA_MEM_TO_DEV);
 	caps->residue_granularity = DMA_RESIDUE_GRANULARITY_BURST;
 	caps->cmd_pause = true;
