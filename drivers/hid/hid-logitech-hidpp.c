@@ -1112,7 +1112,7 @@ static int hidpp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	if (hidpp->quirks & HIDPP_QUIRK_CLASS_WTP) {
 		ret = wtp_allocate(hdev, id);
 		if (ret)
-			return ret;
+			goto wtp_allocate_fail;
 	}
 
 	INIT_WORK(&hidpp->work, delayed_work_cb);
@@ -1132,6 +1132,7 @@ static int hidpp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	if (id->group != HID_GROUP_LOGITECH_DJ_DEVICE) {
 		if (!connected) {
 			hid_err(hdev, "Device not connected");
+			hid_device_io_stop(hdev);
 			goto hid_parse_fail;
 		}
 
@@ -1173,6 +1174,7 @@ hid_hw_start_fail:
 hid_parse_fail:
 	cancel_work_sync(&hidpp->work);
 	mutex_destroy(&hidpp->send_mutex);
+wtp_allocate_fail:
 	hid_set_drvdata(hdev, NULL);
 	return ret;
 }
