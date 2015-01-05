@@ -537,12 +537,29 @@ int perf_evsel__group_desc(struct perf_evsel *evsel, char *buf, size_t size)
 }
 
 static void
-perf_evsel__config_callgraph(struct perf_evsel *evsel)
+perf_evsel__config_callgraph(struct perf_evsel *evsel,
+			     struct record_opts *opts)
 {
 	bool function = perf_evsel__is_function_event(evsel);
 	struct perf_event_attr *attr = &evsel->attr;
 
 	perf_evsel__set_sample_bit(evsel, CALLCHAIN);
+
+	if (callchain_param.record_mode == CALLCHAIN_LBR) {
+		if (!opts->branch_stack) {
+			if (attr->exclude_user) {
+				pr_warning("LBR callstack option is only available "
+					   "to get user callchain information. "
+					   "Falling back to framepointers.\n");
+			} else {
+				perf_evsel__set_sample_bit(evsel, BRANCH_STACK);
+				attr->branch_sample_type = PERF_SAMPLE_BRANCH_USER |
+							PERF_SAMPLE_BRANCH_CALL_STACK;
+			}
+		} else
+			 pr_warning("Cannot use LBR callstack with branch stack. "
+				    "Falling back to framepointers.\n");
+	}
 
 	if (callchain_param.record_mode == CALLCHAIN_DWARF) {
 		if (!function) {
@@ -659,7 +676,7 @@ void perf_evsel__config(struct perf_evsel *evsel, struct record_opts *opts)
 	}
 
 	if (callchain_param.enabled && !evsel->no_aux_samples)
-		perf_evsel__config_callgraph(evsel);
+		perf_evsel__config_callgraph(evsel, opts);
 
 	if (target__has_cpu(&opts->target))
 		perf_evsel__set_sample_bit(evsel, CPU);
