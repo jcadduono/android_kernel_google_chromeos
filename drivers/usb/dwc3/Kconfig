@@ -61,6 +61,16 @@ config USB_DWC3_EXYNOS
 	  Recent Exynos5 SoCs ship with one DesignWare Core USB3 IP inside,
 	  say 'Y' or 'M' if you have one such device.
 
+config USB_DWC3_IPQ4019
+	tristate "IPQ4019 Platforms"
+	default USB_DWC3
+	select USB_IPQ4019_PHY
+	help
+	  Some platforms from Qualcomm like IPQ4019 SoC
+	  ship with DesignWare Core USB3 IP inside
+	  IPQ4019 supports USB3 and USB2 Controller IP
+	  say 'Y' or 'M' if you have one such device.
+
 config USB_DWC3_PCI
 	tristate "PCIe-based Platforms"
 	depends on PCI
