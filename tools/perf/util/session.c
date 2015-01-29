@@ -1298,9 +1298,9 @@ fetch_mmaped_event(struct perf_session *session,
 #define NUM_MMAPS 128
 #endif
 
-int __perf_session__process_events(struct perf_session *session,
-				   u64 data_offset, u64 data_size,
-				   u64 file_size, struct perf_tool *tool)
+static int __perf_session__process_events(struct perf_session *session,
+					  u64 data_offset, u64 data_size,
+					  u64 file_size, struct perf_tool *tool)
 {
 	struct ordered_events *oe = &session->ordered_events;
 	struct perf_evlist *evlist = session->evlist;
