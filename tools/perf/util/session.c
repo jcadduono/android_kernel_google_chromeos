@@ -231,10 +231,17 @@ static int process_event_stub(struct perf_tool *tool __maybe_unused,
 	return 0;
 }
 
+static int process_build_id_stub(struct perf_tool *tool __maybe_unused,
+				 union perf_event *event __maybe_unused,
+				 struct perf_session *session __maybe_unused)
+{
+	dump_printf(": unhandled!\n");
+	return 0;
+}
+
 static int process_finished_round_stub(struct perf_tool *tool __maybe_unused,
 				       union perf_event *event __maybe_unused,
-				       struct perf_session *perf_session
-				       __maybe_unused)
+				       struct ordered_events *oe __maybe_unused)
 {
 	dump_printf(": unhandled!\n");
 	return 0;
@@ -242,7 +249,7 @@ static int process_finished_round_stub(struct perf_tool *tool __maybe_unused,
 
 static int process_finished_round(struct perf_tool *tool,
 				  union perf_event *event,
-				  struct perf_session *session);
+				  struct ordered_events *oe);
 
 void perf_tool__fill_defaults(struct perf_tool *tool)
 {
@@ -271,7 +278,7 @@ void perf_tool__fill_defaults(struct perf_tool *tool)
 	if (tool->tracing_data == NULL)
 		tool->tracing_data = process_event_synth_tracing_data_stub;
 	if (tool->build_id == NULL)
-		tool->build_id = process_finished_round_stub;
+		tool->build_id = process_build_id_stub;
 	if (tool->finished_round == NULL) {
 		if (tool->ordered_events)
 			tool->finished_round = process_finished_round;
@@ -520,10 +527,8 @@ static perf_event__swap_op perf_event__swap_ops[] = {
  */
 static int process_finished_round(struct perf_tool *tool __maybe_unused,
 				  union perf_event *event __maybe_unused,
-				  struct perf_session *session)
+				  struct ordered_events *oe)
 {
-	struct ordered_events *oe = &session->ordered_events;
-
 	return ordered_events__flush(oe, OE_FLUSH__ROUND);
 }
 
@@ -955,7 +960,8 @@ static s64 perf_session__process_user_event(struct perf_session *session,
 					    union perf_event *event,
 					    u64 file_offset)
 {
-	struct perf_tool *tool = session->ordered_events.tool;
+	struct ordered_events *oe = &session->ordered_events;
+	struct perf_tool *tool = oe->tool;
 	int fd = perf_data_file__fd(session->file);
 	int err;
 
@@ -983,7 +989,7 @@ static s64 perf_session__process_user_event(struct perf_session *session,
 	case PERF_RECORD_HEADER_BUILD_ID:
 		return tool->build_id(tool, event, session);
 	case PERF_RECORD_FINISHED_ROUND:
-		return tool->finished_round(tool, event, session);
+		return tool->finished_round(tool, event, oe);
 	default:
 		return -EINVAL;
 	}
