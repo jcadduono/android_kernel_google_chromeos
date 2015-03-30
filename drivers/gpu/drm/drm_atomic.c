@@ -158,6 +158,7 @@ void drm_atomic_state_default_clear(struct drm_atomic_state *state)
 
 		connector->funcs->atomic_destroy_state(connector,
 						       state->connector_states[i]);
+		state->connectors[i] = NULL;
 		state->connector_states[i] = NULL;
 	}
 
@@ -169,6 +170,7 @@ void drm_atomic_state_default_clear(struct drm_atomic_state *state)
 
 		crtc->funcs->atomic_destroy_state(crtc,
 						  state->crtc_states[i]);
+		state->crtcs[i] = NULL;
 		state->crtc_states[i] = NULL;
 	}
 
@@ -180,6 +182,7 @@ void drm_atomic_state_default_clear(struct drm_atomic_state *state)
 
 		plane->funcs->atomic_destroy_state(plane,
 						   state->plane_states[i]);
+		state->planes[i] = NULL;
 		state->plane_states[i] = NULL;
 	}
 }
