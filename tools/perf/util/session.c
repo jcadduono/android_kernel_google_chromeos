@@ -93,11 +93,20 @@ static void perf_session__set_comm_exec(struct perf_session *session)
 }
 
 static int ordered_events__deliver_event(struct ordered_events *oe,
-					 struct ordered_event *event,
-					 struct perf_sample *sample)
+					 struct ordered_event *event)
 {
-	return machines__deliver_event(oe->machines, oe->evlist, event->event,
-				       sample, oe->tool, event->file_offset);
+	struct perf_sample sample;
+	struct perf_session *session = container_of(oe, struct perf_session,
+						    ordered_events);
+	int ret = perf_evlist__parse_sample(session->evlist, event->event, &sample);
+
+	if (ret) {
+		pr_err("Can't parse sample, err = %d\n", ret);
+		return ret;
+	}
+
+	return machines__deliver_event(&session->machines, session->evlist, event->event,
+				       &sample, session->tool, event->file_offset);
 }
 
 struct perf_session *perf_session__new(struct perf_data_file *file,
@@ -109,9 +118,9 @@ struct perf_session *perf_session__new(struct perf_data_file *file,
 		goto out;
 
 	session->repipe = repipe;
+	session->tool   = tool;
 	machines__init(&session->machines);
-	ordered_events__init(&session->ordered_events, &session->machines,
-			     session->evlist, tool, ordered_events__deliver_event);
+	ordered_events__init(&session->ordered_events, ordered_events__deliver_event);
 
 	if (file) {
 		if (perf_data_file__open(file))
@@ -934,7 +943,7 @@ static s64 perf_session__process_user_event(struct perf_session *session,
 					    u64 file_offset)
 {
 	struct ordered_events *oe = &session->ordered_events;
-	struct perf_tool *tool = oe->tool;
+	struct perf_tool *tool = session->tool;
 	int fd = perf_data_file__fd(session->file);
 	int err;
 
@@ -973,7 +982,7 @@ int perf_session__deliver_synth_event(struct perf_session *session,
 				      struct perf_sample *sample)
 {
 	struct perf_evlist *evlist = session->evlist;
-	struct perf_tool *tool = session->ordered_events.tool;
+	struct perf_tool *tool = session->tool;
 
 	events_stats__inc(&evlist->stats, event->header.type);
 
@@ -1051,7 +1060,7 @@ static s64 perf_session__process_event(struct perf_session *session,
 				       union perf_event *event, u64 file_offset)
 {
 	struct perf_evlist *evlist = session->evlist;
-	struct perf_tool *tool = session->ordered_events.tool;
+	struct perf_tool *tool = session->tool;
 	struct perf_sample sample;
 	int ret;
 
@@ -1108,10 +1117,12 @@ static struct thread *perf_session__register_idle_thread(struct perf_session *se
 	return thread;
 }
 
-static void perf_tool__warn_about_errors(const struct perf_tool *tool,
-					 const struct events_stats *stats)
+static void perf_session__warn_about_errors(const struct perf_session *session)
 {
-	if (tool->lost == perf_event__process_lost &&
+	const struct events_stats *stats = &session->evlist->stats;
+	const struct ordered_events *oe = &session->ordered_events;
+
+	if (session->tool->lost == perf_event__process_lost &&
 	    stats->nr_events[PERF_RECORD_LOST] != 0) {
 		ui__warning("Processed %d events and lost %d chunks!\n\n"
 			    "Check IO/CPU overload!\n\n",
@@ -1147,8 +1158,8 @@ static void perf_tool__warn_about_errors(const struct perf_tool *tool,
 			    stats->nr_unprocessable_samples);
 	}
 
-	if (stats->nr_unordered_events != 0)
-		ui__warning("%u out of order events recorded.\n", stats->nr_unordered_events);
+	if (oe->nr_unordered_events != 0)
+		ui__warning("%u out of order events recorded.\n", oe->nr_unordered_events);
 }
 
 volatile int session_done;
@@ -1156,7 +1167,7 @@ volatile int session_done;
 static int __perf_session__process_pipe_events(struct perf_session *session)
 {
 	struct ordered_events *oe = &session->ordered_events;
-	struct perf_tool *tool = oe->tool;
+	struct perf_tool *tool = session->tool;
 	int fd = perf_data_file__fd(session->file);
 	union perf_event *event;
 	uint32_t size, cur_size = 0;
@@ -1239,7 +1250,7 @@ done:
 	err = ordered_events__flush(oe, OE_FLUSH__FINAL);
 out_err:
 	free(buf);
-	perf_tool__warn_about_errors(tool, &session->evlist->stats);
+	perf_session__warn_about_errors(session);
 	ordered_events__free(&session->ordered_events);
 	return err;
 }
@@ -1289,7 +1300,7 @@ static int __perf_session__process_events(struct perf_session *session,
 					  u64 file_size)
 {
 	struct ordered_events *oe = &session->ordered_events;
-	struct perf_tool *tool = oe->tool;
+	struct perf_tool *tool = session->tool;
 	int fd = perf_data_file__fd(session->file);
 	u64 head, page_offset, file_offset, file_pos, size;
 	int err, mmap_prot, mmap_flags, map_idx = 0;
@@ -1385,7 +1396,7 @@ out:
 	err = ordered_events__flush(oe, OE_FLUSH__FINAL);
 out_err:
 	ui_progress__finish();
-	perf_tool__warn_about_errors(tool, &session->evlist->stats);
+	perf_session__warn_about_errors(session);
 	ordered_events__free(&session->ordered_events);
 	session->one_mmap = false;
 	return err;
