@@ -136,6 +136,7 @@ enum v4l2_mbus_pixelcode {
  * @colorspace:	colorspace of the data (from enum v4l2_colorspace)
  * @ycbcr_enc:	YCbCr encoding of the data (from enum v4l2_ycbcr_encoding)
  * @quantization: quantization of the data (from enum v4l2_quantization)
+ * @xfer_func:  transfer function of the data (from enum v4l2_xfer_func)
  */
 struct v4l2_mbus_framefmt {
 	__u32			width;
@@ -145,7 +146,8 @@ struct v4l2_mbus_framefmt {
 	__u32			colorspace;
 	__u16			ycbcr_enc;
 	__u16			quantization;
-	__u32			reserved[6];
+	__u16			xfer_func;
+	__u16			reserved[11];
 };
 
 #endif
