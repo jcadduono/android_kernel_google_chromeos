@@ -460,6 +460,14 @@ int machine__process_lost_event(struct machine *machine __maybe_unused,
 	return 0;
 }
 
+int machine__process_lost_samples_event(struct machine *machine __maybe_unused,
+					union perf_event *event, struct perf_sample *sample)
+{
+	dump_printf(": id:%" PRIu64 ": lost samples :%" PRIu64 "\n",
+		    sample->id, event->lost_samples.lost);
+	return 0;
+}
+
 struct map *machine__new_module(struct machine *machine, u64 start,
 				const char *filename)
 {
@@ -1275,6 +1283,9 @@ int machine__process_event(struct machine *machine, union perf_event *event,
 		ret = machine__process_exit_event(machine, event, sample); break;
 	case PERF_RECORD_LOST:
 		ret = machine__process_lost_event(machine, event, sample); break;
+	case PERF_RECORD_LOST_SAMPLES:
+		ret = machine__process_lost_samples_event(machine, event, sample); break;
+		break;
 	default:
 		ret = -1;
 		break;

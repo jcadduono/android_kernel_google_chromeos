@@ -77,6 +77,8 @@ int machine__process_fork_event(struct machine *machine, union perf_event *event
 				struct perf_sample *sample);
 int machine__process_lost_event(struct machine *machine, union perf_event *event,
 				struct perf_sample *sample);
+int machine__process_lost_samples_event(struct machine *machine, union perf_event *event,
+					struct perf_sample *sample);
 int machine__process_mmap_event(struct machine *machine, union perf_event *event,
 				struct perf_sample *sample);
 int machine__process_mmap2_event(struct machine *machine, union perf_event *event,
