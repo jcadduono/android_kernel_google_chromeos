@@ -579,6 +579,15 @@ int cros_ec_register(struct cros_ec_device *ec_dev)
 		}
 	}
 
+	if (IS_ENABLED(CONFIG_OF) && dev->of_node) {
+		err = of_platform_populate(dev->of_node, NULL, NULL, dev);
+		if (err) {
+			mfd_remove_devices(dev);
+			dev_err(dev, "Failed to register sub-devices\n");
+			return err;
+		}
+	}
+
 	dev_info(dev, "Chrome EC device registered\n");
 
 	return 0;
