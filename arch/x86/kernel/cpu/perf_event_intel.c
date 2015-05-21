@@ -1979,6 +1979,11 @@ intel_get_excl_constraints(struct cpu_hw_events *cpuc, struct perf_event *event,
 	 * across HT threads
 	 */
 	is_excl = c->flags & PERF_X86_EVENT_EXCL;
+	if (is_excl && !(event->hw.flags & PERF_X86_EVENT_EXCL_ACCT)) {
+		event->hw.flags |= PERF_X86_EVENT_EXCL_ACCT;
+		if (!cpuc->n_excl++)
+			WRITE_ONCE(excl_cntrs->has_exclusive[tid], 1);
+	}
 
 	/*
 	 * xl = state of current HT
@@ -2112,6 +2117,11 @@ static void intel_put_excl_constraints(struct cpu_hw_events *cpuc,
 
 	xl = &excl_cntrs->states[tid];
 	xlo = &excl_cntrs->states[o_tid];
+	if (hwc->flags & PERF_X86_EVENT_EXCL_ACCT) {
+		hwc->flags &= ~PERF_X86_EVENT_EXCL_ACCT;
+		if (!--cpuc->n_excl)
+			WRITE_ONCE(excl_cntrs->has_exclusive[tid], 0);
+	}
 
 	/*
 	 * put_constraint may be called from x86_schedule_events()
