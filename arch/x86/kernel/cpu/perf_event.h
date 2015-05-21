@@ -500,11 +500,11 @@ struct x86_pmu {
 	void		(*put_event_constraints)(struct cpu_hw_events *cpuc,
 						 struct perf_event *event);
 
+	void		(*start_scheduling)(struct cpu_hw_events *cpuc);
+
 	void		(*commit_scheduling)(struct cpu_hw_events *cpuc,
 					     struct perf_event *event,
 					     int cntr);
-
-	void		(*start_scheduling)(struct cpu_hw_events *cpuc);
 
 	void		(*stop_scheduling)(struct cpu_hw_events *cpuc);
 
