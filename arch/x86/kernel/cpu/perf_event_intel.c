@@ -1893,7 +1893,7 @@ intel_start_scheduling(struct cpu_hw_events *cpuc)
 	/*
 	 * no exclusion needed
 	 */
-	if (!excl_cntrs)
+	if (WARN_ON_ONCE(!excl_cntrs))
 		return;
 
 	xl = &excl_cntrs->states[tid];
@@ -1928,7 +1928,7 @@ intel_stop_scheduling(struct cpu_hw_events *cpuc)
 	/*
 	 * no exclusion needed
 	 */
-	if (!excl_cntrs)
+	if (WARN_ON_ONCE(!excl_cntrs))
 		return;
 
 	xl = &excl_cntrs->states[tid];
@@ -1964,7 +1964,7 @@ intel_get_excl_constraints(struct cpu_hw_events *cpuc, struct perf_event *event,
 	/*
 	 * no exclusion needed
 	 */
-	if (!excl_cntrs)
+	if (WARN_ON_ONCE(!excl_cntrs))
 		return c;
 
 	/*
@@ -2100,9 +2100,7 @@ static void intel_put_excl_constraints(struct cpu_hw_events *cpuc,
 	if (cpuc->is_fake)
 		return;
 
-	WARN_ON_ONCE(!excl_cntrs);
-
-	if (!excl_cntrs)
+	if (WARN_ON_ONCE(!excl_cntrs))
 		return;
 
 	xl = &excl_cntrs->states[tid];
@@ -2174,15 +2172,13 @@ static void intel_commit_scheduling(struct cpu_hw_events *cpuc,
 	struct intel_excl_states *xl;
 	int tid = cpuc->excl_thread_id;
 
-	if (cpuc->is_fake || !c)
+	if (cpuc->is_fake || !is_ht_workaround_enabled())
+		return;
+
+	if (WARN_ON_ONCE(!excl_cntrs))
 		return;
 
 	if (!(c->flags & PERF_X86_EVENT_DYNAMIC))
-		return;
-
-	WARN_ON_ONCE(!excl_cntrs);
-
-	if (!excl_cntrs)
 		return;
 
 	xl = &excl_cntrs->states[tid];
