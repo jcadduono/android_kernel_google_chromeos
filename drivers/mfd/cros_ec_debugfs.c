@@ -1,0 +1,346 @@
+/*
+ * cros_ec_debugfs - debug logs for Chrome OS EC
+ *
+ * Copyright 2015 Google, Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the
+ * GNU General Public License for more details.
+ *
+ * You should have received a copy of the GNU General Public License
+ * along with this program. If not, see <http://www.gnu.org/licenses/>.
+ */
+
+#include <linux/circ_buf.h>
+#include <linux/debugfs.h>
+#include <linux/delay.h>
+#include <linux/fs.h>
+#include <linux/mfd/cros_ec.h>
+#include <linux/mfd/cros_ec_commands.h>
+#include <linux/mfd/cros_ec_dev.h>
+#include <linux/mutex.h>
+#include <linux/poll.h>
+#include <linux/sched.h>
+#include <linux/slab.h>
+#include <linux/wait.h>
+
+#include "cros_ec_debugfs.h"
+
+#define LOG_SHIFT		14
+#define LOG_SIZE		(1 << LOG_SHIFT)
+#define LOG_POLL_SEC		10
+
+#define CIRC_ADD(idx, size, value)	(((idx) + (value)) & ((size) - 1))
+
+/* struct cros_ec_debugfs - ChromeOS EC debugging information
+ *
+ * @ec: EC device this debugfs information belongs to
+ * @dir: dentry for debugfs files
+ * @log_buffer: circular buffer for console log information
+ * @ec_buffer: buffer used to read console log from EC
+ * @ec_buffer_size: size of that buffer
+ * @log_mutex: mutex to protect circular buffer
+ * @log_wq: waitqueue for log readers
+ * @log_poll_work: recurring task to poll EC for new console log data
+ */
+struct cros_ec_debugfs {
+	struct cros_ec_dev *ec;
+	struct dentry *dir;
+	struct circ_buf log_buffer;
+	uint8_t *ec_buffer;
+	size_t ec_buffer_size;
+	struct mutex log_mutex;
+	wait_queue_head_t log_wq;
+	struct delayed_work log_poll_work;
+};
+
+/*
+ * TODO(ejcaruso): Move this from a recurring task to being triggered by
+ * host events in the future. For now, this should expose a stable interface
+ * for a userspace log concatenator.
+ *
+ * Note: We also need to make sure that the EC log on the UART is large enough,
+ * so that it is unlikely enough to overlow within LOG_POLL_SEC.
+ */
+static void cros_ec_console_log_work(struct work_struct *__work)
+{
+	struct cros_ec_debugfs *debug_info =
+		container_of(to_delayed_work(__work),
+			     struct cros_ec_debugfs,
+			     log_poll_work);
+	struct cros_ec_dev *ec = debug_info->ec;
+	struct circ_buf *cb = &debug_info->log_buffer;
+	struct cros_ec_command snapshot_msg = {
+		.command = EC_CMD_CONSOLE_SNAPSHOT + ec->cmd_offset,
+	};
+
+	struct ec_params_console_read_v1 params = {
+		.subcmd = CONSOLE_READ_RECENT,
+	};
+
+	struct cros_ec_command read_msg = {
+		.version = 1,
+		.command = EC_CMD_CONSOLE_READ + ec->cmd_offset,
+		.outdata = (void *)&params,
+		.outsize = sizeof(params),
+		.indata = debug_info->ec_buffer,
+		.insize = debug_info->ec_buffer_size,
+	};
+
+	int idx;
+	int buf_space;
+	int ret;
+
+	ret = cros_ec_cmd_xfer(ec->ec_dev, &snapshot_msg);
+	if (ret < 0) {
+		dev_err(ec->dev, "EC communication failed\n");
+		goto resched;
+	}
+	if (snapshot_msg.result != EC_RES_SUCCESS) {
+		dev_err(ec->dev, "EC failed to snapshot the console log\n");
+		goto resched;
+	}
+
+	/* Loop until we have read everything, or there's an error. */
+	mutex_lock(&debug_info->log_mutex);
+	buf_space = CIRC_SPACE(cb->head, cb->tail, LOG_SIZE);
+
+	while (1) {
+		if (!buf_space) {
+			dev_info_once(ec->dev,
+				      "Some logs may have been dropped...\n");
+			break;
+		}
+
+		memset(debug_info->ec_buffer, '\0', debug_info->ec_buffer_size);
+		ret = cros_ec_cmd_xfer(ec->ec_dev, &read_msg);
+		if (ret < 0) {
+			dev_err(ec->dev, "EC communication failed\n");
+			break;
+		}
+		if (read_msg.result != EC_RES_SUCCESS) {
+			dev_err(ec->dev,
+				"EC failed to read the console log\n");
+			break;
+		}
+
+		/* If the buffer is empty, we're done here. */
+		if (debug_info->ec_buffer[0] == '\0')
+			break;
+
+		idx = 0;
+		while (idx < debug_info->ec_buffer_size &&
+		       debug_info->ec_buffer[idx] != '\0' &&
+		       buf_space > 0) {
+			cb->buf[cb->head] = debug_info->ec_buffer[idx];
+			cb->head = CIRC_ADD(cb->head, LOG_SIZE, 1);
+			idx++;
+			buf_space--;
+		}
+
+		wake_up(&debug_info->log_wq);
+	}
+
+	mutex_unlock(&debug_info->log_mutex);
+
+resched:
+	schedule_delayed_work(&debug_info->log_poll_work,
+			      msecs_to_jiffies(LOG_POLL_SEC * 1000));
+}
+
+static int cros_ec_console_log_open(struct inode *inode, struct file *file)
+{
+	file->private_data = inode->i_private;
+
+	return nonseekable_open(inode, file);
+}
+
+static ssize_t cros_ec_console_log_read(struct file *file, char __user *buf,
+					size_t count, loff_t *ppos)
+{
+	struct cros_ec_debugfs *debug_info = file->private_data;
+	struct circ_buf *cb = &debug_info->log_buffer;
+	ssize_t ret;
+
+	mutex_lock(&debug_info->log_mutex);
+
+	while (!CIRC_CNT(cb->head, cb->tail, LOG_SIZE)) {
+		if (file->f_flags & O_NONBLOCK) {
+			ret = -EAGAIN;
+			goto error;
+		}
+
+		mutex_unlock(&debug_info->log_mutex);
+
+		ret = wait_event_interruptible(debug_info->log_wq,
+					CIRC_CNT(cb->head, cb->tail, LOG_SIZE));
+		if (ret < 0)
+			return ret;
+
+		mutex_lock(&debug_info->log_mutex);
+	}
+
+	/* Only copy until the end of the circular buffer, and let userspace
+	 * retry to get the rest of the data.
+	 */
+	ret = min_t(size_t, CIRC_CNT_TO_END(cb->head, cb->tail, LOG_SIZE),
+		    count);
+
+	if (copy_to_user(buf, cb->buf + cb->tail, ret)) {
+		ret = -EFAULT;
+		goto error;
+	}
+
+	cb->tail = CIRC_ADD(cb->tail, LOG_SIZE, ret);
+
+error:
+	mutex_unlock(&debug_info->log_mutex);
+	return ret;
+}
+
+static unsigned int cros_ec_console_log_poll(struct file *file,
+					     poll_table *wait)
+{
+	struct cros_ec_debugfs *debug_info = file->private_data;
+	unsigned int mask = 0;
+
+	poll_wait(file, &debug_info->log_wq, wait);
+
+	mutex_lock(&debug_info->log_mutex);
+	if (CIRC_CNT(debug_info->log_buffer.head,
+		     debug_info->log_buffer.tail,
+		     LOG_SIZE))
+		mask |= POLLIN | POLLRDNORM;
+	mutex_unlock(&debug_info->log_mutex);
+
+	return mask;
+}
+
+static int cros_ec_console_log_release(struct inode *inode, struct file *file)
+{
+	return 0;
+}
+
+const struct file_operations cros_ec_console_log_fops = {
+	.owner = THIS_MODULE,
+	.open = cros_ec_console_log_open,
+	.read = cros_ec_console_log_read,
+	.llseek = no_llseek,
+	.poll = cros_ec_console_log_poll,
+	.release = cros_ec_console_log_release,
+};
+
+static int ec_read_version_supported(struct cros_ec_dev *ec)
+{
+	struct ec_params_get_cmd_versions_v1 params = {
+		.cmd = EC_CMD_CONSOLE_READ,
+	};
+	struct ec_response_get_cmd_versions response;
+	struct cros_ec_command msg = {
+		.command = EC_CMD_GET_CMD_VERSIONS + ec->cmd_offset,
+		.outdata = (void *)&params,
+		.outsize = sizeof(params),
+		.indata = (void *)&response,
+		.insize = sizeof(response),
+	};
+	int ret;
+
+	ret = cros_ec_cmd_xfer(ec->ec_dev, &msg);
+	return ret >= 0 &&
+	       msg.result == EC_RES_SUCCESS &&
+	       (response.version_mask & EC_VER_MASK(1));
+}
+
+static int cros_ec_create_console_log(struct cros_ec_debugfs *debug_info)
+{
+	struct cros_ec_dev *ec = debug_info->ec;
+	char *buf;
+
+	if (!ec_read_version_supported(ec)) {
+		dev_warn(ec->dev,
+			"device does not support reading the console log\n");
+		return 0;
+	}
+
+	buf = devm_kzalloc(ec->dev, LOG_SIZE, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	debug_info->ec_buffer_size = ec->ec_dev->max_response;
+	debug_info->ec_buffer = devm_kzalloc(ec->dev,
+					debug_info->ec_buffer_size, GFP_KERNEL);
+	if (!debug_info->ec_buffer)
+		return -ENOMEM;
+
+	debug_info->log_buffer.buf = buf;
+	debug_info->log_buffer.head = 0;
+	debug_info->log_buffer.tail = 0;
+
+	mutex_init(&debug_info->log_mutex);
+	init_waitqueue_head(&debug_info->log_wq);
+
+	if (!debugfs_create_file("console_log",
+				 S_IFREG | S_IRUGO,
+				 debug_info->dir,
+				 debug_info,
+				 &cros_ec_console_log_fops))
+		return -ENOMEM;
+
+	INIT_DELAYED_WORK(&debug_info->log_poll_work,
+			  cros_ec_console_log_work);
+	schedule_delayed_work(&debug_info->log_poll_work, 0);
+
+	return 0;
+}
+
+static void cros_ec_cleanup_console_log(struct cros_ec_debugfs *debug_info)
+{
+	if (debug_info->log_buffer.buf) {
+		cancel_delayed_work_sync(&debug_info->log_poll_work);
+		mutex_destroy(&debug_info->log_mutex);
+	}
+}
+
+int cros_ec_debugfs_init(struct cros_ec_dev *ec)
+{
+	struct cros_ec_dev_platform *ec_platform = dev_get_platdata(ec->dev);
+	const char *name = ec_platform->ec_name;
+	struct cros_ec_debugfs *debug_info;
+	int ret;
+
+	debug_info = devm_kzalloc(ec->dev, sizeof(*debug_info), GFP_KERNEL);
+	if (!debug_info)
+		return -ENOMEM;
+
+	debug_info->ec = ec;
+	debug_info->dir = debugfs_create_dir(name, NULL);
+	if (!debug_info->dir)
+		return -ENOMEM;
+
+	ret = cros_ec_create_console_log(debug_info);
+	if (ret)
+		goto remove_debugfs;
+
+	ec->debug_info = debug_info;
+
+	return 0;
+
+remove_debugfs:
+	debugfs_remove_recursive(debug_info->dir);
+	return ret;
+}
+
+void cros_ec_debugfs_remove(struct cros_ec_dev *ec)
+{
+	if (!ec->debug_info)
+		return;
+
+	debugfs_remove_recursive(ec->debug_info->dir);
+	cros_ec_cleanup_console_log(ec->debug_info);
+}
