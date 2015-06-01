@@ -760,5 +760,12 @@ config REGULATOR_WM8994
 	  This driver provides support for the voltage regulators on the
 	  WM8994 CODEC.
 
+config REGULATOR_IPQ4019
+	tristate "IPQ4019 regulator support"
+	depends on ARCH_QCOM
+	help
+	  This driver provides support for the voltage regulators of the
+	  IPQ40xx devices.
+
 endif
 
