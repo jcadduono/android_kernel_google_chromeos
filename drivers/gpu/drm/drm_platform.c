@@ -51,6 +51,8 @@ static int drm_get_platform_dev(struct platform_device *platdev,
 	if (!dev)
 		return -ENOMEM;
 
+	drm_dev_set_unique(dev, dev_name(&platdev->dev));
+
 	dev->platformdev = platdev;
 
 	ret = drm_dev_register(dev, 0);
