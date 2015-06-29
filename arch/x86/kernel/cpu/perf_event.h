@@ -751,6 +751,8 @@ static inline void set_linear_ip(struct pt_regs *regs, unsigned long ip)
 ssize_t x86_event_sysfs_show(char *page, u64 config, u64 event);
 ssize_t intel_event_sysfs_show(char *page, u64 config);
 
+struct attribute **merge_attr(struct attribute **a, struct attribute **b);
+
 #ifdef CONFIG_CPU_SUP_AMD
 
 int amd_pmu_init(void);
@@ -865,6 +867,7 @@ static inline int is_ht_workaround_enabled(void)
 {
 	return !!(x86_pmu.er_flags & ERF_EXCL_ENABLED);
 }
+
 #else /* CONFIG_CPU_SUP_INTEL */
 
 static inline void reserve_ds_buffers(void)
