@@ -185,7 +185,7 @@ extern bool drm_helper_encoder_in_use(struct drm_encoder *encoder);
 extern void drm_helper_dpms_attached_encoders(struct drm_crtc *crtc,
 					      int mode);
 
-extern void drm_helper_connector_dpms(struct drm_connector *connector, int mode);
+extern int drm_helper_connector_dpms(struct drm_connector *connector, int mode);
 
 extern void drm_helper_move_panel_connectors_to_head(struct drm_device *);
 
