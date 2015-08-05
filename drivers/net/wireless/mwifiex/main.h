@@ -639,6 +639,7 @@ struct mwifiex_private {
 	struct station_parameters *sta_params;
 	struct sk_buff_head tdls_txq;
 	struct mwifiex_ds_mem_rw mem_rw;
+	struct mwifiex_user_scan_chan hidden_chan[MWIFIEX_USER_SCAN_CHAN_MAX];
 };
 
 
@@ -920,6 +921,7 @@ struct mwifiex_adapter {
 	struct sk_buff_head rx_data_q;
 	bool mfg_mode;
 	struct cfg80211_wowlan_nd_info *nd_info;
+	u8 active_scan_triggered;
 };
 
 int mwifiex_init_lock_list(struct mwifiex_adapter *adapter);
