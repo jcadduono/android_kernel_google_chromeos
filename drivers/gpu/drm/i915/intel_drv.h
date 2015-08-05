@@ -1034,7 +1034,6 @@ int intel_connector_init(struct intel_connector *);
 struct intel_connector *intel_connector_alloc(void);
 int intel_connector_dpms(struct drm_connector *, int mode);
 bool intel_connector_get_hw_state(struct intel_connector *connector);
-void intel_modeset_check_state(struct drm_device *dev);
 void intel_connector_attach_encoder(struct intel_connector *connector,
 				    struct intel_encoder *encoder);
 struct drm_encoder *intel_best_encoder(struct drm_connector *connector);
