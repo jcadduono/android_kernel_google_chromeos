@@ -13166,8 +13166,13 @@ static int intel_atomic_prepare_commit(struct drm_device *dev,
 			return ret;
 	}
 
+	ret = mutex_lock_interruptible(&dev->struct_mutex);
+	if (ret)
+		return ret;
+
 	ret = drm_atomic_helper_prepare_planes(dev, state);
 
+	mutex_unlock(&dev->struct_mutex);
 	return ret;
 }
 
@@ -13285,7 +13290,10 @@ static int intel_atomic_commit(struct drm_device *dev,
 	/* FIXME: add subpixel order */
 
 	drm_atomic_helper_wait_for_vblanks(dev, state);
+
+	mutex_lock(&dev->struct_mutex);
 	drm_atomic_helper_cleanup_planes(dev, state);
+	mutex_unlock(&dev->struct_mutex);
 
 	if (any_ms)
 		intel_modeset_check_state(dev, state);
@@ -13459,6 +13467,8 @@ static void intel_shared_dpll_init(struct drm_device *dev)
  * bits.  Some older platforms need special physical address handling for
  * cursor planes.
  *
+ * Must be called with struct_mutex held.
+ *
  * Returns 0 on success, negative error code on failure.
  */
 int
@@ -13474,10 +13484,6 @@ intel_prepare_plane_fb(struct drm_plane *plane,
 
 	if (!obj && !old_obj)
 		return 0;
-
-	ret = i915_mutex_lock_interruptible(dev);
-	if (ret)
-		return ret;
 
 	if (old_obj) {
 		struct drm_crtc_state *crtc_state =
@@ -13499,7 +13505,7 @@ intel_prepare_plane_fb(struct drm_plane *plane,
 
 		/* Swallow -EIO errors to allow updates during hw lockup. */
 		if (ret && ret != -EIO)
-			goto out;
+			return ret;
 	}
 
 	if (!obj) {
@@ -13517,9 +13523,6 @@ intel_prepare_plane_fb(struct drm_plane *plane,
 	if (ret == 0)
 		i915_gem_track_fb(old_obj, obj, intel_plane->frontbuffer_bit);
 
-out:
-	mutex_unlock(&dev->struct_mutex);
-
 	return ret;
 }
 
@@ -13529,6 +13532,8 @@ out:
  * @fb: old framebuffer that was on plane
  *
  * Cleans up a framebuffer that has just been removed from a plane.
+ *
+ * Must be called with struct_mutex held.
  */
 void
 intel_cleanup_plane_fb(struct drm_plane *plane,
@@ -13542,7 +13547,6 @@ intel_cleanup_plane_fb(struct drm_plane *plane,
 	if (!obj && !old_obj)
 		return;
 
-	mutex_lock(&dev->struct_mutex);
 	if (old_obj && (plane->type != DRM_PLANE_TYPE_CURSOR ||
 	    !INTEL_INFO(dev)->cursor_needs_physical))
 		intel_unpin_fb_obj(old_state->fb, old_state);
@@ -13551,7 +13555,6 @@ intel_cleanup_plane_fb(struct drm_plane *plane,
 	if ((old_obj && (old_obj->frontbuffer_bits & intel_plane->frontbuffer_bit)) ||
 	    (obj && !(obj->frontbuffer_bits & intel_plane->frontbuffer_bit)))
 		i915_gem_track_fb(old_obj, obj, intel_plane->frontbuffer_bit);
-	mutex_unlock(&dev->struct_mutex);
 }
 
 int
