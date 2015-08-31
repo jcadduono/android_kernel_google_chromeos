@@ -60,6 +60,9 @@ extern const char driver_version[];
 extern bool mfg_mode;
 extern char mfg_firmware[32];
 
+struct mwifiex_adapter;
+struct mwifiex_private;
+
 enum {
 	MWIFIEX_ASYNC_CMD,
 	MWIFIEX_SYNC_CMD
@@ -190,12 +193,11 @@ enum MWIFIEX_DEBUG_LEVEL {
 					MWIFIEX_DBG_FATAL | \
 					MWIFIEX_DBG_ERROR)
 
-#define mwifiex_dbg(adapter, dbg_mask, fmt, args...)		\
-do {								\
-	if ((adapter)->debug_mask & MWIFIEX_DBG_##dbg_mask)	\
-		if ((adapter)->dev)				\
-			dev_info((adapter)->dev, fmt, ## args);	\
-} while (0)
+__printf(3, 4)
+void _mwifiex_dbg(const struct mwifiex_adapter *adapter, int mask,
+		  const char *fmt, ...);
+#define mwifiex_dbg(adapter, mask, fmt, ...)				\
+	_mwifiex_dbg(adapter, MWIFIEX_DBG_##mask, fmt, ##__VA_ARGS__)
 
 /** Min BGSCAN interval 15 second */
 #define MWIFIEX_BGSCAN_INTERVAL 15000
@@ -510,9 +512,6 @@ enum mwifiex_iface_work_flags {
 	MWIFIEX_IFACE_WORK_CARD_RESET,
 	MWIFIEX_IFACE_WORK_READ_REGS,
 };
-
-struct mwifiex_adapter;
-struct mwifiex_private;
 
 struct mwifiex_private {
 	struct mwifiex_adapter *adapter;
