@@ -42,8 +42,12 @@ MODULE_PARM_DESC(disable_raw_mode,
 #define HIDPP_QUIRK_CLASS_WTP			BIT(0)
 
 /* bits 1..20 are reserved for classes */
-#define HIDPP_QUIRK_DELAYED_INIT		BIT(21)
+#define HIDPP_QUIRK_CONNECT_EVENTS		BIT(21)
 #define HIDPP_QUIRK_WTP_PHYSICAL_BUTTONS	BIT(22)
+#define HIDPP_QUIRK_NO_HIDINPUT			BIT(23)
+
+#define HIDPP_QUIRK_DELAYED_INIT		(HIDPP_QUIRK_NO_HIDINPUT | \
+						 HIDPP_QUIRK_CONNECT_EVENTS)
 
 /*
  * There are two hidpp protocols in use, the first version hidpp10 is known
@@ -998,7 +1002,7 @@ static int hidpp_raw_hidpp_event(struct hidpp_device *hidpp, u8 *data,
 	if (unlikely(hidpp_report_is_connect_event(report))) {
 		atomic_set(&hidpp->connected,
 				!(report->rap.params[0] & (1 << 6)));
-		if ((hidpp->quirks & HIDPP_QUIRK_DELAYED_INIT) &&
+		if ((hidpp->quirks & HIDPP_QUIRK_CONNECT_EVENTS) &&
 		    (schedule_work(&hidpp->work) == 0))
 			dbg_hid("%s: connect event already queued\n", __func__);
 		return 1;
@@ -1122,18 +1126,21 @@ static void hidpp_connect_event(struct hidpp_device *hidpp)
 	if (!connected || hidpp->delayed_input)
 		return;
 
+	/* the device is already connected, we can ask for its name and
+	 * protocol */
 	if (!hidpp->protocol_major) {
 		ret = !hidpp_is_connected(hidpp);
 		if (ret) {
 			hid_err(hdev, "Can not get the protocol version.\n");
 			return;
 		}
+		hid_info(hdev, "HID++ %u.%u device connected.\n",
+			 hidpp->protocol_major, hidpp->protocol_minor);
 	}
 
-	/* the device is already connected, we can ask for its name and
-	 * protocol */
-	hid_info(hdev, "HID++ %u.%u device connected.\n",
-		 hidpp->protocol_major, hidpp->protocol_minor);
+	if (!(hidpp->quirks & HIDPP_QUIRK_NO_HIDINPUT))
+		/* if HID created the input nodes for us, we can stop now */
+		return;
 
 	if (!hidpp->name || hidpp->name == hdev->name) {
 		name = hidpp_get_device_name(hidpp);
@@ -1186,7 +1193,8 @@ static int hidpp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 
 	if (disable_raw_mode) {
 		hidpp->quirks &= ~HIDPP_QUIRK_CLASS_WTP;
-		hidpp->quirks &= ~HIDPP_QUIRK_DELAYED_INIT;
+		hidpp->quirks &= ~HIDPP_QUIRK_CONNECT_EVENTS;
+		hidpp->quirks &= ~HIDPP_QUIRK_NO_HIDINPUT;
 	}
 
 	if (hidpp->quirks & HIDPP_QUIRK_CLASS_WTP) {
@@ -1233,7 +1241,7 @@ static int hidpp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	/* Block incoming packets */
 	hid_device_io_stop(hdev);
 
-	if (hidpp->quirks & HIDPP_QUIRK_DELAYED_INIT)
+	if (hidpp->quirks & HIDPP_QUIRK_NO_HIDINPUT)
 		connect_mask &= ~HID_CONNECT_HIDINPUT;
 
 	ret = hid_hw_start(hdev, connect_mask);
@@ -1242,7 +1250,7 @@ static int hidpp_probe(struct hid_device *hdev, const struct hid_device_id *id)
 		goto hid_hw_start_fail;
 	}
 
-	if (hidpp->quirks & HIDPP_QUIRK_DELAYED_INIT) {
+	if (hidpp->quirks & HIDPP_QUIRK_CONNECT_EVENTS) {
 		/* Allow incoming packets */
 		hid_device_io_start(hdev);
 
