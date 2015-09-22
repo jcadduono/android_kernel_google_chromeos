@@ -155,7 +155,7 @@ static void mtk_mdp_m2m_stop_streaming(struct vb2_queue *q)
 	mtk_mdp_ctx_abort(ctx);
 	vb = mtk_mdp_m2m_buf_remove(ctx, q->type);
 	while (vb != NULL) {
-		v4l2_m2m_buf_done(vb, VB2_BUF_STATE_ERROR);
+		v4l2_m2m_buf_done(to_vb2_v4l2_buffer(vb), VB2_BUF_STATE_ERROR);
 		vb = mtk_mdp_m2m_buf_remove(ctx, q->type);
 	}
 
@@ -165,6 +165,7 @@ static void mtk_mdp_m2m_stop_streaming(struct vb2_queue *q)
 void mtk_mdp_m2m_job_finish(struct mtk_mdp_ctx *ctx, int vb_state)
 {
 	struct vb2_buffer *src_vb, *dst_vb;
+	struct vb2_v4l2_buffer *src_vb2_v4l2, *dst_vb2_v4l2;
 
 	if (!ctx || !ctx->m2m_ctx)
 		return;
@@ -173,14 +174,19 @@ void mtk_mdp_m2m_job_finish(struct mtk_mdp_ctx *ctx, int vb_state)
 	dst_vb = v4l2_m2m_dst_buf_remove(ctx->m2m_ctx);
 
 	if (src_vb && dst_vb) {
-		dst_vb->v4l2_buf.timestamp = src_vb->v4l2_buf.timestamp;
-		dst_vb->v4l2_buf.timecode = src_vb->v4l2_buf.timecode;
-		dst_vb->v4l2_buf.flags &= ~V4L2_BUF_FLAG_TSTAMP_SRC_MASK;
-		dst_vb->v4l2_buf.flags |= src_vb->v4l2_buf.flags &
+		src_vb2_v4l2 = container_of(src_vb, struct vb2_v4l2_buffer,
+				vb2_buf);
+		dst_vb2_v4l2 = container_of(dst_vb, struct vb2_v4l2_buffer,
+				vb2_buf);
+
+		dst_vb2_v4l2->timestamp = src_vb2_v4l2->timestamp;
+		dst_vb2_v4l2->timecode = src_vb2_v4l2->timecode;
+		dst_vb2_v4l2->flags &= ~V4L2_BUF_FLAG_TSTAMP_SRC_MASK;
+		dst_vb2_v4l2->flags |= src_vb2_v4l2->flags &
 					  V4L2_BUF_FLAG_TSTAMP_SRC_MASK;
 
-		v4l2_m2m_buf_done(src_vb, vb_state);
-		v4l2_m2m_buf_done(dst_vb, vb_state);
+		v4l2_m2m_buf_done(src_vb2_v4l2, vb_state);
+		v4l2_m2m_buf_done(dst_vb2_v4l2, vb_state);
 
 		v4l2_m2m_job_finish(ctx->mdp_dev->m2m_dev,
 				    ctx->m2m_ctx);
@@ -197,6 +203,7 @@ static int mtk_mdp_m2m_get_bufs(struct mtk_mdp_ctx *ctx)
 	struct mtk_mdp_frame *s_frame, *d_frame;
 	struct vb2_buffer *src_vb, *dst_vb;
 	int ret;
+	struct vb2_v4l2_buffer *src_vb2_v4l2, *dst_vb2_v4l2;
 
 	s_frame = &ctx->s_frame;
 	d_frame = &ctx->d_frame;
@@ -211,7 +218,10 @@ static int mtk_mdp_m2m_get_bufs(struct mtk_mdp_ctx *ctx)
 	if (ret)
 		return ret;
 
-	dst_vb->v4l2_buf.timestamp = src_vb->v4l2_buf.timestamp;
+	src_vb2_v4l2 = container_of(src_vb, struct vb2_v4l2_buffer, vb2_buf);
+	dst_vb2_v4l2 = container_of(dst_vb, struct vb2_v4l2_buffer, vb2_buf);
+
+	dst_vb2_v4l2->timestamp = src_vb2_v4l2->timestamp;
 
 	return 0;
 }
@@ -324,7 +334,7 @@ static void mtk_mdp_m2m_buf_queue(struct vb2_buffer *vb)
 	struct mtk_mdp_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
 
 	if (ctx->m2m_ctx)
-		v4l2_m2m_buf_queue(ctx->m2m_ctx, vb);
+		v4l2_m2m_buf_queue(ctx->m2m_ctx, to_vb2_v4l2_buffer(vb));
 }
 
 static struct vb2_ops mtk_mdp_m2m_qops = {

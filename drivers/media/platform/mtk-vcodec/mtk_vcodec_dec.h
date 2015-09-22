@@ -32,8 +32,8 @@ struct vdec_fb {
 
 /**
  * struct mtk_video_buf - Private data related to each VB2 buffer.
- * @b:			VB2 buffer
- * @list:			link list
+ * @b:			video buffer information for v4l2
+ * @list:		link list
  * @used:		Output buffer contain decoded frame data
  * @ready_to_display:	Output buffer not display yet
  * @nonrealdisplay:	Output buffer is not display frame
@@ -45,7 +45,7 @@ struct vdec_fb {
  *			before r/w info in mtk_video_buf
  */
 struct mtk_video_buf {
-	struct vb2_buffer	b;
+	struct vb2_v4l2_buffer	vb;
 	struct list_head	list;
 
 	bool	used;

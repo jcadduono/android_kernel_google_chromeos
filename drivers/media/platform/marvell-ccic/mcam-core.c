@@ -213,11 +213,11 @@ struct yuv_pointer_t {
 
 /*
  * Our buffer type for working with videobuf2.  Note that the vb2
- * developers have decreed that struct vb2_buffer must be at the
+ * developers have decreed that struct vb2_v4l2_buffer must be at the
  * beginning of this structure.
  */
 struct mcam_vb_buffer {
-	struct vb2_buffer vb_buf;
+	struct vb2_v4l2_buffer vb_buf;
 	struct list_head queue;
 	struct mcam_dma_desc *dma_desc;	/* Descriptor virtual address */
 	dma_addr_t dma_desc_pa;		/* Descriptor physical address */
@@ -225,7 +225,7 @@ struct mcam_vb_buffer {
 	struct yuv_pointer_t yuv_p;
 };
 
-static inline struct mcam_vb_buffer *vb_to_mvb(struct vb2_buffer *vb)
+static inline struct mcam_vb_buffer *vb_to_mvb(struct vb2_v4l2_buffer *vb)
 {
 	return container_of(vb, struct mcam_vb_buffer, vb_buf);
 }
@@ -234,12 +234,12 @@ static inline struct mcam_vb_buffer *vb_to_mvb(struct vb2_buffer *vb)
  * Hand a completed buffer back to user space.
  */
 static void mcam_buffer_done(struct mcam_camera *cam, int frame,
-		struct vb2_buffer *vbuf)
+		struct vb2_v4l2_buffer *vbuf)
 {
-	vbuf->v4l2_buf.bytesused = cam->pix_format.sizeimage;
-	vbuf->v4l2_buf.sequence = cam->buf_seq[frame];
-	vb2_set_plane_payload(vbuf, 0, cam->pix_format.sizeimage);
-	vb2_buffer_done(vbuf, VB2_BUF_STATE_DONE);
+	vbuf->vb2_buf.planes[0].bytesused = cam->pix_format.sizeimage;
+	vbuf->sequence = cam->buf_seq[frame];
+	vb2_set_plane_payload(&vbuf->vb2_buf, 0, cam->pix_format.sizeimage);
+	vb2_buffer_done(&vbuf->vb2_buf, VB2_BUF_STATE_DONE);
 }
 
 
@@ -457,7 +457,8 @@ static void mcam_frame_tasklet(unsigned long data)
 		 * Drop the lock during the big copy.  This *should* be safe...
 		 */
 		spin_unlock_irqrestore(&cam->dev_lock, flags);
-		memcpy(vb2_plane_vaddr(&buf->vb_buf, 0), cam->dma_bufs[bufno],
+		memcpy(vb2_plane_vaddr(&buf->vb_buf.vb2_buf, 0),
+				cam->dma_bufs[bufno],
 				cam->pix_format.sizeimage);
 		mcam_buffer_done(cam, bufno, &buf->vb_buf);
 		spin_lock_irqsave(&cam->dev_lock, flags);
@@ -533,7 +534,7 @@ static void mcam_set_contig_buffer(struct mcam_camera *cam, int frame)
 	struct v4l2_pix_format *fmt = &cam->pix_format;
 	dma_addr_t dma_handle;
 	u32 pixel_count = fmt->width * fmt->height;
-	struct vb2_buffer *vb;
+	struct vb2_v4l2_buffer *vb;
 
 	/*
 	 * If there are no available buffers, go into single mode
@@ -555,7 +556,7 @@ static void mcam_set_contig_buffer(struct mcam_camera *cam, int frame)
 	cam->vb_bufs[frame] = buf;
 	vb = &buf->vb_buf;
 
-	dma_handle = vb2_dma_contig_plane_dma_addr(vb, 0);
+	dma_handle = vb2_dma_contig_plane_dma_addr(&vb->vb2_buf, 0);
 	buf->yuv_p.y = dma_handle;
 
 	switch (cam->pix_format.pixelformat) {
@@ -1089,7 +1090,8 @@ static int mcam_vb_queue_setup(struct vb2_queue *vq,
 
 static void mcam_vb_buf_queue(struct vb2_buffer *vb)
 {
-	struct mcam_vb_buffer *mvb = vb_to_mvb(vb);
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
+	struct mcam_vb_buffer *mvb = vb_to_mvb(vbuf);
 	struct mcam_camera *cam = vb2_get_drv_priv(vb->vb2_queue);
 	unsigned long flags;
 	int start;
@@ -1205,7 +1207,8 @@ static const struct vb2_ops mcam_vb2_ops = {
  */
 static int mcam_vb_sg_buf_init(struct vb2_buffer *vb)
 {
-	struct mcam_vb_buffer *mvb = vb_to_mvb(vb);
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
+	struct mcam_vb_buffer *mvb = vb_to_mvb(vbuf);
 	struct mcam_camera *cam = vb2_get_drv_priv(vb->vb2_queue);
 	int ndesc = cam->pix_format.sizeimage/PAGE_SIZE + 1;
 
@@ -1221,7 +1224,8 @@ static int mcam_vb_sg_buf_init(struct vb2_buffer *vb)
 
 static int mcam_vb_sg_buf_prepare(struct vb2_buffer *vb)
 {
-	struct mcam_vb_buffer *mvb = vb_to_mvb(vb);
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
+	struct mcam_vb_buffer *mvb = vb_to_mvb(vbuf);
 	struct sg_table *sg_table = vb2_dma_sg_plane_desc(vb, 0);
 	struct mcam_dma_desc *desc = mvb->dma_desc;
 	struct scatterlist *sg;
@@ -1237,8 +1241,9 @@ static int mcam_vb_sg_buf_prepare(struct vb2_buffer *vb)
 
 static void mcam_vb_sg_buf_cleanup(struct vb2_buffer *vb)
 {
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
 	struct mcam_camera *cam = vb2_get_drv_priv(vb->vb2_queue);
-	struct mcam_vb_buffer *mvb = vb_to_mvb(vb);
+	struct mcam_vb_buffer *mvb = vb_to_mvb(vbuf);
 	int ndesc = cam->pix_format.sizeimage/PAGE_SIZE + 1;
 
 	dma_free_coherent(cam->dev, ndesc * sizeof(struct mcam_dma_desc),

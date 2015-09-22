@@ -427,12 +427,13 @@ static void cx23885_wakeup(struct cx23885_tsport *port,
 	buf = list_entry(q->active.next,
 			 struct cx23885_buffer, queue);
 
-	v4l2_get_timestamp(&buf->vb.v4l2_buf.timestamp);
-	buf->vb.v4l2_buf.sequence = q->count++;
-	dprintk(1, "[%p/%d] wakeup reg=%d buf=%d\n", buf, buf->vb.v4l2_buf.index,
+	v4l2_get_timestamp(&buf->vb.timestamp);
+	buf->vb.sequence = q->count++;
+	dprintk(1, "[%p/%d] wakeup reg=%d buf=%d\n", buf,
+		buf->vb.vb2_buf.index,
 		count, q->count);
 	list_del(&buf->queue);
-	vb2_buffer_done(&buf->vb, VB2_BUF_STATE_DONE);
+	vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
 }
 
 int cx23885_sram_channel_setup(struct cx23885_dev *dev,
@@ -1452,13 +1453,13 @@ int cx23885_buf_prepare(struct cx23885_buffer *buf, struct cx23885_tsport *port)
 {
 	struct cx23885_dev *dev = port->dev;
 	int size = port->ts_packet_size * port->ts_packet_count;
-	struct sg_table *sgt = vb2_dma_sg_plane_desc(&buf->vb, 0);
+	struct sg_table *sgt = vb2_dma_sg_plane_desc(&buf->vb.vb2_buf, 0);
 	int rc;
 
 	dprintk(1, "%s: %p\n", __func__, buf);
-	if (vb2_plane_size(&buf->vb, 0) < size)
+	if (vb2_plane_size(&buf->vb.vb2_buf, 0) < size)
 		return -EINVAL;
-	vb2_set_plane_payload(&buf->vb, 0, size);
+	vb2_set_plane_payload(&buf->vb.vb2_buf, 0, size);
 
 	rc = dma_map_sg(&dev->pci->dev, sgt->sgl, sgt->nents, DMA_FROM_DEVICE);
 	if (!rc)
@@ -1507,7 +1508,7 @@ void cx23885_buf_queue(struct cx23885_tsport *port, struct cx23885_buffer *buf)
 	if (list_empty(&cx88q->active)) {
 		list_add_tail(&buf->queue, &cx88q->active);
 		dprintk(1, "[%p/%d] %s - first active\n",
-			buf, buf->vb.v4l2_buf.index, __func__);
+			buf, buf->vb.vb2_buf.index, __func__);
 	} else {
 		buf->risc.cpu[0] |= cpu_to_le32(RISC_IRQ1);
 		prev = list_entry(cx88q->active.prev, struct cx23885_buffer,
@@ -1515,7 +1516,7 @@ void cx23885_buf_queue(struct cx23885_tsport *port, struct cx23885_buffer *buf)
 		list_add_tail(&buf->queue, &cx88q->active);
 		prev->risc.jmp[1] = cpu_to_le32(buf->risc.dma);
 		dprintk(1, "[%p/%d] %s - append to active\n",
-			 buf, buf->vb.v4l2_buf.index, __func__);
+			 buf, buf->vb.vb2_buf.index, __func__);
 	}
 	spin_unlock_irqrestore(&dev->slock, flags);
 }
@@ -1534,9 +1535,10 @@ static void do_cancel_buffers(struct cx23885_tsport *port, char *reason)
 		buf = list_entry(q->active.next, struct cx23885_buffer,
 				 queue);
 		list_del(&buf->queue);
-		vb2_buffer_done(&buf->vb, VB2_BUF_STATE_ERROR);
+		vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_ERROR);
 		dprintk(1, "[%p/%d] %s - dma=0x%08lx\n",
-			buf, buf->vb.v4l2_buf.index, reason, (unsigned long)buf->risc.dma);
+			buf, buf->vb.vb2_buf.index, reason,
+			(unsigned long)buf->risc.dma);
 	}
 	spin_unlock_irqrestore(&port->slock, flags);
 }

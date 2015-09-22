@@ -946,9 +946,10 @@ static int sh_veu_buf_prepare(struct vb2_buffer *vb)
 
 static void sh_veu_buf_queue(struct vb2_buffer *vb)
 {
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
 	struct sh_veu_dev *veu = vb2_get_drv_priv(vb->vb2_queue);
-	dev_dbg(veu->dev, "%s(%d)\n", __func__, vb->v4l2_buf.type);
-	v4l2_m2m_buf_queue(veu->m2m_ctx, vb);
+	dev_dbg(veu->dev, "%s(%d)\n", __func__, vb->type);
+	v4l2_m2m_buf_queue(veu->m2m_ctx, vbuf);
 }
 
 static void sh_veu_wait_prepare(struct vb2_queue *q)
@@ -1104,8 +1105,8 @@ static irqreturn_t sh_veu_bh(int irq, void *dev_id)
 static irqreturn_t sh_veu_isr(int irq, void *dev_id)
 {
 	struct sh_veu_dev *veu = dev_id;
-	struct vb2_buffer *dst;
-	struct vb2_buffer *src;
+	struct vb2_v4l2_buffer *dst;
+	struct vb2_v4l2_buffer *src;
 	u32 status = sh_veu_reg_read(veu, VEU_EVTR);
 
 	/* bundle read mode not used */

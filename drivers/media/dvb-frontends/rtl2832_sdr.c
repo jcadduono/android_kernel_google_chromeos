@@ -30,6 +30,7 @@
 #include <media/v4l2-ioctl.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-event.h>
+#include <media/videobuf2-v4l2.h>
 #include <media/videobuf2-vmalloc.h>
 
 #include <linux/jiffies.h>
@@ -103,7 +104,8 @@ static const unsigned int NUM_FORMATS = ARRAY_SIZE(formats);
 
 /* intermediate buffers with raw data from the USB device */
 struct rtl2832_sdr_frame_buf {
-	struct vb2_buffer vb;   /* common v4l buffer stuff -- must be first */
+	/* common v4l buffer stuff -- must be first */
+	struct vb2_v4l2_buffer vb;
 	struct list_head list;
 };
 
@@ -428,13 +430,13 @@ static void rtl2832_sdr_urb_complete(struct urb *urb)
 		}
 
 		/* fill framebuffer */
-		ptr = vb2_plane_vaddr(&fbuf->vb, 0);
+		ptr = vb2_plane_vaddr(&fbuf->vb.vb2_buf, 0);
 		len = rtl2832_sdr_convert_stream(s, ptr, urb->transfer_buffer,
 				urb->actual_length);
-		vb2_set_plane_payload(&fbuf->vb, 0, len);
-		v4l2_get_timestamp(&fbuf->vb.v4l2_buf.timestamp);
-		fbuf->vb.v4l2_buf.sequence = s->sequence++;
-		vb2_buffer_done(&fbuf->vb, VB2_BUF_STATE_DONE);
+		vb2_set_plane_payload(&fbuf->vb.vb2_buf, 0, len);
+		v4l2_get_timestamp(&fbuf->vb.timestamp);
+		fbuf->vb.sequence = s->sequence++;
+		vb2_buffer_done(&fbuf->vb.vb2_buf, VB2_BUF_STATE_DONE);
 	}
 skip:
 	usb_submit_urb(urb, GFP_ATOMIC);
@@ -579,7 +581,7 @@ static void rtl2832_sdr_cleanup_queued_bufs(struct rtl2832_sdr_state *s)
 		buf = list_entry(s->queued_bufs.next,
 				struct rtl2832_sdr_frame_buf, list);
 		list_del(&buf->list);
-		vb2_buffer_done(&buf->vb, VB2_BUF_STATE_ERROR);
+		vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_ERROR);
 	}
 	spin_unlock_irqrestore(&s->queued_bufs_lock, flags);
 }
@@ -654,14 +656,15 @@ static int rtl2832_sdr_buf_prepare(struct vb2_buffer *vb)
 
 static void rtl2832_sdr_buf_queue(struct vb2_buffer *vb)
 {
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
 	struct rtl2832_sdr_state *s = vb2_get_drv_priv(vb->vb2_queue);
 	struct rtl2832_sdr_frame_buf *buf =
-			container_of(vb, struct rtl2832_sdr_frame_buf, vb);
+			container_of(vbuf, struct rtl2832_sdr_frame_buf, vb);
 	unsigned long flags;
 
 	/* Check the device has not disconnected between prep and queuing */
 	if (!s->udev) {
-		vb2_buffer_done(&buf->vb, VB2_BUF_STATE_ERROR);
+		vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_ERROR);
 		return;
 	}
 

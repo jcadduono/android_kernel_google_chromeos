@@ -30,14 +30,14 @@
 
 /**
  * struct mtk_video_enc_buf - Private data related to each VB2 buffer.
- * @vb: Pointer to related VB2 buffer.
+ * @vb:	video buffer information for v4l2
  * @list:	list that buffer link to
  * @param_change: Types of encode parameter change before encoding this
  *				buffer
  * @enc_params: Encode parameters changed before encode this buffer
  */
 struct mtk_video_enc_buf {
-	struct vb2_buffer	vb;
+	struct vb2_v4l2_buffer	vb;
 	struct list_head	list;
 
 	u32	param_change;

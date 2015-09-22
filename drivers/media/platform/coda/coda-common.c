@@ -531,7 +531,7 @@ static int coda_qbuf(struct file *file, void *priv,
 }
 
 static bool coda_buf_is_end_of_stream(struct coda_ctx *ctx,
-				      struct v4l2_buffer *buf)
+				      struct vb2_v4l2_buffer *buf)
 {
 	struct vb2_queue *src_vq;
 
@@ -954,6 +954,7 @@ static int coda_buf_prepare(struct vb2_buffer *vb)
 
 static void coda_buf_queue(struct vb2_buffer *vb)
 {
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
 	struct coda_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
 	struct coda_q_data *q_data;
 
@@ -972,12 +973,12 @@ static void coda_buf_queue(struct vb2_buffer *vb)
 		if (vb2_get_plane_payload(vb, 0) == 0)
 			coda_bit_stream_end_flag(ctx);
 		mutex_lock(&ctx->bitstream_mutex);
-		v4l2_m2m_buf_queue(ctx->fh.m2m_ctx, vb);
+		v4l2_m2m_buf_queue(ctx->fh.m2m_ctx, vbuf);
 		if (vb2_is_streaming(vb->vb2_queue))
 			coda_fill_bitstream(ctx);
 		mutex_unlock(&ctx->bitstream_mutex);
 	} else {
-		v4l2_m2m_buf_queue(ctx->fh.m2m_ctx, vb);
+		v4l2_m2m_buf_queue(ctx->fh.m2m_ctx, vbuf);
 	}
 }
 
@@ -1025,7 +1026,7 @@ static int coda_start_streaming(struct vb2_queue *q, unsigned int count)
 	struct coda_ctx *ctx = vb2_get_drv_priv(q);
 	struct v4l2_device *v4l2_dev = &ctx->dev->v4l2_dev;
 	struct coda_q_data *q_data_src, *q_data_dst;
-	struct vb2_buffer *buf;
+	struct vb2_v4l2_buffer *buf;
 	u32 dst_fourcc;
 	int ret = 0;
 
@@ -1104,7 +1105,7 @@ static void coda_stop_streaming(struct vb2_queue *q)
 {
 	struct coda_ctx *ctx = vb2_get_drv_priv(q);
 	struct coda_dev *dev = ctx->dev;
-	struct vb2_buffer *buf;
+	struct vb2_v4l2_buffer *buf;
 
 	if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT) {
 		v4l2_dbg(1, coda_debug, &dev->v4l2_dev,

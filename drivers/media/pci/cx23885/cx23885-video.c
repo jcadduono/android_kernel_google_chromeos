@@ -104,12 +104,12 @@ void cx23885_video_wakeup(struct cx23885_dev *dev,
 	buf = list_entry(q->active.next,
 			struct cx23885_buffer, queue);
 
-	buf->vb.v4l2_buf.sequence = q->count++;
-	v4l2_get_timestamp(&buf->vb.v4l2_buf.timestamp);
-	dprintk(2, "[%p/%d] wakeup reg=%d buf=%d\n", buf, buf->vb.v4l2_buf.index,
-			count, q->count);
+	buf->vb.sequence = q->count++;
+	v4l2_get_timestamp(&buf->vb.timestamp);
+	dprintk(2, "[%p/%d] wakeup reg=%d buf=%d\n", buf,
+			buf->vb.vb2_buf.index, count, q->count);
 	list_del(&buf->queue);
-	vb2_buffer_done(&buf->vb, VB2_BUF_STATE_DONE);
+	vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_DONE);
 }
 
 int cx23885_set_tvnorm(struct cx23885_dev *dev, v4l2_std_id norm)
@@ -328,9 +328,10 @@ static int queue_setup(struct vb2_queue *q, const void *parg,
 
 static int buffer_prepare(struct vb2_buffer *vb)
 {
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
 	struct cx23885_dev *dev = vb->vb2_queue->drv_priv;
 	struct cx23885_buffer *buf =
-		container_of(vb, struct cx23885_buffer, vb);
+		container_of(vbuf, struct cx23885_buffer, vb);
 	u32 line0_offset, line1_offset;
 	struct sg_table *sgt = vb2_dma_sg_plane_desc(vb, 0);
 	int field_tff;
@@ -405,7 +406,7 @@ static int buffer_prepare(struct vb2_buffer *vb)
 		BUG();
 	}
 	dprintk(2, "[%p/%d] buffer_init - %dx%d %dbpp \"%s\" - dma=0x%08lx\n",
-		buf, buf->vb.v4l2_buf.index,
+		buf, buf->vb.vb2_buf.index,
 		dev->width, dev->height, dev->fmt->depth, dev->fmt->name,
 		(unsigned long)buf->risc.dma);
 	return 0;
@@ -414,7 +415,8 @@ static int buffer_prepare(struct vb2_buffer *vb)
 static void buffer_finish(struct vb2_buffer *vb)
 {
 	struct cx23885_dev *dev = vb->vb2_queue->drv_priv;
-	struct cx23885_buffer *buf = container_of(vb,
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
+	struct cx23885_buffer *buf = container_of(vbuf,
 		struct cx23885_buffer, vb);
 	struct sg_table *sgt = vb2_dma_sg_plane_desc(vb, 0);
 
@@ -446,8 +448,9 @@ static void buffer_finish(struct vb2_buffer *vb)
  */
 static void buffer_queue(struct vb2_buffer *vb)
 {
+	struct vb2_v4l2_buffer *vbuf = to_vb2_v4l2_buffer(vb);
 	struct cx23885_dev *dev = vb->vb2_queue->drv_priv;
-	struct cx23885_buffer   *buf = container_of(vb,
+	struct cx23885_buffer   *buf = container_of(vbuf,
 		struct cx23885_buffer, vb);
 	struct cx23885_buffer   *prev;
 	struct cx23885_dmaqueue *q    = &dev->vidq;
@@ -463,7 +466,7 @@ static void buffer_queue(struct vb2_buffer *vb)
 	if (list_empty(&q->active)) {
 		list_add_tail(&buf->queue, &q->active);
 		dprintk(2, "[%p/%d] buffer_queue - first active\n",
-			buf, buf->vb.v4l2_buf.index);
+			buf, buf->vb.vb2_buf.index);
 	} else {
 		buf->risc.cpu[0] |= cpu_to_le32(RISC_IRQ1);
 		prev = list_entry(q->active.prev, struct cx23885_buffer,
@@ -471,7 +474,7 @@ static void buffer_queue(struct vb2_buffer *vb)
 		list_add_tail(&buf->queue, &q->active);
 		prev->risc.jmp[1] = cpu_to_le32(buf->risc.dma);
 		dprintk(2, "[%p/%d] buffer_queue - append to active\n",
-				buf, buf->vb.v4l2_buf.index);
+				buf, buf->vb.vb2_buf.index);
 	}
 	spin_unlock_irqrestore(&dev->slock, flags);
 }
@@ -500,7 +503,7 @@ static void cx23885_stop_streaming(struct vb2_queue *q)
 			struct cx23885_buffer, queue);
 
 		list_del(&buf->queue);
-		vb2_buffer_done(&buf->vb, VB2_BUF_STATE_ERROR);
+		vb2_buffer_done(&buf->vb.vb2_buf, VB2_BUF_STATE_ERROR);
 	}
 	spin_unlock_irqrestore(&dev->slock, flags);
 }
