@@ -16,7 +16,7 @@
 #ifndef _MTK_VCODEC_DEC_H_
 #define _MTK_VCODEC_DEC_H_
 
-#include <media/videobuf2-core.h>
+#include <media/videobuf2-v4l2.h>
 
 /**
  * struct vdec_fb  - decoder frame buffer

@@ -16,7 +16,7 @@
 #ifndef _MTK_VCODEC_ENC_H_
 #define _MTK_VCODEC_ENC_H_
 
-#include <media/videobuf2-core.h>
+#include <media/videobuf2-v4l2.h>
 
 #define MTK_VENC_IRQ_STATUS_SPS	0x1
 #define MTK_VENC_IRQ_STATUS_PPS	0x2
