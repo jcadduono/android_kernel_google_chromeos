@@ -13204,7 +13204,8 @@ static int intel_atomic_commit(struct drm_device *dev,
 		if (!modeset)
 			intel_pre_plane_update(intel_crtc);
 
-		drm_atomic_helper_commit_planes_on_crtc(crtc_state);
+		if (crtc->state->active)
+			drm_atomic_helper_commit_planes_on_crtc(crtc_state);
 
 		if (put_domains)
 			modeset_put_power_domains(dev_priv, put_domains);
@@ -13531,9 +13532,6 @@ intel_commit_primary_plane(struct drm_plane *plane,
 
 	crtc = crtc ? crtc : plane->crtc;
 
-	if (!crtc->state->active)
-		return;
-
 	dev_priv->display.update_primary_plane(crtc, fb,
 					       state->src.x1 >> 16,
 					       state->src.y1 >> 16);
@@ -13562,8 +13560,7 @@ static void intel_begin_crtc_commit(struct drm_crtc *crtc,
 		intel_update_watermarks(crtc);
 
 	/* Perform vblank evasion around commit operation */
-	if (crtc->state->active)
-		intel_pipe_update_start(intel_crtc, &intel_crtc->start_vbl_count);
+	intel_pipe_update_start(intel_crtc, &intel_crtc->start_vbl_count);
 
 	if (modeset)
 		return;
@@ -13579,8 +13576,7 @@ static void intel_finish_crtc_commit(struct drm_crtc *crtc,
 {
 	struct intel_crtc *intel_crtc = to_intel_crtc(crtc);
 
-	if (crtc->state->active)
-		intel_pipe_update_end(intel_crtc, intel_crtc->start_vbl_count);
+	intel_pipe_update_end(intel_crtc, intel_crtc->start_vbl_count);
 }
 
 /**
@@ -13768,8 +13764,7 @@ intel_commit_cursor_plane(struct drm_plane *plane,
 	intel_crtc->cursor_bo = obj;
 
 update:
-	if (crtc->state->active)
-		intel_crtc_update_cursor(crtc, state->visible);
+	intel_crtc_update_cursor(crtc, state->visible);
 }
 
 static struct drm_plane *intel_cursor_plane_create(struct drm_device *dev,

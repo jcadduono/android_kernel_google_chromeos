@@ -930,9 +930,6 @@ intel_commit_sprite_plane(struct drm_plane *plane,
 
 	plane->fb = fb;
 
-	if (!crtc->state->active)
-		return;
-
 	if (state->visible) {
 		intel_plane->update_plane(plane, crtc, fb,
 					  state->dst.x1, state->dst.y1,
