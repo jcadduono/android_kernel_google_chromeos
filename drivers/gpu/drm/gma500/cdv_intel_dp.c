@@ -52,7 +52,6 @@
 
 #define wait_for(COND, MS) _wait_for(COND, MS, 1)
 
-#define DP_LINK_STATUS_SIZE	6
 #define DP_LINK_CHECK_TIMEOUT	(10 * 1000)
 
 #define DP_LINK_CONFIGURATION_SIZE	9
