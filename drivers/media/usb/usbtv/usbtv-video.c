@@ -599,9 +599,10 @@ static struct v4l2_file_operations usbtv_fops = {
 };
 
 static int usbtv_queue_setup(struct vb2_queue *vq,
-	const struct v4l2_format *v4l_fmt, unsigned int *nbuffers,
+	const void *parg, unsigned int *nbuffers,
 	unsigned int *nplanes, unsigned int sizes[], void *alloc_ctxs[])
 {
+	const struct v4l2_format *fmt = parg;
 	struct usbtv *usbtv = vb2_get_drv_priv(vq);
 
 	if (*nbuffers < 2)

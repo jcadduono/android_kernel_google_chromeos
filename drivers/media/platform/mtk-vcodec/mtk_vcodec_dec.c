@@ -932,7 +932,7 @@ static int vidioc_vdec_g_fmt(struct file *file, void *priv,
 }
 
 static int vb2ops_vdec_queue_setup(struct vb2_queue *vq,
-				   const struct v4l2_format *fmt,
+				   const void *parg,
 				   unsigned int *nbuffers,
 				   unsigned int *nplanes,
 				   unsigned int sizes[], void *alloc_ctxs[])

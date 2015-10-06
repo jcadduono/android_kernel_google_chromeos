@@ -720,7 +720,7 @@ const struct v4l2_ioctl_ops mtk_venc_ioctl_ops = {
 };
 
 static int vb2ops_venc_queue_setup(struct vb2_queue *vq,
-				   const struct v4l2_format *fmt,
+				   const void *parg,
 				   unsigned int *nbuffers,
 				   unsigned int *nplanes,
 				   unsigned int sizes[], void *alloc_ctxs[])
@@ -728,6 +728,7 @@ static int vb2ops_venc_queue_setup(struct vb2_queue *vq,
 	struct mtk_vcodec_ctx *ctx = vb2_get_drv_priv(vq);
 	struct mtk_q_data *q_data;
 	unsigned int i;
+	struct v4l2_format *fmt = (struct v4l2_format *)parg;
 
 	q_data = mtk_venc_get_q_data(ctx, vq->type);
 
@@ -907,7 +908,7 @@ static void vb2ops_venc_stop_streaming(struct vb2_queue *q)
 static struct vb2_ops mtk_venc_vb2_ops = {
 	.queue_setup		= vb2ops_venc_queue_setup,
 	.buf_prepare		= vb2ops_venc_buf_prepare,
-	.buf_queue			= vb2ops_venc_buf_queue,
+	.buf_queue		= vb2ops_venc_buf_queue,
 	.wait_prepare		= vb2_ops_wait_prepare,
 	.wait_finish		= vb2_ops_wait_finish,
 	.start_streaming	= vb2ops_venc_start_streaming,

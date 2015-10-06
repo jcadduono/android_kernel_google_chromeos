@@ -614,8 +614,10 @@ static int msi2500_querycap(struct file *file, void *fh,
 
 /* Videobuf2 operations */
 static int msi2500_queue_setup(struct vb2_queue *vq,
-		const struct v4l2_format *fmt, unsigned int *nbuffers,
-		unsigned int *nplanes, unsigned int sizes[], void *alloc_ctxs[])
+			       const void *parg,
+			       unsigned int *nbuffers,
+			       unsigned int *nplanes, unsigned int sizes[],
+			       void *alloc_ctxs[])
 {
 	struct msi2500_state *s = vb2_get_drv_priv(vq);
 

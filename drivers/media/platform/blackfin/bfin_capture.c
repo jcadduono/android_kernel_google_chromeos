@@ -286,10 +286,11 @@ static unsigned int bcap_poll(struct file *file, poll_table *wait)
 }
 
 static int bcap_queue_setup(struct vb2_queue *vq,
-				const struct v4l2_format *fmt,
+				const void *parg,
 				unsigned int *nbuffers, unsigned int *nplanes,
 				unsigned int sizes[], void *alloc_ctxs[])
 {
+	const struct v4l2_format *fmt = parg;
 	struct bcap_device *bcap_dev = vb2_get_drv_priv(vq);
 
 	if (*nbuffers < BCAP_MIN_NUM_BUF)
