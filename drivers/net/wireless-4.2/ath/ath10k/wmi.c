@@ -2454,11 +2454,8 @@ void ath10k_wmi_event_chan_info(struct ath10k *ar, struct sk_buff *skb)
 	}
 
 	if (cmd_flags & WMI_CHAN_INFO_FLAG_COMPLETE) {
+		survey = &ar->survey[idx];
 		if (ar->ch_info_can_report_survey) {
-			survey = &ar->survey[idx];
-			survey->noise = noise_floor;
-			survey->filled = SURVEY_INFO_NOISE_DBM;
-
 			ath10k_hw_fill_survey_time(ar,
 						   survey,
 						   cycle_count,
@@ -2466,8 +2463,37 @@ void ath10k_wmi_event_chan_info(struct ath10k *ar, struct sk_buff *skb)
 						   ar->survey_last_cycle_count,
 						   ar->survey_last_rx_clear_count,
 						   freq);
+			/* Sanity check the data before accepting it.
+			 * WAR for the Issue 41610:	busy_duration_millis measured by the Aux
+			 *     Radio spike to ~48805 millis
+			 * FW issue. need to be removed once FW issue is fixed.
+			 */
+
+			if (cycle_count < ar->survey_last_cycle_count) {
+				survey->filled &= ~(SURVEY_INFO_TIME |
+						    SURVEY_INFO_TIME_BUSY);
+			} else if (survey->time_busy <= survey->time) {
+				survey->filled = SURVEY_INFO_TIME |
+					SURVEY_INFO_TIME_BUSY;
+			} else {
+				ath10k_warn(ar, "WAR for 41610: Ignoring invalid survey data freq %d busy_time %lld channel_time %lld\n",
+							freq, survey->time_busy, survey->time);
+				survey->filled = 0;
+			}
+
 		}
 
+		/* Sanity check the noise floor before accepting it.
+		 * WAR for the Issue 40927: ACS noise floor frequently jumps to -48
+		 * FW issue. need to be removed once FW issue is fixed.
+		 */
+#define VALID_NOISE_FLOOR_THRESH -60
+		if ((signed char)noise_floor < VALID_NOISE_FLOOR_THRESH) {
+			survey->noise = noise_floor;
+			survey->filled |= SURVEY_INFO_NOISE_DBM;
+		} else {
+			ath10k_warn(ar, "WAR for 40927: Ignoring invalid noise floor freq %d noise %d\n", freq, (int) ((signed char)noise_floor));
+		}
 		ar->ch_info_can_report_survey = false;
 	} else {
 		ar->ch_info_can_report_survey = true;
@@ -4822,7 +4848,8 @@ void ath10k_wmi_event_chan_survey_update(struct ath10k *ar,
 	struct survey_info *survey;
 	u32 freq, noise_floor;
 	u64 tx_cycle_count, rx_cycle_count, bss_rx_cycle_count;
-	u64 rx_clear_count, cycle_count, delta;
+	u64 rx_clear_count, cycle_count;
+	u64 dwell_delta, tx_delta, rx_delta, busy_delta;
 	int idx, ret;
 
 	ret = ath10k_wmi_pull_chan_survey_update(ar, skb, &arg);
@@ -4866,29 +4893,37 @@ void ath10k_wmi_event_chan_survey_update(struct ath10k *ar,
 
 	if (ar->last_cycle_count) {
 		survey = &ar->survey[idx];
-		delta = tx_cycle_count - ar->last_tx_cycle_count;
-		survey->time_tx +=
-			div64_u64(delta,
-				  ar->hw_params.channel_counters_freq_hz);
-		delta =	bss_rx_cycle_count - ar->last_bss_rx_cycle_count;
-		survey->time_rx +=
-			div64_u64(delta,
-				  ar->hw_params.channel_counters_freq_hz);
-		delta = rx_clear_count - ar->last_rx_clear_count;
-		survey->time_busy +=
-			div64_u64(delta,
-				  ar->hw_params.channel_counters_freq_hz);
-		delta = cycle_count - ar->last_cycle_count;
-		survey->time +=
-			div64_u64(delta,
-				  ar->hw_params.channel_counters_freq_hz);
+		tx_delta = tx_cycle_count - ar->last_tx_cycle_count;
+		rx_delta = rx_cycle_count - ar->last_rx_cycle_count;
+		busy_delta = rx_clear_count - ar->last_rx_clear_count;
+		dwell_delta = cycle_count - ar->last_cycle_count;
+		/*
+		 * Sanity check the data before accepting.
+		 * WAR for Issue 41688:Rx Duration reported by the 2.4GHz radio is much
+		 *   higher than measurement duration
+		 */
+		if (((rx_delta + tx_delta) > busy_delta) ||
+			(busy_delta > dwell_delta)) {
+			survey->filled = 0;
+		   ath10k_warn(ar, "WAR for 41688: Ignoring invalid bss chan survey data freq %d tx_delta %lld rx_delta %lld busy_delta %lld dwell_delta %lld\n",
 
-		survey->noise = noise_floor;
-		survey->filled = SURVEY_INFO_TIME_TX |
-			SURVEY_INFO_TIME_RX |
-			SURVEY_INFO_TIME_BUSY |
-			SURVEY_INFO_TIME |
-			SURVEY_INFO_NOISE_DBM;
+			    freq, tx_delta, rx_delta, busy_delta, dwell_delta);
+		} else {
+			survey->time_tx +=
+				div64_u64(tx_delta, ar->hw_params.channel_counters_freq_hz);
+			survey->time_rx +=
+				div64_u64(rx_delta, ar->hw_params.channel_counters_freq_hz);
+			survey->time_busy +=
+				div64_u64(busy_delta, ar->hw_params.channel_counters_freq_hz);
+			survey->time +=
+				div64_u64(dwell_delta, ar->hw_params.channel_counters_freq_hz);
+			survey->noise = noise_floor;
+			survey->filled = SURVEY_INFO_TIME_TX |
+				SURVEY_INFO_TIME_RX |
+				SURVEY_INFO_TIME_BUSY |
+				SURVEY_INFO_TIME |
+				SURVEY_INFO_NOISE_DBM;
+		}
 	}
 	ar->last_tx_cycle_count = tx_cycle_count;
 	ar->last_rx_cycle_count = rx_cycle_count;
