@@ -3873,6 +3873,7 @@ int ath10k_wmi_op_pull_phyerr_ev(struct ath10k *ar,
 	arg->freq2 = __le16_to_cpu(phyerr->freq2);
 	arg->rssi_combined = phyerr->rssi_combined;
 	arg->chan_width_mhz = phyerr->chan_width_mhz;
+	arg->rsvd0 = phyerr->rsvd0;
 	arg->buf_len = __le32_to_cpu(phyerr->buf_len);
 	arg->buf = phyerr->buf;
 	arg->hdr_len = sizeof(*phyerr);
