@@ -1187,7 +1187,7 @@ struct drm_mode_config {
  */
 #define drm_for_each_plane_mask(plane, dev, plane_mask) \
 	list_for_each_entry((plane), &(dev)->mode_config.plane_list, head) \
-		if ((plane_mask) & (1 << drm_plane_index(plane)))
+		for_each_if ((plane_mask) & (1 << drm_plane_index(plane)))
 
 
 #define obj_to_crtc(x) container_of(x, struct drm_crtc, base)
@@ -1576,7 +1576,7 @@ static inline uint32_t drm_color_lut_extract(uint32_t user_input,
 /* Plane list iterator for legacy (overlay only) planes. */
 #define drm_for_each_legacy_plane(plane, dev) \
 	list_for_each_entry(plane, &(dev)->mode_config.plane_list, head) \
-		if (plane->type == DRM_PLANE_TYPE_OVERLAY)
+		for_each_if (plane->type == DRM_PLANE_TYPE_OVERLAY)
 
 #define drm_for_each_plane(plane, dev) \
 	list_for_each_entry(plane, &(dev)->mode_config.plane_list, head)
