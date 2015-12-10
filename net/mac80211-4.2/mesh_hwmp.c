@@ -296,11 +296,13 @@ int mesh_path_error_tx(struct ieee80211_sub_if_data *sdata,
 }
 
 void ieee80211s_update_metric(struct ieee80211_local *local,
-		struct sta_info *sta, struct sk_buff *skb)
+		struct sta_info *sta, struct sk_buff *skb, int retry_count)
 {
 	struct ieee80211_tx_info *txinfo = IEEE80211_SKB_CB(skb);
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *) skb->data;
-	int failed;
+	int failed, rate;
+	struct rate_info rinfo;
+	u8 weight = sta->sdata->u.mesh.bitrate_avg_weight;
 
 	if (!ieee80211_is_data(hdr->frame_control))
 		return;
@@ -309,37 +311,42 @@ void ieee80211s_update_metric(struct ieee80211_local *local,
 
 	/* moving average, scaled to 100 */
 	sta->mesh->fail_avg =
-		((80 * sta->mesh->fail_avg + 5) / 100 + 20 * failed);
+		((80 * sta->mesh->fail_avg + 5) / 100 +
+		 20 * (retry_count + failed) / (retry_count + 1));
 	if (sta->mesh->fail_avg > 95)
 		mesh_plink_broken(sta);
+
+	/* bitrate moving average, scaled to 100x, in units of 1Kbps */
+	sta_set_rate_info_tx(sta, &sta->last_tx_rate, &rinfo);
+	rate = cfg80211_calculate_bitrate(&rinfo);
+	sta->mesh->bitrate_avg = (((100 - weight) * sta->mesh->bitrate_avg + 5)
+			/ 100 + weight * rate);
 }
 
 static u32 airtime_link_metric_get(struct ieee80211_local *local,
 				   struct sta_info *sta)
 {
-	struct rate_info rinfo;
 	/* This should be adjusted for each device */
 	int device_constant = 1 << ARITH_SHIFT;
 	int test_frame_len = TEST_FRAME_LEN << ARITH_SHIFT;
 	int s_unit = 1 << ARITH_SHIFT;
-	int rate, err;
+	int err;
 	u32 tx_time, estimated_retx;
 	u64 result;
 
 	if (sta->mesh->fail_avg >= 100)
 		return MAX_METRIC;
 
-	sta_set_rate_info_tx(sta, &sta->last_tx_rate, &rinfo);
-	rate = cfg80211_calculate_bitrate(&rinfo);
-	if (WARN_ON(!rate))
+	if (WARN_ON(!sta->mesh->bitrate_avg))
 		return MAX_METRIC;
 
 	err = (sta->mesh->fail_avg << ARITH_SHIFT) / 100;
 
-	/* bitrate is in units of 100 Kbps, while we need rate in units of
+	/* bitrate is in units of 1 Kbps, while we need rate in units of
 	 * 1Mbps. This will be corrected on tx_time computation.
 	 */
-	tx_time = (device_constant + 10 * test_frame_len / rate);
+	tx_time = (device_constant + 1000 * test_frame_len /
+		sta->mesh->bitrate_avg);
 	estimated_retx = ((1 << (2 * ARITH_SHIFT)) / (s_unit - err));
 	result = (tx_time * estimated_retx) >> (2 * ARITH_SHIFT) ;
 	return (u32)result;

@@ -551,6 +551,33 @@ IEEE80211_IF_FILE(dot11MeshHWMPconfirmationInterval,
 IEEE80211_IF_FILE(power_mode, u.mesh.mshcfg.power_mode, DEC);
 IEEE80211_IF_FILE(dot11MeshAwakeWindowDuration,
 		  u.mesh.mshcfg.dot11MeshAwakeWindowDuration, DEC);
+
+static ssize_t ieee80211_if_fmt_bitrate_avg_weight(
+	const struct ieee80211_sub_if_data *sdata, char *buf, int buflen)
+{
+	return snprintf(buf, buflen, "%d\n", sdata->u.mesh.bitrate_avg_weight);
+}
+
+static ssize_t ieee80211_if_parse_bitrate_avg_weight(
+	struct ieee80211_sub_if_data *sdata, const char *buf, int buflen)
+{
+	u8 val;
+	int ret;
+
+	ret = kstrtou8(buf, 0, &val);
+	if (ret)
+		return ret;
+
+	if (val > 100)
+		return -ERANGE;
+
+	sdata->u.mesh.bitrate_avg_weight = val;
+
+	return buflen;
+}
+
+IEEE80211_IF_FILE_RW(bitrate_avg_weight);
+
 #endif
 
 #define DEBUGFS_ADD_MODE(name, mode) \
@@ -608,6 +635,7 @@ static void add_mesh_files(struct ieee80211_sub_if_data *sdata)
 {
 	DEBUGFS_ADD_MODE(tsf, 0600);
 	DEBUGFS_ADD_MODE(estab_plinks, 0400);
+	DEBUGFS_ADD_MODE(bitrate_avg_weight, 0600);
 }
 
 static void add_mesh_stats(struct ieee80211_sub_if_data *sdata)

@@ -317,6 +317,9 @@ struct mesh_sta {
 
 	/* moving percentage of failed MSDUs */
 	unsigned int fail_avg;
+
+	/* moving avg of bitrate in 1kbps */
+	u32 bitrate_avg;
 };
 
 /**
