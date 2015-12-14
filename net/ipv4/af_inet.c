@@ -260,6 +260,9 @@ static int inet_create(struct net *net, struct socket *sock, int protocol,
 	if (!inet_sk_allowed(net, AID_INET))
 		return -EACCES;
 
+	if (protocol < 0 || protocol >= IPPROTO_MAX)
+		return -EINVAL;
+
 	sock->state = SS_UNCONNECTED;
 
 	/* Look for the requested type/protocol pair. */
