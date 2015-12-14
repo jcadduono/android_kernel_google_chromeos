@@ -206,6 +206,9 @@ struct mesh_rmc {
 /* Moving average weight of mesh peer link bitrate (in percent) */
 #define MESH_BITRATE_AVG_WEIGHT 5
 
+/* Threshold of link metric difference (in percent) to switch path selection */
+#define MESH_PATH_SWITCH_TH		15
+
 /* Public interfaces */
 /* Various */
 int ieee80211_fill_mesh_addresses(struct ieee80211_hdr *hdr, __le16 *fc,

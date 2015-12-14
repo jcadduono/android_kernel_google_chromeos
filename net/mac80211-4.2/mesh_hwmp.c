@@ -435,9 +435,17 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 				fresh_info = false;
 			else if ((mpath->flags & MESH_PATH_ACTIVE) &&
 			    (mpath->flags & MESH_PATH_SN_VALID)) {
+				/*
+				 * - throw away older SN
+				 * - if nexthop stays the same (no path change),
+				 *   always update
+				 * - else, the new path needs to be path_switch_threshold %
+				 *   better than the current path
+				 */
 				if (SN_GT(mpath->sn, orig_sn) ||
-				    (mpath->sn == orig_sn &&
-				     new_metric >= mpath->metric)) {
+				    (rcu_access_pointer(mpath->next_hop) != sta &&
+					(new_metric * (100 + sdata->u.mesh.path_switch_threshold)
+						>= mpath->metric * 100))) {
 					process = false;
 					fresh_info = false;
 				}
@@ -500,7 +508,10 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 			spin_lock_bh(&mpath->state_lock);
 			if ((mpath->flags & MESH_PATH_FIXED) ||
 				((mpath->flags & MESH_PATH_ACTIVE) &&
-					(last_hop_metric > mpath->metric)))
+					rcu_access_pointer(mpath->next_hop) != sta &&
+					(last_hop_metric * (100 +
+					sdata->u.mesh.path_switch_threshold) >
+					mpath->metric * 100)))
 				fresh_info = false;
 		} else {
 			mpath = mesh_path_add(sdata, ta);

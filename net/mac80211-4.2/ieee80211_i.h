@@ -718,6 +718,7 @@ struct ieee80211_if_mesh {
 	int meshconf_offset;
 
 	u8 bitrate_avg_weight;
+	u8 path_switch_threshold;
 };
 
 #ifdef CONFIG_MAC80211_MESH
