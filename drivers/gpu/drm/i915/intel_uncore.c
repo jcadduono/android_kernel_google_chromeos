@@ -63,12 +63,6 @@ intel_uncore_forcewake_domain_to_str(const enum forcewake_domain_id id)
 	return "unknown";
 }
 
-static void
-assert_device_not_suspended(struct drm_i915_private *dev_priv)
-{
-	WARN_ONCE(dev_priv->pm.suspended, "Device suspended\n");
-}
-
 static inline void
 fw_domain_reset(const struct intel_uncore_forcewake_domain *d)
 {
@@ -248,7 +242,7 @@ static void intel_uncore_fw_release_timer(unsigned long arg)
 	struct intel_uncore_forcewake_domain *domain = (void *)arg;
 	unsigned long irqflags;
 
-	assert_device_not_suspended(domain->i915);
+	assert_rpm_device_not_suspended(domain->i915);
 
 	spin_lock_irqsave(&domain->i915->uncore.lock, irqflags);
 	if (WARN_ON(domain->wake_count == 0))
@@ -641,7 +635,7 @@ hsw_unclaimed_reg_detect(struct drm_i915_private *dev_priv)
 
 #define GEN2_READ_HEADER(x) \
 	u##x val = 0; \
-	assert_device_not_suspended(dev_priv);
+	assert_rpm_wakelock_held(dev_priv);
 
 #define GEN2_READ_FOOTER \
 	trace_i915_reg_rw(false, reg, val, sizeof(val), trace); \
@@ -682,7 +676,7 @@ __gen2_read(64)
 #define GEN6_READ_HEADER(x) \
 	unsigned long irqflags; \
 	u##x val = 0; \
-	assert_device_not_suspended(dev_priv); \
+	assert_rpm_wakelock_held(dev_priv); \
 	spin_lock_irqsave(&dev_priv->uncore.lock, irqflags)
 
 #define GEN6_READ_FOOTER \
@@ -804,7 +798,7 @@ __gen6_read(64)
 #define VGPU_READ_HEADER(x) \
 	unsigned long irqflags; \
 	u##x val = 0; \
-	assert_device_not_suspended(dev_priv); \
+	assert_rpm_device_not_suspended(dev_priv); \
 	spin_lock_irqsave(&dev_priv->uncore.lock, irqflags)
 
 #define VGPU_READ_FOOTER \
@@ -831,7 +825,7 @@ __vgpu_read(64)
 
 #define GEN2_WRITE_HEADER \
 	trace_i915_reg_rw(true, reg, val, sizeof(val), trace); \
-	assert_device_not_suspended(dev_priv); \
+	assert_rpm_wakelock_held(dev_priv); \
 
 #define GEN2_WRITE_FOOTER
 
@@ -870,7 +864,7 @@ __gen2_write(64)
 #define GEN6_WRITE_HEADER \
 	unsigned long irqflags; \
 	trace_i915_reg_rw(true, reg, val, sizeof(val), trace); \
-	assert_device_not_suspended(dev_priv); \
+	assert_rpm_wakelock_held(dev_priv); \
 	spin_lock_irqsave(&dev_priv->uncore.lock, irqflags)
 
 #define GEN6_WRITE_FOOTER \
@@ -1038,7 +1032,7 @@ __gen6_write(64)
 #define VGPU_WRITE_HEADER \
 	unsigned long irqflags; \
 	trace_i915_reg_rw(true, reg, val, sizeof(val), trace); \
-	assert_device_not_suspended(dev_priv); \
+	assert_rpm_device_not_suspended(dev_priv); \
 	spin_lock_irqsave(&dev_priv->uncore.lock, irqflags)
 
 #define VGPU_WRITE_FOOTER \
