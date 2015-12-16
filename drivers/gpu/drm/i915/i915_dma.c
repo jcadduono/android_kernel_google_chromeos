@@ -855,6 +855,8 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 
 	intel_pm_setup(dev);
 
+	intel_runtime_pm_get(dev_priv);
+
 	intel_display_crc_init(dev);
 
 	i915_dump_device_info(dev_priv);
@@ -1046,6 +1048,8 @@ int i915_driver_load(struct drm_device *dev, unsigned long flags)
 
 	i915_audio_component_init(dev_priv);
 
+	intel_runtime_pm_put(dev_priv);
+
 	return 0;
 
 out_power_well:
@@ -1084,6 +1088,9 @@ free_priv:
 		kmem_cache_destroy(dev_priv->vmas);
 	if (dev_priv->objects)
 		kmem_cache_destroy(dev_priv->objects);
+
+	intel_runtime_pm_put(dev_priv);
+
 	kfree(dev_priv);
 	return ret;
 }
