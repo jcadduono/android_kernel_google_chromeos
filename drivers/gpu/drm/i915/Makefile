@@ -49,6 +49,7 @@ i915-y += intel_renderstate_gen6.o \
 # modesetting core code
 i915-y += intel_audio.o \
 	  intel_bios.o \
+	  intel_color.o \
 	  intel_display.o \
 	  intel_fbc.o \
 	  intel_fifo_underrun.o \

@@ -662,6 +662,8 @@ struct drm_i915_display_funcs {
 	void (*enable_backlight)(struct intel_connector *connector);
 	uint32_t (*backlight_hz_to_pwm)(struct intel_connector *connector,
 					uint32_t hz);
+
+	void (*load_luts)(struct drm_crtc *crtc);
 };
 
 enum forcewake_domain_id {
