@@ -450,6 +450,18 @@
 	vmmc-supply = <&sdio_fixed_3v3>;
 	vqmmc-supply = <&mt6397_vgp3_reg>;
 	non-removable;
+	cap-power-off-card;
+
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	mwifiex: mwifiex@1 {
+		compatible = "marvell,sd8897";
+		reg = <1>;
+		interrupt-parent = <&pio>;
+		interrupts = <38 IRQ_TYPE_LEVEL_LOW>;
+		marvell,wakeup-pin = <3>;
+	};
 };
 
 &nor_flash {
@@ -771,6 +783,13 @@
 			pinmux = <MT8173_PIN_101_MSDC2_DAT1__FUNC_GPIO101>;
 			output-high;
 			bias-disable;
+		};
+	};
+
+	wifi_wake_pins: wifi_wake_pins {
+		pins1 {
+			pinmux = <MT8173_PIN_38_CONN_RST__FUNC_GPIO38>;
+			bias-pull-up;
 		};
 	};
 };
