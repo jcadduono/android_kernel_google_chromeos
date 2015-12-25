@@ -57,11 +57,6 @@
 		pinctrl-0 = <&bl_fixed_pins>;
 	};
 
-	btmrvl {
-		compatible = "btmrvl,cfgdata";
-		btmrvl,gpio-gap = <0x0d64>;
-	};
-
 	chosen {
 		linux,stdout-path = &uart0;
 	};
@@ -455,6 +450,15 @@
 	#address-cells = <1>;
 	#size-cells = <0>;
 
+	btmrvl: btmrvl@2 {
+		compatible = "marvell,sd8897-bt";
+		reg = <2>;
+		interrupt-parent = <&pio>;
+		interrupts = <119 IRQ_TYPE_LEVEL_LOW>;
+		marvell,wakeup-pin = /bits/ 16 <0x0d>;
+		marvell,wakeup-gap-ms = /bits/ 16 <0x64>;
+	};
+
 	mwifiex: mwifiex@1 {
 		compatible = "marvell,sd8897";
 		reg = <1>;
@@ -504,6 +508,13 @@
 		pins1 {
 			pinmux = <MT8173_PIN_32_UTXD2__FUNC_GPIO32>;
 			output-low;
+		};
+	};
+
+	bt_wake_pins: bt_wake_pins {
+		pins1 {
+			pinmux = <MT8173_PIN_119_KPROW0__FUNC_GPIO119>;
+			bias-pull-up;
 		};
 	};
 
