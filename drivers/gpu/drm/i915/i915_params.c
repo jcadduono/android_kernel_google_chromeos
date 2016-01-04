@@ -41,6 +41,7 @@ struct i915_params i915 __read_mostly = {
 	.preliminary_hw_support = IS_ENABLED(CONFIG_DRM_I915_PRELIMINARY_HW_SUPPORT),
 	.disable_power_well = -1,
 	.enable_ips = 1,
+	.enable_watermark = 1,
 	.fastboot = 0,
 	.prefault_disable = 0,
 	.load_detect_test = 0,
@@ -141,6 +142,9 @@ MODULE_PARM_DESC(disable_power_well,
 
 module_param_named(enable_ips, i915.enable_ips, int, 0600);
 MODULE_PARM_DESC(enable_ips, "Enable IPS (default: true)");
+
+module_param_named_unsafe(enable_watermark, i915.enable_watermark, int, 0600);
+MODULE_PARM_DESC(enable_watermark, "Enable Watermark (default: 1)");
 
 module_param_named(fastboot, i915.fastboot, bool, 0600);
 MODULE_PARM_DESC(fastboot,

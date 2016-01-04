@@ -1820,6 +1820,7 @@ struct ilk_wm_maximums {
 /* used in computing the new watermarks state */
 struct intel_wm_config {
 	unsigned int num_pipes_active;
+	bool wm_enabled;
 	bool sprites_enabled;
 	bool sprites_scaled;
 };
@@ -2369,6 +2370,27 @@ static void skl_setup_wm_latency(struct drm_device *dev)
 	intel_print_wm_latency(dev, "Gen9 Plane", dev_priv->wm.skl_latency);
 }
 
+static inline void set_config_wm_enabled(struct intel_wm_config *config)
+{
+
+	switch (i915.enable_watermark) {
+		case 0:
+			config->wm_enabled = false;
+			break;
+		case 1:
+			config->wm_enabled = true;
+			break;
+		case 2:
+			/* Disable watermarks when more than one screen enabled*/
+			config->wm_enabled = config->num_pipes_active < 2;
+			break;
+		default:
+			DRM_ERROR("Invalid value set for i915.enable_watermark, defaulting to 1.\n");
+			i915.enable_watermark = 1;
+			config->wm_enabled = true;
+	}
+}
+
 static void ilk_compute_wm_config(struct drm_device *dev,
 				  struct intel_wm_config *config)
 {
@@ -2385,6 +2407,8 @@ static void ilk_compute_wm_config(struct drm_device *dev,
 		config->sprites_scaled |= wm->sprites_scaled;
 		config->num_pipes_active++;
 	}
+
+	set_config_wm_enabled(config);
 }
 
 /* Compute new watermarks for the pipe */
@@ -2571,6 +2595,7 @@ static unsigned int ilk_wm_lp_latency(struct drm_device *dev, int level)
 }
 
 static void ilk_compute_wm_results(struct drm_device *dev,
+				   struct intel_wm_config *config,
 				   const struct intel_pipe_wm *merged,
 				   enum intel_ddb_partitioning partitioning,
 				   struct ilk_wm_values *results)
@@ -2598,7 +2623,7 @@ static void ilk_compute_wm_results(struct drm_device *dev,
 			(r->pri_val << WM1_LP_SR_SHIFT) |
 			r->cur_val;
 
-		if (r->enable)
+		if (r->enable && config->wm_enabled)
 			results->wm_lp[wm_lp - 1] |= WM1_LP_SR_EN;
 
 		if (INTEL_INFO(dev)->gen >= 8)
@@ -3160,6 +3185,8 @@ static void skl_compute_wm_global_parameters(struct drm_device *dev,
 		config->sprites_enabled |= intel_plane->wm.enabled;
 		config->sprites_scaled |= intel_plane->wm.scaled;
 	}
+
+	set_config_wm_enabled(config);
 }
 
 static void skl_compute_wm_pipe_parameters(struct drm_crtc *crtc,
@@ -3379,6 +3406,7 @@ static void skl_compute_pipe_wm(struct drm_crtc *crtc,
 }
 
 static void skl_compute_wm_results(struct drm_device *dev,
+				   struct intel_wm_config *config,
 				   struct skl_pipe_wm_parameters *p,
 				   struct skl_pipe_wm *p_wm,
 				   struct skl_wm_values *r,
@@ -3396,7 +3424,8 @@ static void skl_compute_wm_results(struct drm_device *dev,
 			temp |= p_wm->wm[level].plane_res_l[i] <<
 					PLANE_WM_LINES_SHIFT;
 			temp |= p_wm->wm[level].plane_res_b[i];
-			if (p_wm->wm[level].plane_en[i])
+			if (p_wm->wm[level].plane_en[i]
+			    && (config->wm_enabled || level == 0))
 				temp |= PLANE_WM_EN;
 
 			r->plane[pipe][i][level] = temp;
@@ -3407,7 +3436,8 @@ static void skl_compute_wm_results(struct drm_device *dev,
 		temp |= p_wm->wm[level].plane_res_l[PLANE_CURSOR] << PLANE_WM_LINES_SHIFT;
 		temp |= p_wm->wm[level].plane_res_b[PLANE_CURSOR];
 
-		if (p_wm->wm[level].plane_en[PLANE_CURSOR])
+		if (p_wm->wm[level].plane_en[PLANE_CURSOR]
+		    && (config->wm_enabled || level == 0))
 			temp |= PLANE_WM_EN;
 
 		r->plane[pipe][PLANE_CURSOR][level] = temp;
@@ -3419,7 +3449,8 @@ static void skl_compute_wm_results(struct drm_device *dev,
 		temp = 0;
 		temp |= p_wm->trans_wm.plane_res_l[i] << PLANE_WM_LINES_SHIFT;
 		temp |= p_wm->trans_wm.plane_res_b[i];
-		if (p_wm->trans_wm.plane_en[i])
+		if (p_wm->trans_wm.plane_en[i]
+		    && config->wm_enabled)
 			temp |= PLANE_WM_EN;
 
 		r->plane_trans[pipe][i] = temp;
@@ -3428,7 +3459,8 @@ static void skl_compute_wm_results(struct drm_device *dev,
 	temp = 0;
 	temp |= p_wm->trans_wm.plane_res_l[PLANE_CURSOR] << PLANE_WM_LINES_SHIFT;
 	temp |= p_wm->trans_wm.plane_res_b[PLANE_CURSOR];
-	if (p_wm->trans_wm.plane_en[PLANE_CURSOR])
+	if (p_wm->trans_wm.plane_en[PLANE_CURSOR]
+	    && config->wm_enabled)
 		temp |= PLANE_WM_EN;
 
 	r->plane_trans[pipe][PLANE_CURSOR] = temp;
@@ -3656,8 +3688,8 @@ static void skl_update_other_pipe_wm(struct drm_device *dev,
 	 * enabled crtcs will keep the same allocation and we don't need to
 	 * recompute anything for them.
 	 */
-	if (!skl_ddb_allocation_changed(&r->ddb, this_crtc))
-		return;
+	if (skl_ddb_allocation_changed(&r->ddb, this_crtc))
+		DRM_DEBUG_DRIVER("DDB allocation changed for pipe %d.\n",this_crtc->pipe);
 
 	/*
 	 * Otherwise, because of this_crtc being freshly enabled/disabled, the
@@ -3686,7 +3718,7 @@ static void skl_update_other_pipe_wm(struct drm_device *dev,
 		 */
 		WARN_ON(!wm_changed);
 
-		skl_compute_wm_results(dev, &params, &pipe_wm, r, intel_crtc);
+		skl_compute_wm_results(dev, config, &params, &pipe_wm, r, intel_crtc);
 		r->dirty[intel_crtc->pipe] = true;
 	}
 }
@@ -3729,11 +3761,9 @@ static void skl_update_wm(struct drm_crtc *crtc)
 
 	skl_compute_wm_global_parameters(dev, &config);
 
-	if (!skl_update_pipe_wm(crtc, &params, &config,
-				&results->ddb, &pipe_wm))
-		return;
+	skl_update_pipe_wm(crtc, &params, &config, &results->ddb, &pipe_wm);
 
-	skl_compute_wm_results(dev, &params, &pipe_wm, results, intel_crtc);
+	skl_compute_wm_results(dev, &config, &params, &pipe_wm, results, intel_crtc);
 	results->dirty[intel_crtc->pipe] = true;
 
 	skl_update_other_pipe_wm(dev, crtc, &config, results);
@@ -3818,7 +3848,7 @@ static void ilk_update_wm(struct drm_crtc *crtc)
 	partitioning = (best_lp_wm == &lp_wm_1_2) ?
 		       INTEL_DDB_PART_1_2 : INTEL_DDB_PART_5_6;
 
-	ilk_compute_wm_results(dev, best_lp_wm, partitioning, &results);
+	ilk_compute_wm_results(dev, &config, best_lp_wm, partitioning, &results);
 
 	ilk_write_wm_values(dev_priv, &results);
 }
