@@ -568,12 +568,6 @@ static enum drm_connector_status mtk_dsi_connector_detect(
 	return connector_status_connected;
 }
 
-static void mtk_dsi_connector_destroy(struct drm_connector *connector)
-{
-	drm_connector_unregister(connector);
-	drm_connector_cleanup(connector);
-}
-
 static int mtk_dsi_connector_get_modes(struct drm_connector *connector)
 {
 	struct mtk_dsi *dsi = connector_to_dsi(connector);
@@ -600,7 +594,7 @@ static const struct drm_connector_funcs mtk_dsi_connector_funcs = {
 	.dpms = drm_atomic_helper_connector_dpms,
 	.detect = mtk_dsi_connector_detect,
 	.fill_modes = drm_helper_probe_single_connector_modes,
-	.destroy = mtk_dsi_connector_destroy,
+	.destroy = drm_connector_cleanup,
 	.reset = drm_atomic_helper_connector_reset,
 	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
@@ -645,12 +639,6 @@ static int mtk_dsi_create_connector(struct drm_device *drm, struct mtk_dsi *dsi)
 
 	drm_connector_helper_add(&dsi->conn, &mtk_dsi_connector_helper_funcs);
 
-	ret = drm_connector_register(&dsi->conn);
-	if (ret) {
-		DRM_ERROR("Failed to connector register to drm\n");
-		goto err_connector_cleanup;
-	}
-
 	dsi->conn.dpms = DRM_MODE_DPMS_OFF;
 	drm_mode_connector_attach_encoder(&dsi->conn, &dsi->encoder);
 
@@ -658,14 +646,12 @@ static int mtk_dsi_create_connector(struct drm_device *drm, struct mtk_dsi *dsi)
 		ret = drm_panel_attach(dsi->panel, &dsi->conn);
 		if (ret) {
 			DRM_ERROR("Failed to attach panel to drm\n");
-			goto err_connector_unregister;
+			goto err_connector_cleanup;
 		}
 	}
 
 	return 0;
 
-err_connector_unregister:
-	drm_connector_unregister(&dsi->conn);
 err_connector_cleanup:
 	drm_connector_cleanup(&dsi->conn);
 	return ret;
