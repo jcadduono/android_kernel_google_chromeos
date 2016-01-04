@@ -316,14 +316,18 @@ static int mtk_drm_bind(struct device *dev)
 
 	drm_dev_set_unique(drm, dev_name(dev));
 
-	ret = drm_dev_register(drm, 0);
-	if (ret < 0)
-		goto err_free;
-
 	drm->dev_private = private;
 	private->drm = drm;
 
 	ret = mtk_drm_kms_init(drm);
+	if (ret < 0)
+		goto err_free;
+
+	ret = drm_dev_register(drm, 0);
+	if (ret < 0)
+		goto err_deinit;
+
+	ret = drm_connector_register_all(drm);
 	if (ret < 0)
 		goto err_unregister;
 
@@ -331,6 +335,8 @@ static int mtk_drm_bind(struct device *dev)
 
 err_unregister:
 	drm_dev_unregister(drm);
+err_deinit:
+	mtk_drm_kms_deinit(drm);
 err_free:
 	drm_dev_unref(drm);
 	return ret;
