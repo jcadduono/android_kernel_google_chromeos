@@ -570,6 +570,8 @@ struct intel_crtc {
 	int num_scalers;
 
 	struct vlv_wm_state wm_state;
+
+	atomic_t error_count;
 };
 
 struct intel_plane_wm_parameters {

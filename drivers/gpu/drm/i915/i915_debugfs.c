@@ -2362,6 +2362,19 @@ static int i915_rps_boost_info(struct seq_file *m, void *data)
 	return 0;
 }
 
+static int i915_crtc_errors(struct seq_file *m, void *unused)
+{
+	struct drm_info_node *node = (struct drm_info_node *) m->private;
+	struct drm_device *dev = node->minor->dev;
+	struct intel_crtc *crtc;
+
+	list_for_each_entry(crtc, &dev->mode_config.crtc_list, base.head)
+		seq_printf(m, "Crtc %d Pipe %c errors:		%08x\n",
+			   crtc->base.base.id, pipe_name(crtc->pipe),
+			   atomic_read(&crtc->error_count));
+	return 0;
+}
+
 static int i915_llc(struct seq_file *m, void *data)
 {
 	struct drm_info_node *node = m->private;
@@ -5174,6 +5187,7 @@ static const struct drm_info_list i915_debugfs_list[] = {
 	{"i915_sseu_status", i915_sseu_status, 0},
 	{"i915_drrs_status", i915_drrs_status, 0},
 	{"i915_rps_boost_info", i915_rps_boost_info, 0},
+	{"i915_crtc_errors", i915_crtc_errors, 0},
 };
 #define I915_DEBUGFS_ENTRIES ARRAY_SIZE(i915_debugfs_list)
 
