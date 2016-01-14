@@ -71,6 +71,8 @@ static inline u16 u16_field_get(const u8 *preq_elem, int offset, bool ae)
 #define SN_GT(x, y) ((s32)(y - x) < 0)
 #define SN_LT(x, y) ((s32)(x - y) < 0)
 #define MAX_SANE_SN_DELTA 32
+#define MP_DIFF(a,b) (((a) > (b)) ? ((a)-(b)) : ((b)-(a)))
+#define LOG_PERCENT_DIFF 30
 
 static inline u32 SN_DELTA(u32 x, u32 y)
 {
@@ -382,6 +384,7 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 	unsigned long orig_lifetime, exp_time;
 	u32 last_hop_metric, new_metric;
 	bool process = true;
+	bool mpath_table_updated = 0;
 
 	rcu_read_lock();
 	sta = sta_info_get(sdata, mgmt->sa);
@@ -478,8 +481,17 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 			}
 			spin_lock_bh(&mpath->state_lock);
 		}
-
 		if (fresh_info) {
+			if (sta != mpath->next_hop) {
+				mpath_dbg(sdata,
+						  "MESH MPU dst %pM next hop %pM metric %d ft 0x%x\n",
+						  mpath->dst,sta->addr, new_metric,action );
+				mpath_table_updated=1;
+			} else if (MP_DIFF(new_metric,mpath->metric) > (mpath->metric*LOG_PERCENT_DIFF)/100)  {
+				mpath_dbg(sdata,
+						  "MESH MPLMU DIRECT dst %pM next hop %pM metric from %d to %d ft 0x%x\n",
+						  mpath->dst,sta->addr,mpath->metric,new_metric,action );
+			}
 			mesh_path_assign_nexthop(mpath, sta);
 			mpath->flags |= MESH_PATH_SN_VALID;
 			mpath->metric = new_metric;
@@ -523,6 +535,16 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 		}
 
 		if (fresh_info) {
+			if (sta != mpath->next_hop) {
+				mpath_dbg(sdata,
+						  "MESH MPU DIRECT dst %pM next hop %pM metric %d ft 0x%x\n",
+						  mpath->dst,sta->addr,last_hop_metric,action );
+				mpath_table_updated=1;
+			} else if (MP_DIFF(last_hop_metric,mpath->metric) > (mpath->metric*LOG_PERCENT_DIFF)/100)  {
+				mpath_dbg(sdata,
+						  "MESH MPLMU DIRECT dst %pM next hop %pM metric from %d to %d ft 0x%x\n",
+						  mpath->dst,sta->addr,mpath->metric,last_hop_metric,action );
+			}
 			mesh_path_assign_nexthop(mpath, sta);
 			mpath->metric = last_hop_metric;
 			mpath->exp_time = time_after(mpath->exp_time, exp_time)
@@ -535,7 +557,9 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 	}
 
 	rcu_read_unlock();
-
+	if (mpath_table_updated) {
+		mesh_path_table_debug_dump(sdata);
+	}
 	return process ? new_metric : 0;
 }
 

@@ -67,6 +67,78 @@ static inline struct mesh_table *resize_dereference_mpp_paths(void)
 		lockdep_is_held(&pathtbl_resize_lock));
 }
 
+void mesh_path_table_debug_dump(struct ieee80211_sub_if_data *sdata)
+{
+	int idx = 0;
+	u8 dst[ETH_ALEN];
+	u8 mpp[ETH_ALEN];
+	u32 sn;
+	u32 metric;
+	u8 hop_count;
+	unsigned long exp_time;
+	enum mesh_path_flags flags;
+	int is_root;
+	int is_gate;
+	struct mesh_path *mpath;
+
+	mpath_dbg(sdata, "MESH DUMP PATH TABLE mesh_paths_generation %d \n"
+			  ,mesh_paths_generation);
+	while (1) {
+		rcu_read_lock();
+		mpath = mesh_path_lookup_by_idx(sdata, idx);
+		if (!mpath) {
+			rcu_read_unlock();
+			break;
+		}
+		memcpy(dst, mpath->dst, ETH_ALEN);
+		memcpy(mpp, mpath->next_hop->sta.addr, ETH_ALEN);
+		sn = mpath->sn;
+		metric = mpath->metric;
+		hop_count  = mpath->hop_count;
+		if (time_before(jiffies, mpath->exp_time + MESH_PATH_EXPIRE)) {
+			exp_time = jiffies_to_msecs((mpath->exp_time + MESH_PATH_EXPIRE) - jiffies);
+		} else {
+			exp_time=0;
+		}
+		flags  = mpath->flags;
+		is_root = mpath->is_root;
+		is_gate = mpath->is_gate;
+		rcu_read_unlock();
+		if (idx == 0) {
+			mpath_dbg(sdata, "%17s %17s SNO METRIC HOP EXP(M:S) FLAGS      ROOT GATE \n",
+			  "DESTINATION   ", "NEXT_HOP   ");
+		}
+		mpath_dbg(sdata, "%pM %pM %3d %6d %3d %5ld:%2ld 0x%8x %4d %4d\n",dst,mpp,sn,metric,hop_count,exp_time/60000,exp_time%60000,flags,is_root,is_gate);
+		++idx;
+	}
+	if (idx == 0) {
+		mpath_dbg(sdata, "MESH PATH TABLE is empty \n");
+	}
+}
+
+void mpp_path_table_debug_dump(struct ieee80211_sub_if_data *sdata)
+{
+	int idx=0;
+	struct mesh_path *mpath;
+	u8 dst[ETH_ALEN];
+	u8 mpp[ETH_ALEN];
+	mpath_dbg(sdata, "DUMP MPP TABLE mpp_paths_generation %d \n",mpp_paths_generation);
+	while (1) {
+		rcu_read_lock();
+		mpath = mpp_path_lookup_by_idx(sdata, idx);
+		if (!mpath) {
+			rcu_read_unlock();
+			break;
+		}
+		memcpy(dst, mpath->dst, ETH_ALEN);
+		memcpy(mpp, mpath->mpp, ETH_ALEN);
+		rcu_read_unlock();
+		mpath_dbg(sdata, "dst %pM mpp %pM \n",dst,mpp );
+		++idx;
+	}
+
+}
+
 /*
  * CAREFUL -- "tbl" must not be an expression,
  * in particular not an rcu_dereference(), since
@@ -755,6 +827,7 @@ void mesh_plink_broken(struct sta_info *sta)
 	struct mpath_node *node;
 	struct ieee80211_sub_if_data *sdata = sta->sdata;
 	int i;
+	int paths_deactivated=0;
 
 	rcu_read_lock();
 	tbl = rcu_dereference(mesh_paths);
@@ -771,9 +844,12 @@ void mesh_plink_broken(struct sta_info *sta)
 				sdata->u.mesh.mshcfg.element_ttl,
 				mpath->dst, mpath->sn,
 				WLAN_REASON_MESH_PATH_DEST_UNREACHABLE, bcast);
+			++paths_deactivated;
 		}
 	}
 	rcu_read_unlock();
+	mpath_dbg(sta->sdata, " MESH MPL the link to %pM is broken and %d path deactivated \n",
+			  sta->addr, paths_deactivated);
 }
 
 static void mesh_path_node_reclaim(struct rcu_head *rp)
@@ -819,6 +895,7 @@ void mesh_path_flush_by_nexthop(struct sta_info *sta)
 	struct mesh_path *mpath;
 	struct mpath_node *node;
 	int i;
+	int nexthop_deleted=0;
 
 	rcu_read_lock();
 	read_lock_bh(&pathtbl_resize_lock);
@@ -829,10 +906,16 @@ void mesh_path_flush_by_nexthop(struct sta_info *sta)
 			spin_lock(&tbl->hashwlock[i]);
 			__mesh_path_del(tbl, node);
 			spin_unlock(&tbl->hashwlock[i]);
+			++nexthop_deleted;
 		}
 	}
 	read_unlock_bh(&pathtbl_resize_lock);
 	rcu_read_unlock();
+	if (nexthop_deleted) {
+		mpath_dbg(sta->sdata, " MESH MPU %d entries deleted becuase the link to %pM is lost \n",
+				  nexthop_deleted,sta->addr);
+		mesh_path_table_debug_dump(sta->sdata);
+	}
 }
 
 static void table_flush_by_iface(struct mesh_table *tbl,
@@ -1119,6 +1202,7 @@ void mesh_path_expire(struct ieee80211_sub_if_data *sdata)
 	struct mesh_path *mpath;
 	struct mpath_node *node;
 	int i;
+	int expired_deleted=0;
 
 	rcu_read_lock();
 	tbl = rcu_dereference(mesh_paths);
@@ -1128,10 +1212,17 @@ void mesh_path_expire(struct ieee80211_sub_if_data *sdata)
 		mpath = node->mpath;
 		if ((!(mpath->flags & MESH_PATH_RESOLVING)) &&
 		    (!(mpath->flags & MESH_PATH_FIXED)) &&
-		     time_after(jiffies, mpath->exp_time + MESH_PATH_EXPIRE))
+			time_after(jiffies, mpath->exp_time + MESH_PATH_EXPIRE)) {
 			mesh_path_del(mpath->sdata, mpath->dst);
+			++expired_deleted;
+		}
 	}
 	rcu_read_unlock();
+	if (expired_deleted) {
+		mpath_dbg(sdata, " MESH MPU %d entries expired and deleted \n",
+				  expired_deleted);
+		mesh_path_table_debug_dump(sdata);
+	}
 }
 
 void mesh_pathtbl_unregister(void)

@@ -292,6 +292,8 @@ mesh_path_add(struct ieee80211_sub_if_data *sdata, const u8 *dst);
 int mesh_path_add_gate(struct mesh_path *mpath);
 int mesh_path_send_to_gates(struct mesh_path *mpath);
 int mesh_gate_num(struct ieee80211_sub_if_data *sdata);
+void mesh_path_table_debug_dump(struct ieee80211_sub_if_data *sdata);
+void mpp_path_table_debug_dump(struct ieee80211_sub_if_data *sdata);
 
 /* Mesh plinks */
 void mesh_neighbour_update(struct ieee80211_sub_if_data *sdata,
