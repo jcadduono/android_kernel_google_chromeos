@@ -4902,14 +4902,23 @@ void ath10k_wmi_event_chan_survey_update(struct ath10k *ar,
 		 * Sanity check the data before accepting.
 		 * WAR for Issue 41688:Rx Duration reported by the 2.4GHz radio is much
 		 *   higher than measurement duration
+		 * WAR for Issue 48135: ACS: ath10k FW sends invalid channel survey data
+		 * as a WAR for 48135, accept the data if  (tx_delta + rx_delta) is higher
+		 * than busy_delat by 2% or less. if higher make
+		 * busy_delta = (tx_delta + rx_delta).
+		 * Since some platforms do not support 64 bit multiplications,
+		 * use bitshift operations to get 1.02*busy_delta.
 		 */
-		if (((rx_delta + tx_delta) > busy_delta) ||
+		if (((rx_delta + tx_delta) > (busy_delta + (busy_delta >> 6) + (busy_delta >> 8))) ||
 			(busy_delta > dwell_delta)) {
 			survey->filled = 0;
 		   ath10k_warn(ar, "WAR for 41688: Ignoring invalid bss chan survey data freq %d tx_delta %lld rx_delta %lld busy_delta %lld dwell_delta %lld\n",
 
 			    freq, tx_delta, rx_delta, busy_delta, dwell_delta);
 		} else {
+			if ((rx_delta + tx_delta) > busy_delta ) {
+				busy_delta = rx_delta + tx_delta;
+			}
 			survey->time_tx +=
 				div64_u64(tx_delta, ar->hw_params.channel_counters_freq_hz);
 			survey->time_rx +=
