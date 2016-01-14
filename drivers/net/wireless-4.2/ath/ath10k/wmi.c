@@ -2484,11 +2484,9 @@ void ath10k_wmi_event_chan_info(struct ath10k *ar, struct sk_buff *skb)
 		}
 
 		/* Sanity check the noise floor before accepting it.
-		 * WAR for the Issue 40927: ACS noise floor frequently jumps to -48
-		 * FW issue. need to be removed once FW issue is fixed.
+		 * FW returns 0 if it can not retrieve noise floor from HW.
 		 */
-#define VALID_NOISE_FLOOR_THRESH -60
-		if ((signed char)noise_floor < VALID_NOISE_FLOOR_THRESH) {
+		if (noise_floor != 0  ) {
 			survey->noise = noise_floor;
 			survey->filled |= SURVEY_INFO_NOISE_DBM;
 		} else {
@@ -4931,8 +4929,16 @@ void ath10k_wmi_event_chan_survey_update(struct ath10k *ar,
 			survey->filled = SURVEY_INFO_TIME_TX |
 				SURVEY_INFO_TIME_RX |
 				SURVEY_INFO_TIME_BUSY |
-				SURVEY_INFO_TIME |
-				SURVEY_INFO_NOISE_DBM;
+				SURVEY_INFO_TIME ;
+			/* Sanity check the noise floor before accepting it.
+			 * FW returns 0 if it can not retrieve noise floor from HW.
+			 */
+			if (noise_floor != 0  ) {
+				survey->noise = noise_floor;
+				survey->filled |= SURVEY_INFO_NOISE_DBM;
+			} else {
+				ath10k_warn(ar, "Ignoring invalid noise floor on bss chan noise %d\n", (int) ((signed char)noise_floor));
+			}
 		}
 	}
 	ar->last_tx_cycle_count = tx_cycle_count;
