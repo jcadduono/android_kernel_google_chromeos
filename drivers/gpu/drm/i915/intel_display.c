@@ -2604,7 +2604,7 @@ static void i9xx_update_primary_plane(struct drm_crtc *crtc,
 	unsigned long linear_offset;
 	u32 dspcntr;
 	u32 reg = DSPCNTR(plane);
-	int pixel_size;
+	int cpp;
 
 	if (!visible || !fb) {
 		I915_WRITE(reg, 0);
@@ -2620,7 +2620,7 @@ static void i9xx_update_primary_plane(struct drm_crtc *crtc,
 	if (WARN_ON(obj == NULL))
 		return;
 
-	pixel_size = drm_format_plane_cpp(fb->pixel_format, 0);
+	cpp = drm_format_plane_cpp(fb->pixel_format, 0);
 
 	dspcntr = DISPPLANE_GAMMA_ENABLE;
 
@@ -2678,13 +2678,12 @@ static void i9xx_update_primary_plane(struct drm_crtc *crtc,
 	if (IS_G4X(dev))
 		dspcntr |= DISPPLANE_TRICKLE_FEED_DISABLE;
 
-	linear_offset = y * fb->pitches[0] + x * pixel_size;
+	linear_offset = y * fb->pitches[0] + x * cpp;
 
 	if (INTEL_INFO(dev)->gen >= 4) {
 		intel_crtc->dspaddr_offset =
 			intel_compute_tile_offset(dev_priv, &x, &y,
-						  fb->modifier[0],
-						  pixel_size,
+						  fb->modifier[0], cpp,
 						  fb->pitches[0]);
 		linear_offset -= intel_crtc->dspaddr_offset;
 	} else {
@@ -2701,7 +2700,7 @@ static void i9xx_update_primary_plane(struct drm_crtc *crtc,
 		data and adding to linear_offset*/
 		linear_offset +=
 			(intel_crtc->config->pipe_src_h - 1) * fb->pitches[0] +
-			(intel_crtc->config->pipe_src_w - 1) * pixel_size;
+			(intel_crtc->config->pipe_src_w - 1) * cpp;
 	}
 
 	I915_WRITE(reg, dspcntr);
@@ -2731,7 +2730,7 @@ static void ironlake_update_primary_plane(struct drm_crtc *crtc,
 	unsigned long linear_offset;
 	u32 dspcntr;
 	u32 reg = DSPCNTR(plane);
-	int pixel_size;
+	int cpp;
 
 	if (!visible || !fb) {
 		I915_WRITE(reg, 0);
@@ -2744,8 +2743,7 @@ static void ironlake_update_primary_plane(struct drm_crtc *crtc,
 	if (WARN_ON(obj == NULL))
 		return;
 
-	pixel_size = drm_format_plane_cpp(fb->pixel_format, 0);
-
+	cpp = drm_format_plane_cpp(fb->pixel_format, 0);
 	dspcntr = DISPPLANE_GAMMA_ENABLE;
 
 	dspcntr |= DISPLAY_PLANE_ENABLE;
@@ -2782,11 +2780,10 @@ static void ironlake_update_primary_plane(struct drm_crtc *crtc,
 	if (!IS_HASWELL(dev) && !IS_BROADWELL(dev))
 		dspcntr |= DISPPLANE_TRICKLE_FEED_DISABLE;
 
-	linear_offset = y * fb->pitches[0] + x * pixel_size;
+	linear_offset = y * fb->pitches[0] + x * cpp;
 	intel_crtc->dspaddr_offset =
 		intel_compute_tile_offset(dev_priv, &x, &y,
-					  fb->modifier[0],
-					  pixel_size,
+					  fb->modifier[0], cpp,
 					  fb->pitches[0]);
 	linear_offset -= intel_crtc->dspaddr_offset;
 	if (crtc->primary->state->rotation == BIT(DRM_ROTATE_180)) {
@@ -2800,7 +2797,7 @@ static void ironlake_update_primary_plane(struct drm_crtc *crtc,
 			data and adding to linear_offset*/
 			linear_offset +=
 				(intel_crtc->config->pipe_src_h - 1) * fb->pitches[0] +
-				(intel_crtc->config->pipe_src_w - 1) * pixel_size;
+				(intel_crtc->config->pipe_src_w - 1) * cpp;
 		}
 	}
 
@@ -14547,10 +14544,12 @@ u32 intel_fb_pitch_limit(struct drm_device *dev, uint64_t fb_modifier,
 	u32 gen = INTEL_INFO(dev)->gen;
 
 	if (gen >= 9) {
+		int cpp = drm_format_plane_cpp(pixel_format, 0);
+
 		/* "The stride in bytes must not exceed the of the size of 8K
 		 *  pixels and 32K bytes."
 		 */
-		 return min(8192*drm_format_plane_cpp(pixel_format, 0), 32768);
+		return min(8192 * cpp, 32768);
 	} else if (gen >= 5 && !IS_VALLEYVIEW(dev)) {
 		return 32*1024;
 	} else if (gen >= 4) {
