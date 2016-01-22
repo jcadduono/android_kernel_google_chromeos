@@ -63,6 +63,9 @@ static struct drm_driver driver;
 #define IVB_CURSOR_OFFSETS \
 	.cursor_offsets = { CURSOR_A_OFFSET, IVB_CURSOR_B_OFFSET, IVB_CURSOR_C_OFFSET }
 
+#define BDW_COLORS \
+	.color = { .degamma_lut_size = 512, .gamma_lut_size = 512 }
+
 static const struct intel_device_info intel_i830_info = {
 	.gen = 2, .is_mobile = 1, .cursor_needs_physical = 1, .num_pipes = 2,
 	.has_overlay = 1, .overlay_needs_physical = 1,
@@ -307,6 +310,7 @@ static const struct intel_device_info intel_broadwell_d_info = {
 	.has_fbc = 1,
 	GEN_DEFAULT_PIPEOFFSETS,
 	IVB_CURSOR_OFFSETS,
+	BDW_COLORS,
 };
 
 static const struct intel_device_info intel_broadwell_m_info = {
@@ -319,6 +323,7 @@ static const struct intel_device_info intel_broadwell_m_info = {
 	.has_fbc = 1,
 	GEN_DEFAULT_PIPEOFFSETS,
 	IVB_CURSOR_OFFSETS,
+	BDW_COLORS,
 };
 
 static const struct intel_device_info intel_broadwell_gt3d_info = {
@@ -331,6 +336,7 @@ static const struct intel_device_info intel_broadwell_gt3d_info = {
 	.has_fbc = 1,
 	GEN_DEFAULT_PIPEOFFSETS,
 	IVB_CURSOR_OFFSETS,
+	BDW_COLORS,
 };
 
 static const struct intel_device_info intel_broadwell_gt3m_info = {
@@ -343,6 +349,7 @@ static const struct intel_device_info intel_broadwell_gt3m_info = {
 	.has_fbc = 1,
 	GEN_DEFAULT_PIPEOFFSETS,
 	IVB_CURSOR_OFFSETS,
+	BDW_COLORS,
 };
 
 static const struct intel_device_info intel_cherryview_info = {
@@ -365,6 +372,7 @@ static const struct intel_device_info intel_skylake_info = {
 	.has_fbc = 1,
 	GEN_DEFAULT_PIPEOFFSETS,
 	IVB_CURSOR_OFFSETS,
+	BDW_COLORS,
 };
 
 static const struct intel_device_info intel_skylake_gt3_info = {
@@ -377,6 +385,7 @@ static const struct intel_device_info intel_skylake_gt3_info = {
 	.has_fbc = 1,
 	GEN_DEFAULT_PIPEOFFSETS,
 	IVB_CURSOR_OFFSETS,
+	BDW_COLORS,
 };
 
 static const struct intel_device_info intel_broxton_info = {
@@ -389,6 +398,7 @@ static const struct intel_device_info intel_broxton_info = {
 	.has_fbc = 1,
 	GEN_DEFAULT_PIPEOFFSETS,
 	IVB_CURSOR_OFFSETS,
+	BDW_COLORS,
 };
 
 /*

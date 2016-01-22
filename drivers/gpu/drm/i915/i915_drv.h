@@ -663,6 +663,7 @@ struct drm_i915_display_funcs {
 	uint32_t (*backlight_hz_to_pwm)(struct intel_connector *connector,
 					uint32_t hz);
 
+	void (*load_csc_matrix)(struct drm_crtc *crtc);
 	void (*load_luts)(struct drm_crtc *crtc);
 };
 
@@ -806,6 +807,11 @@ struct intel_device_info {
 	u8 has_slice_pg:1;
 	u8 has_subslice_pg:1;
 	u8 has_eu_pg:1;
+
+	struct color_luts {
+		u16 degamma_lut_size;
+		u16 gamma_lut_size;
+	} color;
 };
 
 #undef DEFINE_FLAG

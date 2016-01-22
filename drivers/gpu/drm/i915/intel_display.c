@@ -11762,6 +11762,12 @@ static int intel_crtc_atomic_check(struct drm_crtc *crtc,
 			return ret;
 	}
 
+	if (crtc_state->color_mgmt_changed) {
+		ret = intel_color_check(crtc, crtc_state);
+		if (ret)
+			return ret;
+	}
+
 	ret = 0;
 	if (INTEL_INFO(dev)->gen >= 9) {
 		if (mode_changed)
@@ -11777,7 +11783,6 @@ static int intel_crtc_atomic_check(struct drm_crtc *crtc,
 
 static const struct drm_crtc_helper_funcs intel_helper_funcs = {
 	.mode_set_base_atomic = intel_pipe_set_base_atomic,
-	.load_lut = intel_color_load_luts,
 	.atomic_begin = intel_begin_crtc_commit,
 	.atomic_flush = intel_finish_crtc_commit,
 	.atomic_check = intel_crtc_atomic_check,
@@ -13198,6 +13203,18 @@ static int intel_atomic_commit(struct drm_device *dev,
 			dev_priv->display.crtc_enable(crtc);
 		}
 
+		if (!modeset &&
+		    crtc->state->active &&
+		    crtc->state->color_mgmt_changed) {
+			/*
+			 * Only update color management when not doing
+			 * a modeset as this will be done by
+			 * crtc_enable already.
+			 */
+			intel_color_set_csc(crtc);
+			intel_color_load_luts(crtc);
+		}
+
 		if (!modeset)
 			intel_pre_plane_update(intel_crtc);
 
@@ -13261,8 +13278,9 @@ out:
 #undef for_each_intel_crtc_masked
 
 static const struct drm_crtc_funcs intel_crtc_funcs = {
-	.gamma_set = intel_color_legacy_gamma_set,
+	.gamma_set = drm_atomic_helper_legacy_gamma_set,
 	.set_config = drm_atomic_helper_set_config,
+	.set_property = drm_atomic_helper_crtc_set_property,
 	.destroy = intel_crtc_destroy,
 	.page_flip = intel_crtc_page_flip,
 	.atomic_duplicate_state = intel_crtc_duplicate_state,
