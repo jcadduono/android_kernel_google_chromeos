@@ -245,6 +245,12 @@ struct sta_ampdu_mlme {
 
 #define IEEE80211_FAST_XMIT_MAX_IV	18
 
+#define IEEE80211_VHT_MCS_NUM	10
+#define IEEE80211_VHT_BW_NUM	4
+#define IEEE80211_VHT_NSS_NUM	4
+#define IEEE80211_VHT_GI_NUM	2
+#define IEEE80211_VHT_RATE_NUM	320
+#define IEEE80211_RX_LEGACY_RATE_NUM	12
 /**
  * struct ieee80211_fast_tx - TX fastpath information
  * @key: key to use for hw crypto
@@ -508,6 +514,19 @@ struct sta_info {
 		struct dentry *dir;
 		bool add_has_run;
 	} debugfs;
+
+	u64 rx_legacy_pkt[IEEE80211_RX_LEGACY_RATE_NUM];
+	u64 rx_mcs_pkt[IEEE80211_VHT_MCS_NUM];
+	u64 rx_bw_pkt[IEEE80211_VHT_BW_NUM];
+	u64 rx_nss_pkt[IEEE80211_VHT_NSS_NUM];
+	u64 rx_gi_pkt[IEEE80211_VHT_GI_NUM];
+	u64 rx_rate_pkt[IEEE80211_VHT_RATE_NUM];
+	u64 rx_legacy_byte[IEEE80211_RX_LEGACY_RATE_NUM];
+	u64 rx_mcs_byte[IEEE80211_VHT_MCS_NUM];
+	u64 rx_bw_byte[IEEE80211_VHT_BW_NUM];
+	u64 rx_nss_byte[IEEE80211_VHT_NSS_NUM];
+	u64 rx_gi_byte[IEEE80211_VHT_GI_NUM];
+	u64 rx_rate_byte[IEEE80211_VHT_RATE_NUM];
 #endif
 
 	enum ieee80211_sta_rx_bandwidth cur_max_bandwidth;
@@ -522,6 +541,8 @@ struct sta_info {
 	unsigned long last_tdls_pkt_time;
 
 	u8 reserved_tid;
+
+	struct cfg80211_chan_def tdls_chandef;
 
 	/* keep last! */
 	struct ieee80211_sta sta;

@@ -31,6 +31,7 @@
 #include "tkip.h"
 #include "wme.h"
 #include "rate.h"
+#include "debugfs_sta.h"
 
 static inline void ieee80211_rx_stats(struct net_device *dev, u32 len)
 {
@@ -1378,6 +1379,7 @@ ieee80211_rx_h_sta_process(struct ieee80211_rx_data *rx)
 			sta->last_rx_rate_flag = status->flag;
 			sta->last_rx_rate_vht_flag = status->vht_flag;
 			sta->last_rx_rate_vht_nss = status->vht_nss;
+			ieee80211_rx_h_sta_stats(sta, skb);
 		}
 	}
 
