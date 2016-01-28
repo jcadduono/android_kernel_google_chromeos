@@ -53,7 +53,7 @@ struct ieee80211_local;
  *
  * This is used only when driver implements wake_tx_queues() op.
  */
-#define IEEE80211_NUM_NDEV_STA 63
+#define IEEE80211_NUM_NDEV_STA 16
 #define IEEE80211_NUM_NDEV_STA_Q (IEEE80211_NUM_NDEV_STA * IEEE80211_NUM_ACS)
 
 /* Required encryption head and tailroom */
