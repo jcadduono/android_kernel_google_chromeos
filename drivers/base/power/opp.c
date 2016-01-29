@@ -468,7 +468,7 @@ static int _opp_add_dynamic(struct device *dev, unsigned long freq,
 			    long u_volt, bool dynamic)
 {
 	struct device_opp *dev_opp = NULL;
-	struct dev_pm_opp *opp, *new_opp, *tmp_opp;
+	struct dev_pm_opp *opp, *new_opp;
 	struct list_head *head;
 	int ret;
 
@@ -504,17 +504,15 @@ static int _opp_add_dynamic(struct device *dev, unsigned long freq,
 	 * and discard if already present
 	 */
 	head = &dev_opp->opp_list;
-	opp = NULL;
-	list_for_each_entry_rcu(tmp_opp, &dev_opp->opp_list, node) {
-		if (new_opp->rate <= tmp_opp->rate) {
-			opp = tmp_opp;
+	list_for_each_entry_rcu(opp, &dev_opp->opp_list, node) {
+		if (new_opp->rate <= opp->rate)
 			break;
-		}
-		head = &tmp_opp->node;
+		else
+			head = &opp->node;
 	}
 
 	/* Duplicate OPPs ? */
-	if (opp && new_opp->rate == opp->rate) {
+	if (new_opp->rate == opp->rate) {
 		ret = opp->available && new_opp->u_volt == opp->u_volt ?
 			0 : -EEXIST;
 
