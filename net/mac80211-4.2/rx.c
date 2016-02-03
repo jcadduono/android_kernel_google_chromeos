@@ -2282,6 +2282,7 @@ ieee80211_rx_h_mesh_fwding(struct ieee80211_rx_data *rx)
 				memcpy(mppath->mpp, mpp_addr, ETH_ALEN);
 				mpp_table_updated = 1;
 			}
+			mppath->exp_time = jiffies;
 			spin_unlock_bh(&mppath->state_lock);
 			rcu_read_unlock();
 			if (mpp_table_updated) {
