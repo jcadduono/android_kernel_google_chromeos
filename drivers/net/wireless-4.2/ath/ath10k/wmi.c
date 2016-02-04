@@ -2537,7 +2537,8 @@ ath10k_wmi_op_pull_chan_survey_update_ev(struct ath10k *ar,
 	arg->rx_clear_count = ev->rx_clear_count;
 	arg->cycle_count = ev->cycle_count;
 	arg->tx_cycle_count = ev->tx_cycle_count;
-	arg->rx_cycle_count = ev->rx_cycle_count;
+	/* Fill with BSS RX cycle as it is BSS survey */
+	arg->rx_cycle_count = ev->bss_rx_cycle_count;
 	arg->bss_rx_cycle_count = ev->bss_rx_cycle_count;
 
 	return 0;
