@@ -69,5 +69,8 @@ int ath10k_swap_code_seg_configure(struct ath10k *ar,
 void ath10k_swap_code_seg_release(struct ath10k *ar);
 int ath10k_swap_code_seg_init(struct ath10k *ar,
 			      enum ath10k_swap_code_seg_bin_type type);
+void
+ath10k_swap_code_seg_free(struct ath10k *ar,
+			  struct ath10k_swap_code_seg_info *seg_info);
 
 #endif

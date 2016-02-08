@@ -885,6 +885,11 @@ struct ath10k {
 		DECLARE_BITMAP(orig_fw_features, ATH10K_FW_FEATURE_COUNT);
 		enum ath10k_fw_wmi_op_version orig_wmi_op_version;
 		enum ath10k_fw_wmi_op_version op_version;
+
+		const void *utf_codeswap_data;
+		size_t utf_codeswap_len;
+		struct ath10k_swap_code_seg_info *utf_code_swap_seg_info;
+
 		/* protected by data_lock */
 		bool utf_monitor;
 	} testmode;

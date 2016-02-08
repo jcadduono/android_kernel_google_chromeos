@@ -670,6 +670,14 @@ static int ath10k_download_fw(struct ath10k *ar, enum ath10k_firmware_mode mode)
 		data = ar->testmode.utf_firmware_data;
 		data_len = ar->testmode.utf_firmware_len;
 		mode_name = "utf";
+		ret = ath10k_swap_code_seg_configure(ar,
+				ATH10K_SWAP_CODE_SEG_BIN_TYPE_UTF);
+		if(ret) {
+			ath10k_err(ar,
+				   "failed to configure utf code swap: %d\n",
+				   ret);
+			return ret;
+		}
 		break;
 	default:
 		ath10k_err(ar, "unknown firmware mode: %d\n", mode);

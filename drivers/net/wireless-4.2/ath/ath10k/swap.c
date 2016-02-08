@@ -80,7 +80,7 @@ static int ath10k_swap_code_seg_fill(struct ath10k *ar,
 	return 0;
 }
 
-static void
+void
 ath10k_swap_code_seg_free(struct ath10k *ar,
 			  struct ath10k_swap_code_seg_info *seg_info)
 {
@@ -148,9 +148,16 @@ int ath10k_swap_code_seg_configure(struct ath10k *ar,
 		ath10k_dbg(ar, ATH10K_DBG_BOOT, "boot found firmware code swap binary\n");
 		seg_info = ar->swap.firmware_swap_code_seg_info;
 		break;
+	case ATH10K_SWAP_CODE_SEG_BIN_TYPE_UTF:
+		if (!ar->testmode.utf_code_swap_seg_info)
+			return 0;
+
+		ath10k_dbg(ar, ATH10K_DBG_BOOT,
+			   "boot: found code swap binary for UTF firmware\n");
+		seg_info = ar->testmode.utf_code_swap_seg_info;
+		break;
 	default:
 	case ATH10K_SWAP_CODE_SEG_BIN_TYPE_OTP:
-	case ATH10K_SWAP_CODE_SEG_BIN_TYPE_UTF:
 		ath10k_warn(ar, "ignoring unknown code swap binary type %d\n",
 			    type);
 		return 0;
@@ -192,6 +199,13 @@ int ath10k_swap_code_seg_init(struct ath10k *ar,
 		codeswap_data = ar->swap.firmware_codeswap_data;
 		codeswap_len = ar->swap.firmware_codeswap_len;
 		break;
+	case ATH10K_SWAP_CODE_SEG_BIN_TYPE_UTF:
+		if (!ar->testmode.utf_codeswap_len ||
+		    !ar->testmode.utf_codeswap_data)
+			return 0;
+		codeswap_data = ar->testmode.utf_codeswap_data;
+		codeswap_len = ar->testmode.utf_codeswap_len;
+		break;
 	default:
 		ath10k_err(ar, "unknown code swap binary type specified %d\n",
 			   type);
@@ -216,6 +230,8 @@ int ath10k_swap_code_seg_init(struct ath10k *ar,
 
 	if (type == ATH10K_SWAP_CODE_SEG_BIN_TYPE_FW)
 		ar->swap.firmware_swap_code_seg_info = seg_info;
+	if (type == ATH10K_SWAP_CODE_SEG_BIN_TYPE_UTF)
+		ar->testmode.utf_code_swap_seg_info = seg_info;
 
 	return 0;
 }

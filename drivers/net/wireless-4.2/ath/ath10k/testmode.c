@@ -233,6 +233,13 @@ static int ath10k_tm_fetch_utf_firmware_api_2(struct ath10k *ar)
 			ath10k_dbg(ar, ATH10K_DBG_TESTMODE, "testmode found fw ie wmi op version %d\n",
 				   ar->testmode.op_version);
 			break;
+		case ATH10K_FW_IE_FW_CODE_SWAP_IMAGE:
+			ath10k_dbg(ar, ATH10K_DBG_TESTMODE,
+				   "found fw_utf_codeswap image ie (%zd B)\n",
+				   ie_len);
+			ar->testmode.utf_codeswap_data = data;
+			ar->testmode.utf_codeswap_len = ie_len;
+			break;
 		default:
 			ath10k_warn(ar, "Unknown testmode FW IE: %u\n",
 				    le32_to_cpu(hdr->id));
@@ -309,6 +316,17 @@ static int ath10k_tm_fetch_firmware(struct ath10k *ar)
 	return 0;
 }
 
+static void ath10k_tm_free_utf_codeswap(struct ath10k *ar)
+{
+	if (ar->testmode.utf_code_swap_seg_info) {
+		ath10k_swap_code_seg_free(ar,
+					ar->testmode.utf_code_swap_seg_info);
+	}
+
+	ar->testmode.utf_codeswap_data = NULL;
+	ar->testmode.utf_codeswap_len = 0;
+}
+
 static int ath10k_tm_cmd_utf_start(struct ath10k *ar, struct nlattr *tb[])
 {
 	const char *ver;
@@ -339,6 +357,17 @@ static int ath10k_tm_cmd_utf_start(struct ath10k *ar, struct nlattr *tb[])
 	if (ret) {
 		ath10k_err(ar, "failed to fetch UTF firmware: %d", ret);
 		goto err;
+	}
+
+	if (ar->testmode.utf_codeswap_data && ar->testmode.utf_codeswap_len) {
+		ret = ath10k_swap_code_seg_init(ar,
+					ATH10K_SWAP_CODE_SEG_BIN_TYPE_UTF);
+		if (ret) {
+			ath10k_warn(ar,
+				    "failed to init utf code swap segment: %d\n",
+				    ret);
+			goto err_release_utf_fw;
+		}
 	}
 
 	spin_lock_bh(&ar->data_lock);
@@ -393,6 +422,10 @@ err_fw_features:
 	       sizeof(ar->fw_features));
 	ar->wmi.op_version = ar->testmode.orig_wmi_op_version;
 
+err_release_utf_fw:
+	if (ar->testmode.utf_codeswap_data && ar->testmode.utf_codeswap_len)
+		ath10k_tm_free_utf_codeswap(ar);
+
 	release_firmware(ar->testmode.utf);
 	ar->testmode.utf = NULL;
 
@@ -422,6 +455,9 @@ static void __ath10k_tm_cmd_utf_stop(struct ath10k *ar)
 
 	release_firmware(ar->testmode.utf);
 	ar->testmode.utf = NULL;
+
+	if (ar->testmode.utf_codeswap_data && ar->testmode.utf_codeswap_len)
+		ath10k_tm_free_utf_codeswap(ar);
 
 	ar->state = ATH10K_STATE_OFF;
 }
