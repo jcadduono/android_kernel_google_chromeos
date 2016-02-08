@@ -1963,7 +1963,7 @@ static int ath10k_core_probe_fw(struct ath10k *ar)
 		goto err_free_firmware_files;
 	}
 
-	ret = ath10k_swap_code_seg_init(ar);
+	ret = ath10k_swap_code_seg_init(ar, ATH10K_SWAP_CODE_SEG_BIN_TYPE_FW);
 	if (ret) {
 		ath10k_err(ar, "failed to initialize code swap segment: %d\n",
 			   ret);
