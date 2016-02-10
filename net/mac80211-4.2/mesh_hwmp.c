@@ -482,7 +482,7 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 			spin_lock_bh(&mpath->state_lock);
 		}
 		if (fresh_info) {
-			if (sta != mpath->next_hop) {
+			if (sta != rcu_access_pointer(mpath->next_hop)) {
 				mpath_dbg(sdata,
 						  "MESH MPU dst %pM next hop %pM metric %d ft 0x%x\n",
 						  mpath->dst,sta->addr, new_metric,action );
@@ -535,7 +535,7 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 		}
 
 		if (fresh_info) {
-			if (sta != mpath->next_hop) {
+			if (sta != rcu_access_pointer(mpath->next_hop)) {
 				mpath_dbg(sdata,
 						  "MESH MPU DIRECT dst %pM next hop %pM metric %d ft 0x%x\n",
 						  mpath->dst,sta->addr,last_hop_metric,action );

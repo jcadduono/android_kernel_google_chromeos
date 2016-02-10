@@ -80,6 +80,7 @@ void mesh_path_table_debug_dump(struct ieee80211_sub_if_data *sdata)
 	int is_root;
 	int is_gate;
 	struct mesh_path *mpath;
+	struct sta_info *next_hop;
 
 	mpath_dbg(sdata, "MESH DUMP PATH TABLE mesh_paths_generation %d \n"
 			  ,mesh_paths_generation);
@@ -91,7 +92,11 @@ void mesh_path_table_debug_dump(struct ieee80211_sub_if_data *sdata)
 			break;
 		}
 		memcpy(dst, mpath->dst, ETH_ALEN);
-		memcpy(mpp, mpath->next_hop->sta.addr, ETH_ALEN);
+		next_hop = rcu_dereference(mpath->next_hop);
+		if (next_hop)
+			memcpy(mpp, next_hop->sta.addr, ETH_ALEN);
+		else
+			eth_zero_addr(mpp);
 		sn = mpath->sn;
 		metric = mpath->metric;
 		hop_count  = mpath->hop_count;
