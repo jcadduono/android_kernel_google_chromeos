@@ -4875,6 +4875,11 @@ void ath10k_wmi_event_chan_survey_update(struct ath10k *ar,
 
 	spin_lock_bh(&ar->data_lock);
 
+	if (ar->scan.state != ATH10K_SCAN_IDLE) {
+		ath10k_warn(ar, "received chan survey update when scan ongoing ignoring\n");
+		goto exit;
+	}
+
 	idx = freq_to_idx(ar, freq);
 	if (idx >= ARRAY_SIZE(ar->survey)) {
 		ath10k_warn(ar, "channel survey: invalid frequency %d (idx %d out of bounds)\n",
