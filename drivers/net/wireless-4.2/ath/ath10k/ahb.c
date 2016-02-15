@@ -25,10 +25,7 @@
 #include "ahb.h"
 
 static const struct of_device_id ath10k_ahb_of_match[] = {
-	/* TODO: enable this entry once everything in place.
-	 * { .compatible = "qcom,ipq4019-wifi",
-	 *   .data = (void *)ATH10K_HW_QCA4019 },
-	 */
+	{ .compatible = "qca,wifi-ipq40xx", .data = (void *)ATH10K_HW_QCA4019 },
 	{ }
 };
 
