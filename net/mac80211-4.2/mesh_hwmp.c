@@ -325,7 +325,7 @@ void ieee80211s_update_metric(struct ieee80211_local *local,
 			/ 100 + weight * rate);
 }
 
-static u32 airtime_link_metric_get(struct ieee80211_local *local,
+u32 airtime_link_metric_get(struct ieee80211_local *local,
 				   struct sta_info *sta)
 {
 	/* This should be adjusted for each device */
