@@ -277,7 +277,7 @@ static int spt_select_drive_strength(struct sdhci_host *host,
 	if (sdhci_pci_spt_drive_strength > 0)
 		drive_strength = sdhci_pci_spt_drive_strength & 0xf;
 	else
-		drive_strength = 1; /* 33-ohm */
+		drive_strength = 0; /* Default 50-ohm */
 
 	if ((mmc_driver_type_mask(drive_strength) & card_drv) == 0)
 		drive_strength = 0; /* Default 50-ohm */
@@ -387,7 +387,8 @@ static const struct sdhci_pci_fixes sdhci_intel_byt_sd = {
 	.quirks		= SDHCI_QUIRK_NO_ENDATTR_IN_NOPDESC,
 	.quirks2	= SDHCI_QUIRK2_CARD_ON_NEEDS_BUS_ON |
 			  SDHCI_QUIRK2_PRESET_VALUE_BROKEN |
-			  SDHCI_QUIRK2_STOP_WITH_TC,
+			  SDHCI_QUIRK2_STOP_WITH_TC |
+			  SDHCI_QUIRK2_BAYTRAIL_EMMC,
 	.allow_runtime_pm = true,
 	.own_cd_for_runtime_pm = true,
 	.probe_slot	= byt_sd_probe_slot,

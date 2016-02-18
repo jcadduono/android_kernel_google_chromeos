@@ -68,7 +68,8 @@ int mwifiex_init_shutdown_fw(struct mwifiex_private *priv,
 	} else if (func_init_shutdown == MWIFIEX_FUNC_SHUTDOWN) {
 		cmd = HostCmd_CMD_FUNC_SHUTDOWN;
 	} else {
-		dev_err(priv->adapter->dev, "unsupported parameter\n");
+		mwifiex_dbg(priv->adapter, ERROR,
+			    "unsupported parameter\n");
 		return -1;
 	}
 
@@ -88,6 +89,7 @@ int mwifiex_get_debug_info(struct mwifiex_private *priv,
 	struct mwifiex_adapter *adapter = priv->adapter;
 
 	if (info) {
+		info->debug_mask = adapter->debug_mask;
 		memcpy(info->packets_out,
 		       priv->wmm.packets_out,
 		       sizeof(priv->wmm.packets_out));
@@ -170,7 +172,7 @@ mwifiex_process_mgmt_packet(struct mwifiex_private *priv,
 	pkt_len -= ETH_ALEN + sizeof(pkt_len);
 	rx_pd->rx_pkt_length = cpu_to_le16(pkt_len);
 
-	cfg80211_rx_mgmt(priv->wdev, priv->roc_cfg.chan.center_freq,
+	cfg80211_rx_mgmt(&priv->wdev, priv->roc_cfg.chan.center_freq,
 			 CAL_RSSI(rx_pd->snr, rx_pd->nf), skb->data, pkt_len,
 			 0);
 
@@ -240,13 +242,14 @@ int mwifiex_recv_packet(struct mwifiex_private *priv, struct sk_buff *skb)
 int mwifiex_complete_cmd(struct mwifiex_adapter *adapter,
 			 struct cmd_ctrl_node *cmd_node)
 {
-	dev_dbg(adapter->dev, "cmd completed: status=%d\n",
-		adapter->cmd_wait_q.status);
+	mwifiex_dbg(adapter, CMD,
+		    "cmd completed: status=%d\n",
+		    adapter->cmd_wait_q.status);
 
 	*(cmd_node->condition) = true;
 
 	if (adapter->cmd_wait_q.status == -ETIMEDOUT)
-		dev_err(adapter->dev, "cmd timeout\n");
+		mwifiex_dbg(adapter, ERROR, "cmd timeout\n");
 	else
 		wake_up_interruptible(&adapter->cmd_wait_q.wait);
 
@@ -366,3 +369,26 @@ void mwifiex_del_all_sta_list(struct mwifiex_private *priv)
 	spin_unlock_irqrestore(&priv->sta_list_spinlock, flags);
 	return;
 }
+
+void *mwifiex_alloc_dma_align_buf(int rx_len, gfp_t flags)
+{
+	struct sk_buff *skb;
+	int buf_len, pad;
+
+	buf_len = rx_len + MWIFIEX_RX_HEADROOM + MWIFIEX_DMA_ALIGN_SZ;
+
+	skb = __dev_alloc_skb(buf_len, flags);
+
+	if (!skb)
+		return NULL;
+
+	skb_reserve(skb, MWIFIEX_RX_HEADROOM);
+
+	pad = MWIFIEX_ALIGN_ADDR(skb->data, MWIFIEX_DMA_ALIGN_SZ) -
+	      (long)skb->data;
+
+	skb_reserve(skb, pad);
+
+	return skb;
+}
+EXPORT_SYMBOL_GPL(mwifiex_alloc_dma_align_buf);

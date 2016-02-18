@@ -63,7 +63,6 @@ int mwifiex_cmd_amsdu_aggr_ctrl(struct host_cmd_ds_command *cmd,
 				int cmd_action,
 				struct mwifiex_ds_11n_amsdu_aggr_ctrl *aa_ctrl);
 void mwifiex_del_tx_ba_stream_tbl_by_ra(struct mwifiex_private *priv, u8 *ra);
-u8 mwifiex_get_sec_chan_offset(int chan);
 
 static inline u8
 mwifiex_is_station_ampdu_allowed(struct mwifiex_private *priv,
@@ -75,20 +74,6 @@ mwifiex_is_station_ampdu_allowed(struct mwifiex_private *priv,
 		return false;
 
 	return (node->ampdu_sta[tid] != BA_STREAM_NOT_ALLOWED) ? true : false;
-}
-
-/* This function checks whether AMSDU is allowed for BA stream. */
-static inline u8
-mwifiex_is_amsdu_in_ampdu_allowed(struct mwifiex_private *priv,
-				  struct mwifiex_ra_list_tbl *ptr, int tid)
-{
-	struct mwifiex_tx_ba_stream_tbl *tx_tbl;
-
-	tx_tbl = mwifiex_get_ba_tbl(priv, tid, ptr->ra);
-	if (tx_tbl)
-		return tx_tbl->amsdu;
-
-	return false;
 }
 
 /* This function checks whether AMPDU is allowed or not for a particular TID. */
@@ -126,7 +111,9 @@ static inline u8 mwifiex_space_avail_for_new_ba_stream(
 {
 	struct mwifiex_private *priv;
 	u8 i;
-	u32 ba_stream_num = 0;
+	u32 ba_stream_num = 0, ba_stream_max;
+
+	ba_stream_max = MWIFIEX_MAX_TX_BASTREAM_SUPPORTED;
 
 	for (i = 0; i < adapter->priv_num; i++) {
 		priv = adapter->priv[i];
@@ -135,8 +122,14 @@ static inline u8 mwifiex_space_avail_for_new_ba_stream(
 				&priv->tx_ba_stream_tbl_ptr);
 	}
 
-	return ((ba_stream_num <
-		 MWIFIEX_MAX_TX_BASTREAM_SUPPORTED) ? true : false);
+	if (adapter->fw_api_ver == MWIFIEX_FW_V15) {
+		ba_stream_max =
+			       GETSUPP_TXBASTREAMS(adapter->hw_dot_11n_dev_cap);
+		if (!ba_stream_max)
+			ba_stream_max = MWIFIEX_MAX_TX_BASTREAM_SUPPORTED;
+	}
+
+	return ((ba_stream_num < ba_stream_max) ? true : false);
 }
 
 /*
@@ -167,22 +160,6 @@ mwifiex_find_stream_to_delete(struct mwifiex_private *priv, int ptr_tid,
 	spin_unlock_irqrestore(&priv->tx_ba_stream_tbl_lock, flags);
 
 	return ret;
-}
-
-/*
- * This function checks whether BA stream is set up or not.
- */
-static inline int
-mwifiex_is_ba_stream_setup(struct mwifiex_private *priv,
-			   struct mwifiex_ra_list_tbl *ptr, int tid)
-{
-	struct mwifiex_tx_ba_stream_tbl *tx_tbl;
-
-	tx_tbl = mwifiex_get_ba_tbl(priv, tid, ptr->ra);
-	if (tx_tbl && IS_BASTREAM_SETUP(tx_tbl))
-		return true;
-
-	return false;
 }
 
 /*

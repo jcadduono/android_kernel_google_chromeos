@@ -14,7 +14,9 @@
 #include <linux/regmap.h>
 #include <linux/i2c.h>
 #include <sound/soc.h>
+#include <linux/wakelock.h>
 
+#include "rl6231.h"
 #include "rt5677.h"
 #include "rt5677-spi.h"
 #include "rt5677-hotword.h"
@@ -50,6 +52,9 @@ struct rt5677_dsp {
 	size_t avail_bytes;	/* number of new bytes since last period */
 	u32 mic_read_offset;	/* zero-based offset into DSP's mic buffer */
 	enum rt5677_hotword_state state;
+	struct wake_lock wake_lock;
+	u8 *model_buf;
+	unsigned int model_len;
 };
 
 static const struct snd_pcm_hardware rt5677_hotword_pcm_hardware = {
@@ -64,6 +69,40 @@ static const struct snd_pcm_hardware rt5677_hotword_pcm_hardware = {
 	.channels_min		= 1,
 	.channels_max		= 1,
 	.buffer_bytes_max	= 0x20000,
+};
+
+static int rt5677_hotword_model_put(struct snd_kcontrol *kcontrol,
+		const unsigned int __user *bytes, unsigned int size)
+{
+
+	struct snd_soc_platform *platform = snd_soc_kcontrol_platform(kcontrol);
+	struct rt5677_dsp *dsp = snd_soc_platform_get_drvdata(platform);
+	int ret = 0;
+
+	mutex_lock(&dsp->lock);
+	if (!dsp->model_buf || dsp->model_len < size) {
+		if (dsp->model_buf)
+			devm_kfree(dsp->spi, dsp->model_buf);
+		dsp->model_buf = devm_kmalloc(dsp->spi, size, GFP_KERNEL);
+		if (!dsp->model_buf) {
+			ret = -ENOMEM;
+			goto done;
+		}
+	}
+
+	if (copy_from_user(dsp->model_buf, bytes, size))
+		ret = -EFAULT;
+
+done:
+	dsp->model_len = (ret ? 0 : size);
+	mutex_unlock(&dsp->lock);
+	return ret;
+}
+
+static const struct snd_kcontrol_new rt5677_hotword_snd_controls[] = {
+	/* Size of the model is limited to 0x50000 bytes */
+	SND_SOC_BYTES_TLV("Hotword Model", 0x50000,
+		NULL, rt5677_hotword_model_put),
 };
 
 static int rt5677_hotword_load_fw(struct rt5677_dsp *dsp, const u8 *buf,
@@ -95,9 +134,6 @@ static int rt5677_hotword_load_fw(struct rt5677_dsp *dsp, const u8 *buf,
 	for (i = 0; i < elf_hdr->e_phnum; i++) {
 		/* TODO: handle p_memsz != p_filesz */
 		if (pr_hdr->p_paddr && pr_hdr->p_filesz) {
-			dev_info(dsp->spi, "Load 0x%x bytes to 0x%x\n",
-					pr_hdr->p_filesz, pr_hdr->p_paddr);
-
 			ret = rt5677_spi_write(pr_hdr->p_paddr,
 					buf + pr_hdr->p_offset,
 					pr_hdr->p_filesz);
@@ -131,11 +167,27 @@ static int rt5677_hotword_load_fw_from_file(struct rt5677_dsp *dsp)
 
 	ret = rt5677_hotword_load_fw(dsp, fwp->data, fwp->size);
 	release_firmware(fwp);
+	if (ret)
+		goto error;
+
+	/* Load hotword language model */
+	if (dsp->model_buf && dsp->model_len) {
+		ret = rt5677_spi_write(RT5677_MODEL_ADDR, dsp->model_buf,
+				       dsp->model_len);
+		if (ret) {
+			dev_err(dsp->spi, "Model load failed %d\n", ret);
+			goto error;
+		}
+		dev_info(dsp->spi, "Loaded model (%u)\n", dsp->model_len);
+	}
+error:
 	return ret;
 }
 
 static void rt5677_hotword_setup_audio_path(struct rt5677_priv *rt5677)
 {
+	int pre_div;
+	struct device *dev = rt5677->codec->dev;
 	/* The hotword audio path should be controlled by the ucm config.
 	 *
 	 * For example, to use a DMIC for hotwording, ucm config should setup:
@@ -154,23 +206,25 @@ static void rt5677_hotword_setup_audio_path(struct rt5677_priv *rt5677)
 	 * "DSP Capture" is the rt5677-hotword-cpu-dai with a PCM interface.
 	 */
 
-	/* I2S pre divide 2 = /6 (clk_sys2) */
-	regmap_update_bits(rt5677->regmap, RT5677_CLK_TREE_CTRL1,
-		RT5677_I2S_PD2_MASK, RT5677_I2S_PD2_6);
-
-	/* System Clock = MCLK1
-	 * Stereo ADC/DAC over sample rate = 128Fs (default)
+	/* Calculate sel_i2s_pre_div5 for clk_sys5, based on MCLK input.
+	 * The DSP is expecting 16KHz sample rate.
 	 */
-	regmap_write(rt5677->regmap, RT5677_GLB_CLK1, 0x0000);
+	pre_div = rl6231_get_clk_info(rt5677->sysclk, 16000);
+	if (pre_div < 0) {
+		/* If the MCLK frequency is not known at this time, we use
+		 * a pre_div of 6 by default, assuming MCLK is 24567000Hz:
+		 * 16000 * 256 * 6 = 24576000
+		 */
+		dev_info(dev, "Unknown sysclk(%dHz), using default pre_div=6\n",
+			rt5677->sysclk);
+		pre_div = 4;
+	}
+	regmap_update_bits(rt5677->regmap, RT5677_CLK_TREE_CTRL2,
+		RT5677_I2S_PD5_MASK, pre_div << RT5677_I2S_PD5_SFT);
 
-	/* DSP Clock = MCLK1 (bypassed PLL2) */
-	regmap_write(rt5677->regmap, RT5677_GLB_CLK2, 0x0080);
-
-	/* Clock source for Mono L ADC = clk_sys2 */
-	regmap_update_bits(rt5677->regmap, RT5677_ASRC_6, 0xf000, 0x7000);
-
-	/* Enable Gating Mode with MCLK = enable */
-	regmap_update_bits(rt5677->regmap, RT5677_DIG_MISC, 0x1, 0x1);
+	/* Clock source for Mono L ADC = clk_sys5 */
+	rt5677_sel_asrc_clk_src(rt5677->codec, RT5677_AD_MONO_L_FILTER,
+		RT5677_CLK_SEL_SYS5);
 }
 
 static void rt5677_hotword_start(struct rt5677_dsp *dsp)
@@ -179,6 +233,24 @@ static void rt5677_hotword_start(struct rt5677_dsp *dsp)
 	u32 boot_vector[2] = {0x00000009, 0x00000019};
 
 	rt5677_hotword_setup_audio_path(rt5677);
+
+	/* Clear DSP bus clock setting to default to ensure DSP bus clock >=
+	 * SPI clock during fw load. The DSP fw modifies these bus clock
+	 * settings to save power in SysInit.
+	 * DSP BCLK Auto Mode = disable
+	 * DSP BCLK pre div in auto mode = /2
+	 * DSP BCLK pre div = /2
+	 */
+	regmap_update_bits(rt5677->regmap, RT5677_GEN_CTRL2,
+		RT5677_DSP_BCLK_AUTO_MODE_MASK |
+		RT5677_DSP_BUS_PRE_DIV_AUTO_MASK |
+		RT5677_DSP_BUS_PRE_DIV_MASK, 0);
+
+	/* DSP Clock = MCLK1 (bypassed PLL2) */
+	regmap_write(rt5677->regmap, RT5677_GLB_CLK2, 0x0080);
+
+	/* Enable Gating Mode with MCLK = enable */
+	regmap_update_bits(rt5677->regmap, RT5677_DIG_MISC, 0x1, 0x1);
 
 	regmap_update_bits(rt5677->regmap, RT5677_PR_BASE + RT5677_BIAS_CUR4,
 		0x0f00, 0x0100);
@@ -223,6 +295,7 @@ static void rt5677_hotword_start(struct rt5677_dsp *dsp)
 	/* Set DSP CPU to Run */
 	regmap_update_bits(rt5677->regmap, RT5677_PWR_DSP1, 0x1, 0x0);
 	dsp->state = RT5677_HOTWORD_ARMED;
+	wake_unlock(&dsp->wake_lock);
 }
 
 static void rt5677_hotword_stop(struct rt5677_dsp *dsp)
@@ -244,6 +317,7 @@ static int rt5677_hotword_mic_write_offset(u32 *mic_write_offset)
 	 * dsp, and check to make sure that it points somewhere inside the
 	 * buffer.
 	 */
+	*mic_write_offset = 0;
 	ret = rt5677_spi_read(RT5677_MIC_BUF_ADDR, mic_write_offset,
 			sizeof(u32));
 	if (ret)
@@ -357,7 +431,7 @@ static void rt5677_hotword_stream(struct rt5677_dsp *dsp)
 {
 	struct snd_pcm_runtime *runtime;
 	u32 mic_write_offset;
-	size_t new_bytes, copy_bytes, period_bytes;
+	size_t new_bytes, copy_bytes, period_bytes, hw_avail_bytes;
 	int ret = 0;
 
 	/* Ensure runtime->dma_area buffer does not go away while copying. */
@@ -368,7 +442,7 @@ static void rt5677_hotword_stream(struct rt5677_dsp *dsp)
 
 	if (rt5677_hotword_mic_write_offset(&mic_write_offset)) {
 		dev_err(dsp->spi, "No mic_write_offset\n");
-		goto done;
+		return;
 	}
 
 	/* If this is the first time that we've asked for streaming data after
@@ -397,6 +471,16 @@ static void rt5677_hotword_stream(struct rt5677_dsp *dsp)
 	/* Copy all new samples from DSP mic buffer, one period at a time */
 	period_bytes = snd_pcm_lib_period_bytes(dsp->substream);
 	while (new_bytes) {
+		/* If the space left in the dma_area buffer is less then one
+		 * period, stop copying from DSP and wait for userspace to read,
+		 * so that we don't overflow. The DSP has a 4sec buffer which is
+		 * usually much larger than the dma_area buffer.
+		 */
+		hw_avail_bytes = frames_to_bytes(runtime,
+				snd_pcm_capture_hw_avail(runtime));
+		if (hw_avail_bytes < period_bytes)
+			goto done;
+
 		copy_bytes = min(new_bytes, period_bytes
 				- dsp->avail_bytes);
 		ret = rt5677_hotword_copy(dsp, copy_bytes);
@@ -412,10 +496,10 @@ static void rt5677_hotword_stream(struct rt5677_dsp *dsp)
 		new_bytes -= copy_bytes;
 	}
 
+done:
 	/* TODO benzh: use better delay time based on period_bytes */
-	schedule_delayed_work(&dsp->work,
+	queue_delayed_work(system_freezable_wq, &dsp->work,
 			msecs_to_jiffies(RT5677_HOTWORD_STREAM_DELAY_MS));
-done:	;
 }
 
 /*
@@ -439,13 +523,14 @@ static void rt5677_hotword_work(struct work_struct *work)
 	case RT5677_HOTWORD_ARMED:
 		break;
 	case RT5677_HOTWORD_FIRED:
-		dev_info(dsp->spi, "Hotword fired\n");
+		dev_info(dsp->spi, "Hotword fired, streaming...\n");
 		/* Fall through to start streaming */
 	case RT5677_HOTWORD_STREAM:
 		rt5677_hotword_stream(dsp);
 		break;
 	case RT5677_HOTWORD_STOP:
 		rt5677_hotword_stop(dsp);
+		dev_info(dsp->spi, "Hotword stopped\n");
 		break;
 	}
 	mutex_unlock(&dsp->lock);
@@ -454,14 +539,43 @@ static void rt5677_hotword_work(struct work_struct *work)
 static irqreturn_t rt5677_hotword_irq(int unused, void *data)
 {
 	struct rt5677_dsp *dsp = data;
+	struct rt5677_priv *rt5677 = dsp->priv;
+	unsigned int val;
+	int ret, irq_status = IRQ_NONE;
 	mutex_lock(&dsp->lock);
 	dev_info(dsp->spi, "Hotword irq: %d\n", dsp->state);
 	if (dsp->state == RT5677_HOTWORD_ARMED) {
+		ret = regmap_read(rt5677->regmap, RT5677_GPIO_CTRL2, &val);
+		if (ret) {
+			dev_err(dsp->spi, "Failed to read GPIO1 %d", ret);
+			goto done;
+		}
+		if ((val & RT5677_GPIO1_OUT_MASK) != RT5677_GPIO1_OUT_HI) {
+			dev_err(dsp->spi, "Not hotword irq %u", val);
+			goto done;
+		}
+		irq_status = IRQ_HANDLED;
+		/* DSP fw drove GPIO1 high to signal hotword fired.
+		 * ACK the irq by driving GPIO1 low.
+		 */
+		ret = regmap_update_bits(rt5677->regmap, RT5677_GPIO_CTRL2,
+			RT5677_GPIO1_OUT_MASK, RT5677_GPIO1_OUT_LO);
+		if (ret) {
+			dev_err(dsp->spi, "Failed to set GPIO1 low %d", ret);
+			goto done;
+		}
 		dsp->state = RT5677_HOTWORD_FIRED;
-		schedule_delayed_work(&dsp->work, 0);
+
+		/* Grab the wake lock to prevent suspend while streaming audio
+		 * samples from the DSP mic buffer. The lock is released when
+		 * the pcm device is closed.
+		 */
+		wake_lock(&dsp->wake_lock);
+		queue_delayed_work(system_freezable_wq, &dsp->work, 0);
 	}
+done:
 	mutex_unlock(&dsp->lock);
-	return IRQ_HANDLED;
+	return irq_status;
 }
 
 static int rt5677_hotword_init_irq(struct snd_soc_pcm_runtime *rtd)
@@ -480,8 +594,16 @@ static int rt5677_hotword_init_irq(struct snd_soc_pcm_runtime *rtd)
 		ret = -ENODEV;
 		goto done;
 	}
+
+	/* Drive GPIO1 low so we don't get spurious irqs before hotword fires */
+	regmap_update_bits(priv->regmap, RT5677_GPIO_CTRL2,
+		RT5677_GPIO1_DIR_MASK | RT5677_GPIO1_OUT_MASK,
+		RT5677_GPIO1_DIR_OUT | RT5677_GPIO1_OUT_LO);
+	regmap_update_bits(priv->regmap, RT5677_GPIO_CTRL1,
+		RT5677_GPIO1_PIN_MASK, RT5677_GPIO1_PIN_GPIO1);
+
 	ret = devm_request_threaded_irq(&i2c->dev, i2c->irq, NULL,
-			rt5677_hotword_irq, IRQF_TRIGGER_RISING | IRQF_ONESHOT,
+			rt5677_hotword_irq, IRQF_TRIGGER_HIGH | IRQF_ONESHOT,
 			"rt5677", dsp);
 	if (!ret)
 		dsp->priv = priv;
@@ -501,8 +623,14 @@ static int rt5677_hotword_pcm_open(struct snd_pcm_substream *substream)
 	if (ret)
 		return ret;
 
+	/* Grab the wake lock to prevent suspend during DSP fw load. The lock
+	 * is released after the DSP is armed or if the pcm device is closed
+	 * before the DSP is armed.
+	 */
+	wake_lock(&dsp->wake_lock);
+
 	dsp->state = RT5677_HOTWORD_START;
-	schedule_delayed_work(&dsp->work,
+	queue_delayed_work(system_freezable_wq, &dsp->work,
 			msecs_to_jiffies(RT5677_HOTWORD_START_DELAY_MS));
 
 	snd_soc_set_runtime_hwparams(substream, &rt5677_hotword_pcm_hardware);
@@ -520,10 +648,14 @@ static int rt5677_hotword_pcm_close(struct snd_pcm_substream *substream)
 		goto done;
 	}
 	dsp->state = RT5677_HOTWORD_STOP;
-	schedule_delayed_work(&dsp->work, 0);
+	queue_delayed_work(system_freezable_wq, &dsp->work, 0);
 done:
 	mutex_unlock(&dsp->lock);
 	flush_delayed_work(&dsp->work);
+	/* If the pcm device is closed after the DSP is armed but before a
+	 * hotword is detected, we unlock twice which is still fine.
+	 */
+	wake_unlock(&dsp->wake_lock);
 	return 0;
 }
 
@@ -602,18 +734,30 @@ static int rt5677_hotword_pcm_probe(struct snd_soc_platform *platform)
 	dsp->spi = platform->dev;
 	mutex_init(&dsp->lock);
 	INIT_DELAYED_WORK(&dsp->work, rt5677_hotword_work);
+	wake_lock_init(&dsp->wake_lock, WAKE_LOCK_SUSPEND, "rt5677_hotword");
 
 	snd_soc_platform_set_drvdata(platform, dsp);
 	return 0;
 }
 
+static int rt5677_hotword_pcm_remove(struct snd_soc_platform *platform)
+{
+	struct rt5677_dsp *dsp = snd_soc_platform_get_drvdata(platform);
+
+	wake_lock_destroy(&dsp->wake_lock);
+	return 0;
+}
+
 static struct snd_soc_platform_driver rt5677_hotword_platform = {
 	.probe		= rt5677_hotword_pcm_probe,
+	.remove		= rt5677_hotword_pcm_remove,
 	.ops		= &rt5677_hotword_pcm_ops,
 };
 
 static const struct snd_soc_component_driver rt5677_hotword_dai_component = {
 	.name		= "rt5677-hotword",
+	.controls	= rt5677_hotword_snd_controls,
+	.num_controls	= ARRAY_SIZE(rt5677_hotword_snd_controls),
 };
 
 static int rt5677_hotword_dai_hw_params(struct snd_pcm_substream *substream,

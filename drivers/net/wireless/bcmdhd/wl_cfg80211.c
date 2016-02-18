@@ -330,12 +330,6 @@ static s32 wl_cfg80211_resume(struct wiphy *wiphy);
 	2, 0))
 static s32 wl_cfg80211_mgmt_tx_cancel_wait(struct wiphy *wiphy,
 	bcm_struct_cfgdev *cfgdev, u64 cookie);
-static s32 wl_cfg80211_del_station(struct wiphy *wiphy,
-	struct net_device *ndev,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0))
-	const
-#endif
-	u8 *mac_addr);
 static s32 wl_cfg80211_change_station(struct wiphy *wiphy,
 	struct net_device *dev,
 #if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0))
@@ -1170,8 +1164,9 @@ wl_validate_wps_ie(char *wps_ie, s32 wps_ie_len, bool *pbc)
 			WL_DBG(("  attr WPS_ID_CONFIG_METHODS: %x\n", HTON16(val)));
 		} else if (subelt_id == WPS_ID_DEVICE_NAME) {
 			char devname[100];
-			memcpy(devname, subel, subelt_len);
-			devname[subelt_len] = '\0';
+			size_t namelen = MIN(subelt_len, sizeof(devname));
+			memcpy(devname, subel, namelen);
+			devname[namelen-1] = '\0';
 			WL_DBG(("  attr WPS_ID_DEVICE_NAME: %s (len %u)\n",
 				devname, subelt_len));
 		} else if (subelt_id == WPS_ID_DEVICE_PWD_ID) {
@@ -4803,7 +4798,7 @@ get_station_err:
 			/* Disconnect due to zero BSSID or error to get RSSI */
 			WL_ERR(("force cfg80211_disconnected: %d\n", err));
 			wl_clr_drv_status(cfg, CONNECTED, dev);
-			cfg80211_disconnected(dev, 0, NULL, 0, GFP_KERNEL);
+			cfg80211_disconnected(dev, 0, NULL, 0, false, GFP_KERNEL);
 			wl_link_down(cfg);
 		}
 	}
@@ -6847,10 +6842,7 @@ static s32
 wl_cfg80211_del_station(
 	struct wiphy *wiphy,
 	struct net_device *ndev,
-#if (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 16, 0))
-	const
-#endif
-	u8 *mac_addr)
+	struct station_del_parameters *params)
 {
 	struct net_device *dev;
 	struct bcm_cfg80211 *cfg = wiphy_priv(wiphy);
@@ -6863,7 +6855,7 @@ wl_cfg80211_del_station(
 	int num_associated = 0;
 
 	WL_DBG(("Entry\n"));
-	if (mac_addr == NULL) {
+	if (params->mac == NULL) {
 		WL_DBG(("mac_addr is NULL ignore it\n"));
 		return 0;
 	}
@@ -6888,17 +6880,17 @@ wl_cfg80211_del_station(
 	else
 		num_associated = assoc_maclist->count;
 
-	memcpy(scb_val.ea.octet, mac_addr, ETHER_ADDR_LEN);
+	memcpy(scb_val.ea.octet, params->mac, ETHER_ADDR_LEN);
 	scb_val.val = DOT11_RC_DEAUTH_LEAVING;
 	err = wldev_ioctl(dev, WLC_SCB_DEAUTHENTICATE_FOR_REASON, &scb_val,
 		sizeof(scb_val_t), true);
 	if (err < 0)
 		WL_ERR(("WLC_SCB_DEAUTHENTICATE_FOR_REASON err %d\n", err));
 	WL_ERR(("Disconnect STA : %s scb_val.val %d\n",
-		bcm_ether_ntoa((const struct ether_addr *)mac_addr, eabuf),
+		bcm_ether_ntoa((const struct ether_addr *)params->mac, eabuf),
 		scb_val.val));
 
-	if (num_associated > 0 && ETHER_ISBCAST(mac_addr))
+	if (num_associated > 0 && ETHER_ISBCAST(params->mac))
 		wl_delay(400);
 
 	return 0;
@@ -8564,7 +8556,7 @@ wl_notify_connect_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 						WL_ERR(("WLC_DISASSOC error %d\n", err));
 						err = 0;
 					}
-					cfg80211_disconnected(ndev, reason, NULL, 0, GFP_KERNEL);
+					cfg80211_disconnected(ndev, reason, NULL, 0, true, GFP_KERNEL);
 					wl_link_down(cfg);
 					wl_init_prof(cfg, ndev);
 				} else {
@@ -9143,7 +9135,7 @@ wl_notify_pfn_status(struct bcm_cfg80211 *cfg, bcm_struct_cfgdev *cfgdev,
 #ifndef WL_SCHED_SCAN
 	mutex_lock(&cfg->usr_sync);
 	/* TODO: Use cfg80211_sched_scan_results(wiphy); */
-	cfg80211_disconnected(ndev, 0, NULL, 0, GFP_KERNEL);
+	cfg80211_disconnected(ndev, 0, NULL, 0, false, GFP_KERNEL);
 	mutex_unlock(&cfg->usr_sync);
 #else
 	/* If cfg80211 scheduled scan is supported, report the pno results via sched
@@ -9675,9 +9667,10 @@ wl_notify_sched_scan_results(struct bcm_cfg80211 *cfg, struct net_device *ndev,
 			 * scan request in the form of cfg80211_scan_request. For timebeing, create
 			 * cfg80211_scan_request one out of the received PNO event.
 			 */
-			memcpy(ssid[i].ssid, netinfo->pfnsubnet.SSID,
+			ssid[i].ssid_len = MIN(DOT11_MAX_SSID_LEN,
 				netinfo->pfnsubnet.SSID_len);
-			ssid[i].ssid_len = netinfo->pfnsubnet.SSID_len;
+			memcpy(ssid[i].ssid, netinfo->pfnsubnet.SSID,
+				ssid[i].ssid_len);
 			request->n_ssids++;
 
 			channel_req = netinfo->pfnsubnet.channel;
@@ -11739,7 +11732,7 @@ int wl_cfg80211_hang(struct net_device *dev, u16 reason)
 
 	WL_ERR(("In : chip crash eventing\n"));
 	wl_add_remove_pm_enable_work(cfg, FALSE, WL_HANDLER_DEL);
-	cfg80211_disconnected(dev, reason, NULL, 0, GFP_KERNEL);
+	cfg80211_disconnected(dev, reason, NULL, 0, false, GFP_KERNEL);
 	if (cfg != NULL) {
 		wl_link_down(cfg);
 	}

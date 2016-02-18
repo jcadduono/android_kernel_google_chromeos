@@ -24,16 +24,17 @@
 
 #define rmb()				mb()
 #define wmb()				mb()
-#define read_barrier_depends()		do { } while(0)
 #define smp_mb()			mb()
 #define smp_rmb()			rmb()
 #define smp_wmb()			wmb()
-#define smp_read_barrier_depends()	read_barrier_depends()
+
+#define read_barrier_depends()		do { } while (0)
+#define smp_read_barrier_depends()	do { } while (0)
 
 #define smp_mb__before_atomic()		smp_mb()
 #define smp_mb__after_atomic()		smp_mb()
 
-#define set_mb(var, value)		do { var = value; mb(); } while (0)
+#define set_mb(var, value)		do { WRITE_ONCE(var, value); mb(); } while (0)
 
 #define smp_store_release(p, v)						\
 do {									\

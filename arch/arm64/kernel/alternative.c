@@ -28,12 +28,18 @@
 
 extern struct alt_instr __alt_instructions[], __alt_instructions_end[];
 
-static int __apply_alternatives(void *dummy)
+struct alt_region {
+	struct alt_instr *begin;
+	struct alt_instr *end;
+};
+
+static void __apply_alternatives(void *alt_region)
 {
 	struct alt_instr *alt;
+	struct alt_region *region = alt_region;
 	u8 *origptr, *replptr;
 
-	for (alt = __alt_instructions; alt < __alt_instructions_end; alt++) {
+	for (alt = region->begin; alt < region->end; alt++) {
 		if (!cpus_have_cap(alt->cpufeature))
 			continue;
 
@@ -47,14 +53,49 @@ static int __apply_alternatives(void *dummy)
 		flush_icache_range((uintptr_t)origptr,
 				   (uintptr_t)(origptr + alt->alt_len));
 	}
+}
+
+/*
+ * We might be patching the stop_machine state machine, so implement a
+ * really simple polling protocol here.
+ */
+static int __apply_alternatives_multi_stop(void *unused)
+{
+	static int patched = 0;
+	struct alt_region region = {
+		.begin	= __alt_instructions,
+		.end	= __alt_instructions_end,
+	};
+
+	/* We always have a CPU 0 at this point (__init) */
+	if (smp_processor_id()) {
+		while (!READ_ONCE(patched))
+			cpu_relax();
+		isb();
+	} else {
+		BUG_ON(patched);
+		__apply_alternatives(&region);
+		/* Barriers provided by the cache flushing */
+		WRITE_ONCE(patched, 1);
+	}
 
 	return 0;
 }
 
-void apply_alternatives(void)
+void __init apply_alternatives_all(void)
 {
 	/* better not try code patching on a live SMP system */
-	stop_machine(__apply_alternatives, NULL, NULL);
+	stop_machine(__apply_alternatives_multi_stop, NULL, cpu_online_mask);
+}
+
+void apply_alternatives(void *start, size_t length)
+{
+	struct alt_region region = {
+		.begin	= start,
+		.end	= start + length,
+	};
+
+	__apply_alternatives(&region);
 }
 
 void free_alternatives_memory(void)

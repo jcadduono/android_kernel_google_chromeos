@@ -16,7 +16,7 @@
 	compatible = "google,smaug", "nvidia,tegra210";
 
         chosen {
-		bootargs = "cros_legacy console= init=/init rw ignore_loglevel=1 drm.atomic=1 firmware_class.path=/vendor/firmware kern_guid=%U no_console_suspend slub_debug=fzpu";
+		bootargs = "cros_legacy console= init=/init rw ignore_loglevel=1 drm.atomic=1 firmware_class.path=/vendor/firmware kern_guid=%U no_console_suspend";
 	};
 
 	memory {
@@ -59,6 +59,7 @@
 				ddi-supply = <&pp1800_lcdio>;
 				enable-gpio = <&gpio TEGRA_GPIO(V, 1) GPIO_ACTIVE_HIGH>;
 				reset-gpio = <&gpio TEGRA_GPIO(V, 2) GPIO_ACTIVE_LOW>;
+				ts-reset-gpio = <&gpio TEGRA_GPIO(V, 6) GPIO_ACTIVE_LOW>;
 				backlight = <&backlight>;
 				slave = <&secondary_panel>;
 				panel-boot-on;
@@ -169,8 +170,12 @@
 
 	wifi: wifi_bcm4354 {
 		compatible = "bcm,bcm4354";
+		interrupt-parent = <&gpio>;
+		interrupts = <TEGRA_GPIO(H, 2) IRQ_TYPE_LEVEL_HIGH>;
 		wl_reg_on = <&gpio TEGRA_GPIO(H, 1) GPIO_ACTIVE_HIGH>;
 		wl_host_wake = <&gpio TEGRA_GPIO(H, 2) IRQ_TYPE_LEVEL_HIGH>;
+		nvidia,pmc-wakeup = <&pmc
+			PMC_WAKE_TYPE_EVENT 8 PMC_TRIGGER_TYPE_HIGH>;
 	};
 
 	bt_bcm4354 {
@@ -623,6 +628,8 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&max77620_default>;
 
+		maxim,lb-threshold-vol = <3000>;
+
 		max77620_default: pinmux@0 {
 			// TODO: Verify
 			pin_gpio {
@@ -973,8 +980,10 @@
 	rt5677: audio-codec@2d {
 		compatible = "realtek,rt5677";
 		reg = <0x2d>;
-		interrupts-extended = <&gpio TEGRA_GPIO(X, 0) IRQ_TYPE_EDGE_BOTH>;
+		interrupts-extended = <&gpio TEGRA_GPIO(X, 0) IRQ_TYPE_LEVEL_HIGH>;
 		realtek,reset-gpio = <&gpio TEGRA_GPIO(BB, 3) GPIO_ACTIVE_LOW>;
+		nvidia,pmc-wakeup = <&pmc PMC_WAKE_TYPE_EVENT 61
+				     PMC_TRIGGER_TYPE_HIGH>;
 
 		// Workaround for hissing problem b/24679173
 		realtek,i2s1-pulldown;
@@ -1022,9 +1031,6 @@
 	nvidia,trim-delay = <8>;
 	nvidia,tap-delay = <0>;
 	status = "okay";
-	/* This wakeup event belongs in wifi_bcm4354 */
-	nvidia,pmc-wakeup = <&pmc
-		PMC_WAKE_TYPE_EVENT 8 PMC_TRIGGER_TYPE_HIGH>;
 };
 
 &sdmmc4 {
@@ -1063,6 +1069,8 @@
 	nvidia,core-pwr-off-time = <39053>;
 	nvidia,core-power-req-active-high;
 	nvidia,sys-clock-req-active-high;
+	nvidia,pmc-clk1-out-en;
+	nvidia,pmc-clk1-out-src = <PMC_CLK_OUT_SRC_OSC_DIV_2>;
 	#nvidia,wake-cells = <3>;
 
 	bootrom-i2c {

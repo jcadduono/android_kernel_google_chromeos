@@ -545,10 +545,8 @@ static void fw_dev_release(struct device *dev)
 	kfree(fw_priv);
 }
 
-static int firmware_uevent(struct device *dev, struct kobj_uevent_env *env)
+static int do_firmware_uevent(struct firmware_priv *fw_priv, struct kobj_uevent_env *env)
 {
-	struct firmware_priv *fw_priv = to_firmware_priv(dev);
-
 	if (add_uevent_var(env, "FIRMWARE=%s", fw_priv->buf->fw_id))
 		return -ENOMEM;
 	if (add_uevent_var(env, "TIMEOUT=%i", loading_timeout))
@@ -557,6 +555,18 @@ static int firmware_uevent(struct device *dev, struct kobj_uevent_env *env)
 		return -ENOMEM;
 
 	return 0;
+}
+
+static int firmware_uevent(struct device *dev, struct kobj_uevent_env *env)
+{
+	struct firmware_priv *fw_priv = to_firmware_priv(dev);
+	int err = 0;
+
+	mutex_lock(&fw_lock);
+	if (fw_priv->buf)
+		err = do_firmware_uevent(fw_priv, env);
+	mutex_unlock(&fw_lock);
+	return err;
 }
 
 static struct class firmware_class = {
@@ -1097,15 +1107,17 @@ static int
 _request_firmware(const struct firmware **firmware_p, const char *name,
 		  struct device *device, unsigned int opt_flags)
 {
-	struct firmware *fw;
+	struct firmware *fw = NULL;
 	long timeout;
 	int ret;
 
 	if (!firmware_p)
 		return -EINVAL;
 
-	if (!name || name[0] == '\0')
-		return -EINVAL;
+	if (!name || name[0] == '\0') {
+		ret = -EINVAL;
+		goto out;
+	}
 
 	ret = _request_firmware_prepare(&fw, name, device);
 	if (ret <= 0) /* error or already assigned */
@@ -1254,6 +1266,7 @@ static void request_firmware_work_func(struct work_struct *work)
 	put_device(fw_work->device); /* taken in request_firmware_nowait() */
 
 	module_put(fw_work->module);
+	kfree_const(fw_work->name);
 	kfree(fw_work);
 }
 
@@ -1293,7 +1306,9 @@ request_firmware_nowait(
 		return -ENOMEM;
 
 	fw_work->module = module;
-	fw_work->name = name;
+	fw_work->name = kstrdup_const(name, gfp);
+	if (!fw_work->name)
+		return -ENOMEM;
 	fw_work->device = device;
 	fw_work->context = context;
 	fw_work->cont = cont;
@@ -1301,6 +1316,7 @@ request_firmware_nowait(
 		(uevent ? FW_OPT_UEVENT : FW_OPT_USERHELPER);
 
 	if (!try_module_get(module)) {
+		kfree_const(fw_work->name);
 		kfree(fw_work);
 		return -EFAULT;
 	}

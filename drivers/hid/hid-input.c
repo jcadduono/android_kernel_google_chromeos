@@ -1155,11 +1155,18 @@ void hidinput_report_event(struct hid_device *hid, struct hid_report *report)
 {
 	struct hid_input *hidinput;
 
-	if (hid->quirks & HID_QUIRK_NO_INPUT_SYNC)
-		return;
+	list_for_each_entry(hidinput, &hid->inputs, list) {
+		if (hidinput->repeat_field && hidinput->repeat_usage) {
+			if (hidinput->send_repeat)
+				hidinput_hid_event(hid, hidinput->repeat_field,
+						   hidinput->repeat_usage, 2);
+			else
+				hidinput->send_repeat = true;
+		}
 
-	list_for_each_entry(hidinput, &hid->inputs, list)
-		input_sync(hidinput->input);
+		if (!(hid->quirks & HID_QUIRK_NO_INPUT_SYNC))
+			input_sync(hidinput->input);
+	}
 }
 EXPORT_SYMBOL_GPL(hidinput_report_event);
 
@@ -1508,8 +1515,9 @@ int hidinput_connect(struct hid_device *hid, unsigned int force)
 				 * UGCI) cram a lot of unrelated inputs into the
 				 * same interface. */
 				hidinput->report = report;
-				if (drv->input_configured)
-					drv->input_configured(hid, hidinput);
+				if (drv->input_configured &&
+				    drv->input_configured(hid, hidinput))
+					goto out_cleanup;
 				if (input_register_device(hidinput->input))
 					goto out_cleanup;
 				hidinput = NULL;
@@ -1530,8 +1538,9 @@ int hidinput_connect(struct hid_device *hid, unsigned int force)
 	}
 
 	if (hidinput) {
-		if (drv->input_configured)
-			drv->input_configured(hid, hidinput);
+		if (drv->input_configured &&
+		    drv->input_configured(hid, hidinput))
+			goto out_cleanup;
 		if (input_register_device(hidinput->input))
 			goto out_cleanup;
 	}

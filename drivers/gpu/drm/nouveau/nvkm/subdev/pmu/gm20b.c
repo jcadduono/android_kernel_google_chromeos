@@ -850,41 +850,43 @@ gm20b_pmu_init_vm(struct nvkm_pmu *ppmu)
 	struct nvkm_pmu_priv_vm *pmuvm = &pmu->pmuvm;
 	struct nvkm_device *device = nv_device(&ppmu->base);
 	struct nvkm_vm *vm;
+	struct nvkm_mmu *mmu = nvkm_mmu(pmu);
+	const u64 pmu_area_len = 600*1024;
 
-	u64 pmu_area_len = 600*1024;
-
-	/* mem for inst blk*/
-	ret = nvkm_gpuobj_new(nv_object(ppmu), NULL, 0x1000, 0, 0,
-				&pmuvm->mem);
+	/* allocate inst blk */
+	ret = nvkm_gpuobj_new(nv_object(ppmu), NULL, 0x1000, 0, 0, &pmuvm->mem);
 	if (ret)
 		return ret;
 
-	/* mem for pgd*/
-	ret = nvkm_gpuobj_new(nv_object(ppmu), NULL, 0x8000, 0, 0,
-				&pmuvm->pgd);
+	/* allocate pgd and initialize inst blk */
+	ret = mmu->create_pgd(mmu, nv_object(ppmu), pmuvm->mem,
+				pmu_area_len, &pmuvm->pgd);
 	if (ret)
-		return ret;
+		goto err_pgd;
 
-	/*allocate virtual memory range*/
+	/* allocate virtual memory range */
 	ret = nvkm_vm_new(device, 0, pmu_area_len, 0, &vm);
 	if (ret)
-		return ret;
+		goto err_vm;
 
 	atomic_inc(&vm->engref[NVDEV_SUBDEV_PMU]);
 
-	/*update VM with pgd */
+	/* update VM with pgd */
 	ret = nvkm_vm_ref(vm, &pmuvm->vm, pmuvm->pgd);
 	if (ret)
-		return ret;
-
-	/*update pgd in inst blk */
-	nv_wo32(pmuvm->mem, 0x0200, lower_32_bits(pmuvm->pgd->addr));
-	nv_wo32(pmuvm->mem, 0x0204, upper_32_bits(pmuvm->pgd->addr));
-	nv_wo32(pmuvm->mem, 0x0208, lower_32_bits(pmu_area_len - 1));
-	nv_wo32(pmuvm->mem, 0x020c, upper_32_bits(pmu_area_len - 1));
+		goto err_ref;
 
 	ppmu->pmu_vm = pmuvm;
+	return 0;
 
+err_ref:
+	nvkm_vm_ref(NULL, &vm, NULL);
+err_vm:
+	nvkm_gpuobj_destroy(pmuvm->pgd);
+	pmuvm->pgd = NULL;
+err_pgd:
+	nvkm_gpuobj_destroy(pmuvm->mem);
+	pmuvm->mem = NULL;
 	return ret;
 }
 
@@ -2011,14 +2013,11 @@ static int gm20b_init_pmu_setup_hw1(struct nvkm_pmu *ppmu,
 	struct nvkm_mc *pmc = nvkm_mc(ppmu);
 	struct gk20a_pmu_priv *pmu = to_gk20a_priv(ppmu);
 	struct gm20b_acr *acr = &pmu->acr;
-	int err, i;
+	int err;
 	struct pmu_cmdline_args_v1 args;
 
 	/* TODO remove this when perfmon is used for pstate/dvfs scaling */
 	pmu->perfmon_sampling_enabled = false;
-
-	for (i = 0; i < pmu->mutex_cnt; i++)
-		pmu->mutex[i].index = i;
 
 	if (!pmu->trace_buf.size) {
 		err = nvkm_gpuobj_new(nv_object(ppmu), NULL,
@@ -2518,7 +2517,7 @@ gm20b_pmu_ctor(struct nvkm_object *parent, struct nvkm_object *engine,
 	       struct nvkm_object **pobject)
 {
 	struct gk20a_pmu_priv *priv;
-	int ret;
+	int ret, i;
 	struct nvkm_pmu *ppmu;
 
 	ret = nvkm_pmu_create(parent, engine, oclass, &priv);
@@ -2537,14 +2536,17 @@ gm20b_pmu_ctor(struct nvkm_object *parent, struct nvkm_object *engine,
 	priv->mutex = kzalloc(priv->mutex_cnt *
 				sizeof(struct pmu_mutex), GFP_KERNEL);
 	if (!priv->mutex) {
-		nv_error(ppmu, "alloc for pmu_mutexes failed\n");
+		nv_error(priv, "alloc for pmu_mutexes failed\n");
 		return -ENOMEM;
 	}
+
+	for (i = 0; i < priv->mutex_cnt; i++)
+		priv->mutex[i].index = i;
 
 	priv->seq = kzalloc(PMU_MAX_NUM_SEQUENCES *
 		sizeof(struct pmu_sequence), GFP_KERNEL);
 	if (!priv->seq) {
-		nv_error(ppmu, "alloc for sequences failed\n");
+		nv_error(priv, "alloc for sequences failed\n");
 		kfree(priv->mutex);
 		return -ENOMEM;
 	}
@@ -2592,9 +2594,6 @@ gm20b_pmu_fini(struct nvkm_object *object, bool suspend)
 		gk20a_pmu_enable(priv, pmc, false);
 		priv->isr_enabled = false;
 		mutex_unlock(&priv->isr_mutex);
-		mutex_lock(&priv->elpg_mutex);
-		priv->elpg_disable_depth = 0;
-		mutex_unlock(&priv->elpg_mutex);
 		priv->pmu_state = PMU_STATE_OFF;
 		mutex_lock(&priv->clk_gating_mutex);
 		priv->clk_gating_disable_depth = 0;
@@ -2603,6 +2602,7 @@ gm20b_pmu_fini(struct nvkm_object *object, bool suspend)
 		pmu->slcg_enabled = false;
 		pmu->blcg_enabled = false;
 		priv->pmu_ready = false;
+		priv->out_of_reset = false;
 		pmu->cold_boot = true;
 		priv->lspmu_wpr_init_done = false;
 		nv_wr32(priv, 0x10a014, 0x00000060);
@@ -2667,11 +2667,16 @@ gm20b_pmu_init(struct nvkm_object *object) {
 	ppmu->elcg_enabled = true;
 	ppmu->slcg_enabled = true;
 	ppmu->blcg_enabled = true;
+	priv->out_of_reset = true;
 
 	priv->pmu_setup_elpg = gm20b_pmu_setup_elpg;
 
 	mutex_lock(&priv->elpg_mutex);
-	priv->elpg_disable_depth = 0;
+	/*
+	 * ELPG will be enabled when PMU finishes booting, so setting the
+	 * counter to 1 initialy.
+	 */
+	priv->elpg_disable_depth = 1;
 	mutex_unlock(&priv->elpg_mutex);
 
 	mutex_lock(&priv->clk_gating_mutex);
@@ -2695,4 +2700,6 @@ gm20b_pmu_oclass = &(struct nvkm_pmu_impl) {
 		.fini = gm20b_pmu_fini,
 	},
 	.base.handle = NV_SUBDEV(PMU, 0x12b),
+	.acquire_mutex = gk20a_pmu_mutex_acquire,
+	.release_mutex = gk20a_pmu_mutex_release,
 } .base;

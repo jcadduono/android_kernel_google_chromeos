@@ -566,7 +566,7 @@ static void arm_smmu_tlb_inv_context(void *cookie)
 }
 
 static void arm_smmu_tlb_inv_range_nosync(unsigned long iova, size_t size,
-					  bool leaf, void *cookie)
+					  size_t granule, bool leaf, void *cookie)
 {
 	struct arm_smmu_domain *smmu_domain = cookie;
 	struct arm_smmu_cfg *cfg = &smmu_domain->cfg;
@@ -581,12 +581,18 @@ static void arm_smmu_tlb_inv_range_nosync(unsigned long iova, size_t size,
 		if (!IS_ENABLED(CONFIG_64BIT) || smmu->version == ARM_SMMU_V1) {
 			iova &= ~12UL;
 			iova |= ARM_SMMU_CB_ASID(cfg);
-			writel_relaxed(iova, reg);
+			do {
+				writel_relaxed(iova, reg);
+				iova += granule;
+			} while (size -= granule);
 #ifdef CONFIG_64BIT
 		} else {
 			iova >>= 12;
 			iova |= (u64)ARM_SMMU_CB_ASID(cfg) << 48;
-			writeq_relaxed(iova, reg);
+			do {
+				writeq_relaxed(iova, reg);
+				iova += granule >> 12;
+			} while (size -= granule);
 #endif
 		}
 #ifdef CONFIG_64BIT
@@ -594,7 +600,11 @@ static void arm_smmu_tlb_inv_range_nosync(unsigned long iova, size_t size,
 		reg = ARM_SMMU_CB_BASE(smmu) + ARM_SMMU_CB(smmu, cfg->cbndx);
 		reg += leaf ? ARM_SMMU_CB_S2_TLBIIPAS2L :
 			      ARM_SMMU_CB_S2_TLBIIPAS2;
-		writeq_relaxed(iova >> 12, reg);
+		iova >>= 12;
+		do {
+			writeq_relaxed(iova, reg);
+			iova += granule >> 12;
+		} while (size -= granule);
 #endif
 	} else {
 		reg = ARM_SMMU_GR0(smmu) + ARM_SMMU_GR0_TLBIVMID;
@@ -1282,33 +1292,25 @@ static void __arm_smmu_release_pci_iommudata(void *data)
 	kfree(data);
 }
 
-static int arm_smmu_add_pci_device(struct pci_dev *pdev)
+static int arm_smmu_init_pci_device(struct pci_dev *pdev,
+				    struct iommu_group *group)
 {
-	int i, ret;
-	u16 sid;
-	struct iommu_group *group;
 	struct arm_smmu_master_cfg *cfg;
-
-	group = iommu_group_get_for_dev(&pdev->dev);
-	if (IS_ERR(group))
-		return PTR_ERR(group);
+	u16 sid;
+	int i;
 
 	cfg = iommu_group_get_iommudata(group);
 	if (!cfg) {
 		cfg = kzalloc(sizeof(*cfg), GFP_KERNEL);
-		if (!cfg) {
-			ret = -ENOMEM;
-			goto out_put_group;
-		}
+		if (!cfg)
+			return -ENOMEM;
 
 		iommu_group_set_iommudata(group, cfg,
 					  __arm_smmu_release_pci_iommudata);
 	}
 
-	if (cfg->num_streamids >= MAX_MASTER_STREAMIDS) {
-		ret = -ENOSPC;
-		goto out_put_group;
-	}
+	if (cfg->num_streamids >= MAX_MASTER_STREAMIDS)
+		return -ENOSPC;
 
 	/*
 	 * Assume Stream ID == Requester ID for now.
@@ -1324,16 +1326,13 @@ static int arm_smmu_add_pci_device(struct pci_dev *pdev)
 		cfg->streamids[cfg->num_streamids++] = sid;
 
 	return 0;
-out_put_group:
-	iommu_group_put(group);
-	return ret;
 }
 
-static int arm_smmu_add_platform_device(struct device *dev)
+static int arm_smmu_init_platform_device(struct device *dev,
+					 struct iommu_group *group)
 {
-	struct iommu_group *group;
-	struct arm_smmu_master *master;
 	struct arm_smmu_device *smmu = find_smmu_for_device(dev);
+	struct arm_smmu_master *master;
 
 	if (!smmu)
 		return -ENODEV;
@@ -1342,26 +1341,51 @@ static int arm_smmu_add_platform_device(struct device *dev)
 	if (!master)
 		return -ENODEV;
 
-	/* No automatic group creation for platform devices */
-	group = iommu_group_alloc();
-	if (IS_ERR(group))
-		return PTR_ERR(group);
-
 	iommu_group_set_iommudata(group, &master->cfg, NULL);
-	return iommu_group_add_device(group, dev);
+
+	return 0;
 }
 
 static int arm_smmu_add_device(struct device *dev)
 {
-	if (dev_is_pci(dev))
-		return arm_smmu_add_pci_device(to_pci_dev(dev));
+	struct iommu_group *group;
 
-	return arm_smmu_add_platform_device(dev);
+	group = iommu_group_get_for_dev(dev);
+	if (IS_ERR(group))
+		return PTR_ERR(group);
+
+	return 0;
 }
 
 static void arm_smmu_remove_device(struct device *dev)
 {
 	iommu_group_remove_device(dev);
+}
+
+static struct iommu_group *arm_smmu_device_group(struct device *dev)
+{
+	struct iommu_group *group;
+	int ret;
+
+	if (dev_is_pci(dev))
+		group = pci_device_group(dev);
+	else
+		group = generic_device_group(dev);
+
+	if (IS_ERR(group))
+		return group;
+
+	if (dev_is_pci(dev))
+		ret = arm_smmu_init_pci_device(to_pci_dev(dev), group);
+	else
+		ret = arm_smmu_init_platform_device(dev, group);
+
+	if (ret) {
+		iommu_group_put(group);
+		group = ERR_PTR(ret);
+	}
+
+	return group;
 }
 
 static int arm_smmu_domain_get_attr(struct iommu_domain *domain,
@@ -1419,6 +1443,7 @@ static struct iommu_ops arm_smmu_ops = {
 	.iova_to_phys		= arm_smmu_iova_to_phys,
 	.add_device		= arm_smmu_add_device,
 	.remove_device		= arm_smmu_remove_device,
+	.device_group		= arm_smmu_device_group,
 	.domain_get_attr	= arm_smmu_domain_get_attr,
 	.domain_set_attr	= arm_smmu_domain_set_attr,
 	.pgsize_bitmap		= -1UL, /* Restricted during device attach */

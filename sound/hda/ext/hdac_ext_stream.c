@@ -49,6 +49,20 @@ void snd_hdac_ext_stream_init(struct hdac_ext_bus *ebus,
 				AZX_PPLC_INTERVAL * idx;
 	}
 
+	if (ebus->spbcap) {
+		stream->spib_addr = ebus->spbcap + AZX_SPB_BASE +
+					AZX_SPB_INTERVAL * idx +
+					AZX_SPB_SPIB;
+
+		stream->fifo_addr = ebus->spbcap + AZX_SPB_BASE +
+					AZX_SPB_INTERVAL * idx +
+					AZX_SPB_MAXFIFO;
+	}
+
+	if (ebus->drsmcap)
+		stream->dpibr_addr = ebus->drsmcap + AZX_DRSM_BASE +
+					AZX_DRSM_INTERVAL * idx;
+
 	stream->decoupled = false;
 	snd_hdac_stream_init(bus, &stream->hstream, idx, direction, tag);
 }
@@ -97,6 +111,7 @@ void snd_hdac_stream_free_all(struct hdac_ext_bus *ebus)
 	while (!list_empty(&bus->stream_list)) {
 		s = list_first_entry(&bus->stream_list, struct hdac_stream, list);
 		stream = stream_to_hdac_ext_stream(s);
+		snd_hdac_ext_stream_decouple(ebus, stream, false);
 		list_del(&s->list);
 		kfree(stream);
 	}
@@ -217,7 +232,7 @@ EXPORT_SYMBOL_GPL(snd_hdac_ext_link_stream_setup);
 void snd_hdac_ext_link_set_stream_id(struct hdac_ext_link *link,
 				 int stream)
 {
-	snd_hdac_updatew(link->ml_addr, AZX_REG_ML_LOSIDV, (1 << stream), 0);
+	snd_hdac_updatew(link->ml_addr, AZX_REG_ML_LOSIDV, (1 << stream), 1 << stream);
 }
 EXPORT_SYMBOL_GPL(snd_hdac_ext_link_set_stream_id);
 
@@ -281,16 +296,11 @@ hdac_ext_host_stream_assign(struct hdac_ext_bus *ebus,
 	struct hdac_ext_stream *res = NULL;
 	struct hdac_stream *stream = NULL;
 	struct hdac_bus *hbus = &ebus->bus;
-	int key;
 
 	if (!ebus->ppcap) {
 		dev_err(hbus->dev, "stream type not supported\n");
 		return NULL;
 	}
-
-	/* make a non-zero unique key for the substream */
-	key = (substream->pcm->device << 16) | (substream->number << 2) |
-			(substream->stream + 1);
 
 	list_for_each_entry(stream, &hbus->stream_list, list) {
 		struct hdac_ext_stream *hstream = container_of(stream,
@@ -299,7 +309,7 @@ hdac_ext_host_stream_assign(struct hdac_ext_bus *ebus,
 		if (stream->direction != substream->stream)
 			continue;
 
-		if (stream->opened) {
+		if (!stream->opened) {
 			if (!hstream->decoupled)
 				snd_hdac_ext_stream_decouple(ebus, hstream, true);
 			res = hstream;
@@ -310,7 +320,6 @@ hdac_ext_host_stream_assign(struct hdac_ext_bus *ebus,
 		spin_lock_irq(&hbus->reg_lock);
 		res->hstream.opened = 1;
 		res->hstream.running = 0;
-		res->hstream.assigned_key = key;
 		res->hstream.substream = substream;
 		spin_unlock_irq(&hbus->reg_lock);
 	}
@@ -381,14 +390,13 @@ void snd_hdac_ext_stream_release(struct hdac_ext_stream *stream, int type)
 		break;
 
 	case HDAC_EXT_STREAM_TYPE_HOST:
-		if (stream->decoupled) {
+		if (stream->decoupled && !stream->link_locked)
 			snd_hdac_ext_stream_decouple(ebus, stream, false);
-			snd_hdac_stream_release(&stream->hstream);
-		}
+		snd_hdac_stream_release(&stream->hstream);
 		break;
 
 	case HDAC_EXT_STREAM_TYPE_LINK:
-		if (stream->decoupled)
+		if (stream->decoupled && !stream->hstream.opened)
 			snd_hdac_ext_stream_decouple(ebus, stream, false);
 		spin_lock_irq(&bus->reg_lock);
 		stream->link_locked = 0;
@@ -423,7 +431,7 @@ void snd_hdac_ext_stream_spbcap_enable(struct hdac_ext_bus *ebus,
 
 	mask |= (1 << index);
 
-	register_mask = snd_hdac_chip_readl(bus, SPB_SPBFCCTL);
+	register_mask = readl(ebus->spbcap + AZX_REG_SPB_SPBFCCTL);
 
 	mask |= register_mask;
 
@@ -433,6 +441,50 @@ void snd_hdac_ext_stream_spbcap_enable(struct hdac_ext_bus *ebus,
 		snd_hdac_updatel(ebus->spbcap, AZX_REG_SPB_SPBFCCTL, mask, 0);
 }
 EXPORT_SYMBOL_GPL(snd_hdac_ext_stream_spbcap_enable);
+
+/**
+ * snd_hdac_ext_stream_set_spib - sets the spib value of a stream
+ * @ebus: HD-audio ext core bus
+ * @stream: hdac_ext_stream
+ * @value: spib value to set
+ */
+int snd_hdac_ext_stream_set_spib(struct hdac_ext_bus *ebus,
+				 struct hdac_ext_stream *stream, u32 value)
+{
+	struct hdac_bus *bus = &ebus->bus;
+
+	if (!ebus->spbcap) {
+		dev_err(bus->dev, "Address of SPB capability is NULL");
+		return -EINVAL;
+	}
+
+	writel(value, stream->spib_addr);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(snd_hdac_ext_stream_set_spib);
+
+/**
+ * snd_hdac_ext_stream_get_spbmaxfifo - gets the spib value of a stream
+ * @ebus: HD-audio ext core bus
+ * @stream: hdac_ext_stream
+ *
+ * Return maxfifo for the stream
+ */
+int snd_hdac_ext_stream_get_spbmaxfifo(struct hdac_ext_bus *ebus,
+				 struct hdac_ext_stream *stream)
+{
+	struct hdac_bus *bus = &ebus->bus;
+
+	if (!ebus->spbcap) {
+		dev_err(bus->dev, "Address of SPB capability is NULL");
+		return -EINVAL;
+	}
+
+	return readl(stream->fifo_addr);
+}
+EXPORT_SYMBOL_GPL(snd_hdac_ext_stream_get_spbmaxfifo);
+
 
 /**
  * snd_hdac_ext_stop_streams - stop all stream if running
@@ -450,3 +502,70 @@ void snd_hdac_ext_stop_streams(struct hdac_ext_bus *ebus)
 	}
 }
 EXPORT_SYMBOL_GPL(snd_hdac_ext_stop_streams);
+
+/**
+ * snd_hdac_ext_stream_drsm_enable - enable DMA resume for a stream
+ * @ebus: HD-audio ext core bus
+ * @enable: flag to enable/disable DRSM
+ * @index: stream index for which DRSM need to be enabled
+ */
+void snd_hdac_ext_stream_drsm_enable(struct hdac_ext_bus *ebus,
+				bool enable, int index)
+{
+	u32 mask = 0;
+	u32 register_mask = 0;
+	struct hdac_bus *bus = &ebus->bus;
+
+	if (!ebus->drsmcap) {
+		dev_err(bus->dev, "Address of DRSM capability is NULL");
+		return;
+	}
+
+	mask |= (1 << index);
+
+	register_mask = readl(ebus->drsmcap + AZX_REG_SPB_SPBFCCTL);
+
+	mask |= register_mask;
+
+	if (enable)
+		snd_hdac_updatel(ebus->drsmcap, AZX_REG_DRSM_CTL, 0, mask);
+	else
+		snd_hdac_updatel(ebus->drsmcap, AZX_REG_DRSM_CTL, mask, 0);
+}
+EXPORT_SYMBOL_GPL(snd_hdac_ext_stream_drsm_enable);
+
+/**
+ * snd_hdac_ext_stream_set_dpibr - sets the dpibr value of a stream
+ * @ebus: HD-audio ext core bus
+ * @stream: hdac_ext_stream
+ * @value: dpib value to set
+ */
+int snd_hdac_ext_stream_set_dpibr(struct hdac_ext_bus *ebus,
+				 struct hdac_ext_stream *stream, u32 value)
+{
+	struct hdac_bus *bus = &ebus->bus;
+
+	if (!ebus->drsmcap) {
+		dev_err(bus->dev, "Address of DRSM capability is NULL");
+		return -EINVAL;
+	}
+
+	writel(value, stream->dpibr_addr);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(snd_hdac_ext_stream_set_dpibr);
+
+/**
+ * snd_hdac_ext_stream_set_lpib - sets the lpib value of a stream
+ * @ebus: HD-audio ext core bus
+ * @stream: hdac_ext_stream
+ * @value: lpib value to set
+ */
+int snd_hdac_ext_stream_set_lpib(struct hdac_ext_stream *stream, u32 value)
+{
+	snd_hdac_stream_writel(&stream->hstream, SD_LPIB, value);
+
+	return 0;
+}
+EXPORT_SYMBOL_GPL(snd_hdac_ext_stream_set_lpib);

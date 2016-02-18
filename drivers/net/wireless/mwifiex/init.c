@@ -52,6 +52,18 @@ static int mwifiex_add_bss_prio_tbl(struct mwifiex_private *priv)
 	return 0;
 }
 
+static void wakeup_timer_fn(unsigned long data)
+{
+	struct mwifiex_adapter *adapter = (struct mwifiex_adapter *)data;
+
+	mwifiex_dbg(adapter, ERROR, "Firmware wakeup failed\n");
+	adapter->hw_status = MWIFIEX_HW_STATUS_RESET;
+	mwifiex_cancel_all_pending_cmd(adapter);
+
+	if (adapter->if_ops.card_reset)
+		adapter->if_ops.card_reset(adapter);
+}
+
 /*
  * This function initializes the private structure and sets default
  * values to the members.
@@ -157,8 +169,9 @@ static int mwifiex_allocate_adapter(struct mwifiex_adapter *adapter)
 	/* Allocate command buffer */
 	ret = mwifiex_alloc_cmd_buffer(adapter);
 	if (ret) {
-		dev_err(adapter->dev, "%s: failed to alloc cmd buffer\n",
-			__func__);
+		mwifiex_dbg(adapter, ERROR,
+			    "%s: failed to alloc cmd buffer\n",
+			    __func__);
 		return -1;
 	}
 
@@ -167,8 +180,9 @@ static int mwifiex_allocate_adapter(struct mwifiex_adapter *adapter)
 			      + INTF_HEADER_LEN);
 
 	if (!adapter->sleep_cfm) {
-		dev_err(adapter->dev, "%s: failed to alloc sleep cfm"
-			" cmd buffer\n", __func__);
+		mwifiex_dbg(adapter, ERROR,
+			    "%s: failed to alloc sleep cfm\t"
+			    "cmd buffer\n", __func__);
 		return -1;
 	}
 	skb_reserve(adapter->sleep_cfm, INTF_HEADER_LEN);
@@ -285,6 +299,9 @@ static void mwifiex_init_adapter(struct mwifiex_adapter *adapter)
 	adapter->mfg_mode = mfg_mode;
 	adapter->key_api_major_ver = 0;
 	adapter->key_api_minor_ver = 0;
+
+	setup_timer(&adapter->wakeup_timer, wakeup_timer_fn,
+		    (unsigned long)adapter);
 }
 
 /*
@@ -390,13 +407,17 @@ mwifiex_adapter_cleanup(struct mwifiex_adapter *adapter)
 		return;
 	}
 
+	del_timer(&adapter->wakeup_timer);
 	mwifiex_cancel_all_pending_cmd(adapter);
+	wake_up_interruptible(&adapter->cmd_wait_q.wait);
+	wake_up_interruptible(&adapter->hs_activate_wait_q);
 
 	/* Free lock variables */
 	mwifiex_free_lock_list(adapter);
 
 	/* Free command buffer */
-	dev_dbg(adapter->dev, "info: free cmd buffer\n");
+	mwifiex_dbg(adapter, INFO,
+		    "info: free cmd buffer\n");
 	mwifiex_free_cmd_buffer(adapter);
 
 	for (idx = 0; idx < adapter->num_mem_types; idx++) {
@@ -452,6 +473,7 @@ int mwifiex_init_lock_list(struct mwifiex_adapter *adapter)
 
 	skb_queue_head_init(&adapter->usb_rx_data_q);
 	skb_queue_head_init(&adapter->rx_data_q);
+	skb_queue_head_init(&adapter->tx_data_q);
 
 	for (i = 0; i < adapter->priv_num; ++i) {
 		INIT_LIST_HEAD(&adapter->bss_prio_tbl[i].bss_prio_head);
@@ -569,10 +591,12 @@ static void mwifiex_delete_bss_prio_tbl(struct mwifiex_private *priv)
 	for (i = 0; i < adapter->priv_num; ++i) {
 		head = &adapter->bss_prio_tbl[i].bss_prio_head;
 		lock = &adapter->bss_prio_tbl[i].bss_prio_lock;
-		dev_dbg(adapter->dev, "info: delete BSS priority table,"
-				" bss_type = %d, bss_num = %d, i = %d,"
-				" head = %p\n",
-			      priv->bss_type, priv->bss_num, i, head);
+		mwifiex_dbg(adapter, INFO,
+			    "info: delete BSS priority table,\t"
+			    "bss_type = %d, bss_num = %d,\t"
+			    "i = %d, head = %p\n",
+			    priv->bss_type, priv->bss_num, i,
+			    head);
 
 		{
 			spin_lock_irqsave(lock, flags);
@@ -583,9 +607,10 @@ static void mwifiex_delete_bss_prio_tbl(struct mwifiex_private *priv)
 			list_for_each_entry_safe(bssprio_node, tmp_node, head,
 						 list) {
 				if (bssprio_node->priv == priv) {
-					dev_dbg(adapter->dev, "info: Delete "
-						"node %p, next = %p\n",
-						bssprio_node, tmp_node);
+					mwifiex_dbg(adapter, INFO,
+						    "info: Delete\t"
+						    "node %p, next = %p\n",
+						    bssprio_node, tmp_node);
 					list_del(&bssprio_node->list);
 					kfree(bssprio_node);
 				}
@@ -633,20 +658,23 @@ mwifiex_shutdown_drv(struct mwifiex_adapter *adapter)
 	adapter->hw_status = MWIFIEX_HW_STATUS_CLOSING;
 	/* wait for mwifiex_process to complete */
 	if (adapter->mwifiex_processing) {
-		dev_warn(adapter->dev, "main process is still running\n");
+		mwifiex_dbg(adapter, WARN,
+			    "main process is still running\n");
 		return ret;
 	}
 
 	/* cancel current command */
 	if (adapter->curr_cmd) {
-		dev_warn(adapter->dev, "curr_cmd is still in processing\n");
+		mwifiex_dbg(adapter, WARN,
+			    "curr_cmd is still in processing\n");
 		del_timer_sync(&adapter->cmd_timer);
 		mwifiex_recycle_cmd_node(adapter, adapter->curr_cmd);
 		adapter->curr_cmd = NULL;
 	}
 
 	/* shut down mwifiex */
-	dev_dbg(adapter->dev, "info: shutdown mwifiex...\n");
+	mwifiex_dbg(adapter, INFO,
+		    "info: shutdown mwifiex...\n");
 
 	/* Clean up Tx/Rx queues and delete BSS priority table */
 	for (i = 0; i < adapter->priv_num; i++) {
@@ -657,6 +685,10 @@ mwifiex_shutdown_drv(struct mwifiex_adapter *adapter)
 			mwifiex_delete_bss_prio_tbl(priv);
 		}
 	}
+
+	atomic_set(&adapter->tx_queued, 0);
+	while ((skb = skb_dequeue(&adapter->tx_data_q)))
+		mwifiex_write_data_complete(adapter, skb, 0, 0);
 
 	spin_lock_irqsave(&adapter->rx_proc_lock, flags);
 
@@ -717,22 +749,30 @@ int mwifiex_dnld_fw(struct mwifiex_adapter *adapter,
 	u32 poll_num = 1;
 
 	if (adapter->if_ops.check_fw_status) {
-		adapter->winner = 0;
-
 		/* check if firmware is already running */
 		ret = adapter->if_ops.check_fw_status(adapter, poll_num);
 		if (!ret) {
-			dev_notice(adapter->dev,
-				   "WLAN FW already running! Skip FW dnld\n");
+			mwifiex_dbg(adapter, MSG,
+				    "WLAN FW already running! Skip FW dnld\n");
 			return 0;
 		}
+	}
+
+	/* check if we are the winner for downloading FW */
+	if (adapter->if_ops.check_winner_status) {
+		adapter->winner = 0;
+		ret = adapter->if_ops.check_winner_status(adapter);
 
 		poll_num = MAX_FIRMWARE_POLL_TRIES;
+		if (ret) {
+			mwifiex_dbg(adapter, MSG,
+				    "WLAN read winner status failed!\n");
+			return ret;
+		}
 
-		/* check if we are the winner for downloading FW */
 		if (!adapter->winner) {
 			dev_notice(adapter->dev,
-				   "FW already running! Skip FW dnld\n");
+				   "WLAN is not the winner! Skip FW dnld\n");
 			goto poll_fw;
 		}
 	}
@@ -741,7 +781,8 @@ int mwifiex_dnld_fw(struct mwifiex_adapter *adapter,
 		/* Download firmware with helper */
 		ret = adapter->if_ops.prog_fw(adapter, pmfw);
 		if (ret) {
-			dev_err(adapter->dev, "prog_fw failed ret=%#x\n", ret);
+			mwifiex_dbg(adapter, ERROR,
+				    "prog_fw failed ret=%#x\n", ret);
 			return ret;
 		}
 	}
@@ -750,7 +791,8 @@ poll_fw:
 	/* Check if the firmware is downloaded successfully or not */
 	ret = adapter->if_ops.check_fw_status(adapter, poll_num);
 	if (ret)
-		dev_err(adapter->dev, "FW failed to be active in time\n");
+		mwifiex_dbg(adapter, ERROR,
+			    "FW failed to be active in time\n");
 
 	return ret;
 }

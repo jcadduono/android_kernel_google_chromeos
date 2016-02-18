@@ -18,7 +18,7 @@
 
 / {
 	compatible = "nvidia,tegra210";
-	interrupt-parent = <&gic>;
+	interrupt-parent = <&lic>;
 	#address-cells = <2>;
 	#size-cells = <2>;
 
@@ -74,7 +74,7 @@
 		};
 
 		dc@54200000 {
-			compatible = "nvidia,tegra124-dc";
+			compatible = "nvidia,tegra210-dc";
 			reg = <0x0 0x54200000 0x0 0x00040000>;
                         reg-names = "dc";
 			interrupts = <GIC_SPI 73 IRQ_TYPE_LEVEL_HIGH>;
@@ -267,6 +267,7 @@
 		compatible = "arm,gic-400";
 		#interrupt-cells = <3>;
 		interrupt-controller;
+		interrupt-parent = <&gic>;
 		reg = <0x0 0x50041000 0x0 0x1000>,
 		      <0x0 0x50042000 0x0 0x2000>,
 		      <0x0 0x50044000 0x0 0x1000>,
@@ -291,7 +292,9 @@
 
 	lic: interrupt-controller@60004000 {
 		compatible = "nvidia,tegra210-ictlr", "nvidia,tegra30-ictlr";
+		#interrupt-cells = <3>;
 		interrupt-controller;
+		interrupt-parent = <&gic>;
 		reg = <0x0 0x60004000 0x0 0x40>, /* primary controller */
 		      <0x0 0x60004100 0x0 0x40>, /* secondary controller */
 		      <0x0 0x60004200 0x0 0x40>, /* tertiary controller */
@@ -1312,15 +1315,17 @@
 		interrupts = <GIC_SPI 53 IRQ_TYPE_LEVEL_HIGH>;
 		#address-cells = <1>;
 		#size-cells = <0>;
-		clocks = <&tegra_car TEGRA210_CLK_I2C5>;
-		clock-names = "div-clk";
+		clocks = <&tegra_car TEGRA210_CLK_I2C5>,
+			 <&tegra_car TEGRA210_CLK_DFLL_REF>,
+			 <&tegra_car TEGRA210_CLK_DFLL_SOC>;
+		clock-names = "div-clk", "cl_dvfs_ref", "cl_dvfs_soc";
 		resets = <&tegra_car 47>;
 		reset-names = "i2c";
 		dmas = <&apbdma 24>, <&apbdma 24>;
 		dma-names = "rx", "tx";
 		nvidia,controller-id = <4>;
-		scl-gpio = <&gpio 195 0>;
-		sda-gpio = <&gpio 196 0>;
+		nvidia,scl-gpio = <&gpio 195 0>;
+		nvidia,sda-gpio = <&gpio 196 0>;
 		nvidia,require-cldvfs-clock;
 		status = "disabled";
 		clock-frequency = <400000>;
@@ -1691,7 +1696,7 @@
 		};
 
 		idle-states {
-			enable-method = "arm,psci";
+			entry-method = "psci";
 
 			C7: c7 {
 				compatible = "arm,idle-state";
@@ -1723,6 +1728,7 @@
 				(GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>,
 			     <GIC_PPI 10
 				(GIC_CPU_MASK_SIMPLE(4) | IRQ_TYPE_LEVEL_LOW)>;
+		interrupt-parent = <&gic>;
 		status = "okay";
 	};
 

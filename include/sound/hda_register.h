@@ -89,6 +89,10 @@ enum { SDI0, SDI1, SDI2, SDI3, SDO0, SDO1, SDO2, SDO3 };
 #define AZX_REG_SD_BDLPL		0x18
 #define AZX_REG_SD_BDLPU		0x1c
 
+/* Haswell/Broadwell display HD-A controller Extended Mode registers */
+#define AZX_REG_HSW_EM4			0x100c
+#define AZX_REG_HSW_EM5			0x1010
+
 /* PCI space */
 #define AZX_PCIREG_TCSEL		0x44
 
@@ -156,6 +160,10 @@ enum { SDI0, SDI1, SDI2, SDI3, SDO0, SDO1, SDO2, SDO3 };
 #define AZX_SPB_BASE			0x08
 /* Interval used to calculate the iterating register offset */
 #define AZX_SPB_INTERVAL		0x08
+/* SPIB base */
+#define AZX_SPB_SPIB			0x00
+/* SPIB MAXFIFO base*/
+#define AZX_SPB_MAXFIFO			0x04
 
 /* registers of Global Time Synchronization Capability Structure */
 #define AZX_GTS_CAP_ID			0x1
@@ -221,6 +229,15 @@ enum { SDI0, SDI1, SDI2, SDI3, SDO0, SDO1, SDO2, SDO3 };
 
 #define AZX_MLCTL_SPA			(1<<16)
 #define AZX_MLCTL_CPA			23
+
+
+/* registers for DMA Resume Capability Structure */
+#define AZX_DRSM_CAP_ID			0x5
+#define AZX_REG_DRSM_CTL		0x4
+/* Base used to calculate the iterating register offset */
+#define AZX_DRSM_BASE			0x08
+/* Interval used to calculate the iterating register offset */
+#define AZX_DRSM_INTERVAL		0x08
 
 /*
  * helpers to read the stream position

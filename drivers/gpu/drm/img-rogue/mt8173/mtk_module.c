@@ -1,6 +1,6 @@
 /*************************************************************************/ /*!
 @File
-@Title          MT8173 module setup
+@Title          MT8173 DRM module setup
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
 @License        Dual MIT/GPLv2
 
@@ -60,8 +60,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  * DRVNAME is the name we use to register our driver.
  * DEVNAME is the name we use to register actual device nodes.
  */
-#define	DRVNAME		PVR_LDM_DRIVER_REGISTRATION_NAME
-#define DEVNAME		PVRSRV_MODNAME
+#define DRVNAME  PVR_LDM_DRIVER_REGISTRATION_NAME
+#define DEVNAME  PVRSRV_MODNAME
 
 /*
  * This is all module configuration stuff required by the linux kernel.
@@ -95,8 +95,6 @@ static struct platform_driver powervr_driver = {
 	.shutdown	= PVRSRVDriverShutdown,
 };
 
-static IMG_BOOL bCalledSysInit = IMG_FALSE;
-
 /*!
 ******************************************************************************
 
@@ -114,15 +112,17 @@ static IMG_BOOL bCalledSysInit = IMG_FALSE;
 int PVRSRVSystemInit(struct drm_device *pDrmDevice)
 {
 	struct platform_device *pDevice = pDrmDevice->platformdev;
+	PVRSRV_ERROR err;
 
-	PVR_TRACE(("PVRSRVSystemInit (pDevice=%p)", pDevice));
+	PVR_TRACE(("%s (pDevice=%p)", __func__, pDevice));
 
-	/* PVRSRVInit is only designed to be called once */
-	if (bCalledSysInit == IMG_FALSE) {
-		gpsPVRLDMDev = pDevice;
-		bCalledSysInit = IMG_TRUE;
+	gpsPVRLDMDev = pDevice;
 
-		if (PVRSRVInit(pDevice) != PVRSRV_OK)
+	err = PVRSRVInit(pDevice);
+	if (err) {
+		if (err == PVRSRV_ERROR_PROBE_DEFER)
+			return -EPROBE_DEFER;
+		else
 			return -ENODEV;
 	}
 
@@ -144,7 +144,7 @@ int PVRSRVSystemInit(struct drm_device *pDrmDevice)
 *****************************************************************************/
 void PVRSRVSystemDeInit(struct platform_device *pDevice)
 {
-	PVR_TRACE(("PVRSRVSystemDeInit"));
+	PVR_TRACE(("%s (pDevice=%p)", __func__, pDevice));
 	PVRSRVDeInit(pDevice);
 }
 
@@ -164,9 +164,9 @@ void PVRSRVSystemDeInit(struct platform_device *pDevice)
 *****************************************************************************/
 static int PVRSRVDriverProbe(struct platform_device *pDevice)
 {
-	int result = 0;
+	int result;
 
-	PVR_TRACE(("PVRSRVDriverProbe (pDevice=%p)", pDevice));
+	PVR_TRACE(("%s (pDevice=%p)", __func__, pDevice));
 
 	if (OSStringCompare(pDevice->name, DEVNAME) != 0) {
 		result = MTKMFGBaseInit(&pDevice->dev);
@@ -175,6 +175,8 @@ static int PVRSRVDriverProbe(struct platform_device *pDevice)
 	}
 
 	result = drm_platform_init(&sPVRDRMDriver, pDevice);
+
+	dma_set_mask(&pDevice->dev, DMA_BIT_MASK(33));
 
 	if (result == 0)
 		PVRSRVDeviceInit();
@@ -200,7 +202,7 @@ static int PVRSRVDriverProbe(struct platform_device *pDevice)
 *****************************************************************************/
 static int PVRSRVDriverRemove(struct platform_device *pDevice)
 {
-	PVR_TRACE(("PVRSRVDriverRemove (pDevice=%p)", pDevice));
+	PVR_TRACE(("%s (pDevice=%p)", __func__, pDevice));
 
 	PVRSRVDeviceDeinit();
 	MTKMFGBaseDeInit(&pDevice->dev);
@@ -228,9 +230,8 @@ static int PVRSRVDriverRemove(struct platform_device *pDevice)
 *****************************************************************************/
 int PVRSRVOpen(struct drm_device unref__ *dev, struct drm_file *pDRMFile)
 {
-	int err;
-
 	struct file *pFile = PVR_FILE_FROM_DRM_FILE(pDRMFile);
+	int err;
 
 	if (!try_module_get(THIS_MODULE)) {
 		PVR_DPF((PVR_DBG_ERROR, "Failed to get module"));
@@ -296,7 +297,7 @@ static int __init PVRCore_Init(void)
 {
 	int error = 0;
 
-	PVR_TRACE(("PVRCore_Init"));
+	PVR_TRACE(("%s", __func__));
 
 #if defined(PDUMP)
 	error = dbgdrv_init();
@@ -310,8 +311,9 @@ static int __init PVRCore_Init(void)
 
 	error = platform_driver_register(&powervr_driver);
 	if (error != 0) {
-		PVR_DPF((PVR_DBG_ERROR, "PVRCore_Init: unable to register platform driver (%d)",
-				error));
+		PVR_DPF((PVR_DBG_ERROR,
+		         "%s: unable to register platform driver (err=%d)",
+		         __func__, error));
 		return error;
 	}
 
@@ -340,7 +342,7 @@ static int __init PVRCore_Init(void)
 *****************************************************************************/
 static void __exit PVRCore_Cleanup(void)
 {
-	PVR_TRACE(("PVRCore_Cleanup"));
+	PVR_TRACE(("%s", __func__));
 
 	platform_driver_unregister(&powervr_driver);
 
@@ -349,7 +351,7 @@ static void __exit PVRCore_Cleanup(void)
 #if defined(PDUMP)
 	dbgdrv_cleanup();
 #endif
-	PVR_TRACE(("PVRCore_Cleanup: unloading"));
+	PVR_TRACE(("%s: unloaded", __func__));
 }
 
 /*

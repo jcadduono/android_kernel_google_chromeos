@@ -514,7 +514,7 @@ static void pllcx_check_defaults(struct tegra_clk_pll_params *params)
 			PLLCX_MISC3_WRITE_MASK);
 }
 
-void tegra210_pllcx_set_defaults(struct tegra_clk_pll *pllcx)
+static void tegra210_pllcx_set_defaults(struct tegra_clk_pll *pllcx)
 {
 	pllcx->params->defaults_set = true;
 
@@ -544,7 +544,7 @@ void tegra210_pllcx_set_defaults(struct tegra_clk_pll *pllcx)
  * PLL with dynamic ramp and fractional SDM. Dynamic ramp is not used.
  * Fractional SDM is allowed to provide exact audio rates.
  */
-void tegra210_plla_set_defaults(struct tegra_clk_pll *plla)
+static void tegra210_plla_set_defaults(struct tegra_clk_pll *plla)
 {
 	u32 mask;
 	u32 val = readl_relaxed(clk_base + plla->params->base_reg);
@@ -597,7 +597,7 @@ void tegra210_plla_set_defaults(struct tegra_clk_pll *plla)
  * PLLD
  * PLL with fractional SDM.
  */
-void tegra210_plld_set_defaults(struct tegra_clk_pll *plld)
+static void tegra210_plld_set_defaults(struct tegra_clk_pll *plld)
 {
 	u32 val;
 	u32 mask = 0xffff;
@@ -737,7 +737,7 @@ static void plldss_defaults(struct tegra_clk_pll *plldss,
 	udelay(1);
 }
 
-void tegra210_plld2_set_defaults(struct tegra_clk_pll *plld2)
+static void tegra210_plld2_set_defaults(struct tegra_clk_pll *plld2)
 {
 	plldss_defaults(plld2, PLLD2_MISC0_DEFAULT_VALUE,
 			PLLD2_MISC1_CFG_DEFAULT_VALUE,
@@ -745,7 +745,7 @@ void tegra210_plld2_set_defaults(struct tegra_clk_pll *plld2)
 			PLLD2_MISC3_CTRL2_DEFAULT_VALUE);
 }
 
-void tegra210_plldp_set_defaults(struct tegra_clk_pll *plldp)
+static void tegra210_plldp_set_defaults(struct tegra_clk_pll *plldp)
 {
 	plldss_defaults(plldp, PLLDP_MISC0_DEFAULT_VALUE,
 			PLLDP_MISC1_CFG_DEFAULT_VALUE,
@@ -758,7 +758,7 @@ void tegra210_plldp_set_defaults(struct tegra_clk_pll *plldp)
  * Base and misc0 layout is the same as PLLD2/PLLDP, but no SDM/SSC support.
  * VCO is exposed to the clock tree via fixed 1/3 and 1/5 dividers.
  */
-void tegra210_pllc4_set_defaults(struct tegra_clk_pll *pllc4)
+static void tegra210_pllc4_set_defaults(struct tegra_clk_pll *pllc4)
 {
 	plldss_defaults(pllc4, PLLC4_MISC0_DEFAULT_VALUE, 0, 0, 0);
 }
@@ -767,7 +767,7 @@ void tegra210_pllc4_set_defaults(struct tegra_clk_pll *pllc4)
  * PLLRE
  * VCO is exposed to the clock tree directly along with post-divider output
  */
-void tegra210_pllre_set_defaults(struct tegra_clk_pll *pllre)
+static void tegra210_pllre_set_defaults(struct tegra_clk_pll *pllre)
 {
 	u32 mask;
 	u32 val = readl_relaxed(clk_base + pllre->params->base_reg);
@@ -881,7 +881,7 @@ static void pllx_check_defaults(struct tegra_clk_pll *pll)
 			PLLX_MISC5_WRITE_MASK);
 }
 
-void tegra210_pllx_set_defaults(struct tegra_clk_pll *pllx)
+static void tegra210_pllx_set_defaults(struct tegra_clk_pll *pllx)
 {
 	u32 val;
 	u32 step_a, step_b;
@@ -942,7 +942,7 @@ void tegra210_pllx_set_defaults(struct tegra_clk_pll *pllx)
 }
 
 /* PLLMB */
-void tegra210_pllmb_set_defaults(struct tegra_clk_pll *pllmb)
+static void tegra210_pllmb_set_defaults(struct tegra_clk_pll *pllmb)
 {
 	u32 mask, val = readl_relaxed(clk_base + pllmb->params->base_reg);
 
@@ -1002,7 +1002,7 @@ static void pllp_check_defaults(struct tegra_clk_pll *pll, bool enabled)
 			~mask & PLLP_MISC1_WRITE_MASK);
 }
 
-void tegra210_pllp_set_defaults(struct tegra_clk_pll *pllp)
+static void tegra210_pllp_set_defaults(struct tegra_clk_pll *pllp)
 {
 	u32 mask;
 	u32 val = readl_relaxed(clk_base + pllp->params->base_reg);
@@ -1065,7 +1065,7 @@ static void pllu_check_defaults(struct tegra_clk_pll *pll, bool hw_control)
 			~mask & PLLU_MISC1_WRITE_MASK);
 }
 
-void tegra210_pllu_set_defaults(struct tegra_clk_pll *pllu)
+static void tegra210_pllu_set_defaults(struct tegra_clk_pll *pllu)
 {
 	u32 val = readl_relaxed(clk_base + pllu->params->base_reg);
 
@@ -1272,8 +1272,9 @@ static void tegra210_clk_pll_set_gain(struct tegra_clk_pll_freq_table *cfg)
 	cfg->m *= PLL_SDM_COEFF;
 }
 
-unsigned long tegra210_clk_adjust_vco_min(struct tegra_clk_pll_params *params,
-					  unsigned long parent_rate)
+static unsigned long
+tegra210_clk_adjust_vco_min(struct tegra_clk_pll_params *params,
+			    unsigned long parent_rate)
 {
 	unsigned long vco_min = params->vco_min;
 
@@ -1625,7 +1626,7 @@ static struct tegra_clk_pll_params pll_m_params = {
 	.iddq_bit_idx = PLLM_IDDQ_BIT,
 	.max_p = PLL_QLIN_PDIV_MAX,
 	.ext_misc_reg[0] = PLLM_MISC2,
-	.ext_misc_reg[0] = PLLM_MISC1,
+	.ext_misc_reg[1] = PLLM_MISC1,
 	.round_p_to_pdiv = pll_qlin_p_to_pdiv,
 	.pdiv_tohw = pll_qlin_pdiv_to_hw,
 	.div_nmp = &pllm_nmp,
@@ -2283,11 +2284,12 @@ static struct tegra_clk tegra210_clks[tegra_clk_max] __initdata = {
 	[tegra_clk_nvdec_emc] = { .dt_id = TEGRA210_CLK_NVDEC_EMC, .present = true },
 	[tegra_clk_tsec_emc] = { .dt_id = TEGRA210_CLK_TSEC_EMC, .present = true },
 	[tegra_clk_tsecb_emc] = { .dt_id = TEGRA210_CLK_TSECB_EMC, .present = true },
-	[tegra_clk_camera_emc] = { .dt_id = TEGRA210_CLK_CAMERA_EMC, .present = true },
 	[tegra_clk_via_emc] = { .dt_id = TEGRA210_CLK_VIA_EMC, .present = true },
 	[tegra_clk_vib_emc] = { .dt_id = TEGRA210_CLK_VIB_EMC, .present = true },
 	[tegra_clk_ispa_emc] = { .dt_id = TEGRA210_CLK_ISPA_EMC, .present = true },
 	[tegra_clk_ispb_emc] = { .dt_id = TEGRA210_CLK_ISPB_EMC, .present = true },
+	[tegra_clk_camera_emc] = { .dt_id = TEGRA210_CLK_CAMERA_EMC, .present = true },
+	[tegra_clk_camera_iso_emc] = { .dt_id = TEGRA210_CLK_CAMERA_ISO_EMC, .present = true },
 	[tegra_clk_iso_emc] = { .dt_id = TEGRA210_CLK_ISO_EMC, .present = true },
 	[tegra_clk_floor_emc] = { .dt_id = TEGRA210_CLK_FLOOR_EMC, .present = true },
 	[tegra_clk_override_emc] = { .dt_id = TEGRA210_CLK_OVERRIDE_EMC, .present = true },
@@ -2946,9 +2948,9 @@ static struct tegra_clk_init_table common_init_table[] __initdata = {
 	{TEGRA210_CLK_SDMMC4, TEGRA210_CLK_PLL_C4_OUT2, 200000000, 0},
 	{TEGRA210_CLK_SDMMC2, TEGRA210_CLK_PLL_P, 204000000, 0},
 	{TEGRA210_CLK_PLL_DP, TEGRA210_CLK_CLK_MAX, 270000000, 0},
-	{TEGRA210_CLK_CILAB, TEGRA210_CLK_PLL_P, 102000000, 1},
-	{TEGRA210_CLK_CILCD, TEGRA210_CLK_PLL_P, 102000000, 1},
-	{TEGRA210_CLK_CILE, TEGRA210_CLK_PLL_P, 102000000, 1},
+	{TEGRA210_CLK_CILAB, TEGRA210_CLK_PLL_P, 102000000, 0},
+	{TEGRA210_CLK_CILCD, TEGRA210_CLK_PLL_P, 102000000, 0},
+	{TEGRA210_CLK_CILE, TEGRA210_CLK_PLL_P, 102000000, 0},
 	{TEGRA210_CLK_I2CSLOW, TEGRA210_CLK_CLK_M, 1000000, 0},
 	{TEGRA210_CLK_VI_I2C, TEGRA210_CLK_PLL_P, 102000000, 0},
 	{TEGRA210_CLK_EXTERN3, TEGRA210_CLK_PLL_P, 24000000, 0},
@@ -2960,9 +2962,6 @@ static struct tegra_clk_init_table common_init_table[] __initdata = {
 	{TEGRA210_CLK_VI, TEGRA210_CLK_PLL_C, 0, 0},
 	{TEGRA210_CLK_ISP, TEGRA210_CLK_PLL_C, 0, 0},
 	{TEGRA210_CLK_ISPB, TEGRA210_CLK_PLL_C, 0, 0},
-	{TEGRA210_CLK_CSUS, TEGRA210_CLK_CLK_MAX, 0, 1},
-	{TEGRA210_CLK_CAMERA_SCLK, TEGRA210_CLK_CLK_MAX, 0, 1},
-	{TEGRA210_CLK_CSI, TEGRA210_CLK_CLK_MAX, 0, 1},
 	{TEGRA210_CLK_MC_CAPA, TEGRA210_CLK_CLK_MAX, 0, 1},
 	{TEGRA210_CLK_MC_CBPA, TEGRA210_CLK_CLK_MAX, 0, 1},
 	{TEGRA210_CLK_MC_CCPA, TEGRA210_CLK_CLK_MAX, 0, 1},

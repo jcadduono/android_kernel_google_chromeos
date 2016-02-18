@@ -183,6 +183,7 @@ struct mwifiex_ds_tx_ba_stream_tbl {
 #define DBG_CMD_NUM	5
 
 struct mwifiex_debug_info {
+	unsigned int debug_mask;
 	u32 int_counter;
 	u32 packets_out[MAX_NUM_TID];
 	u32 tx_buf_size;
@@ -260,6 +261,10 @@ struct mwifiex_ds_hs_cfg {
 	u32 gap;
 };
 
+struct mwifiex_ds_wakeup_reason {
+	u16  hs_wakeup_reason;
+};
+
 #define DEEP_SLEEP_ON  1
 #define DEEP_SLEEP_OFF 0
 #define DEEP_SLEEP_IDLE_TIME	100
@@ -333,6 +338,11 @@ struct mwifiex_ds_read_eeprom {
 	u8 value[MAX_EEPROM_DATA];
 };
 
+struct mwifiex_ds_mem_rw {
+	u32 addr;
+	u32 value;
+};
+
 #define IEEE_MAX_IE_SIZE		256
 
 #define MWIFIEX_IE_HDR_SIZE	(sizeof(struct mwifiex_ie) - IEEE_MAX_IE_SIZE)
@@ -398,6 +408,7 @@ struct mwifiex_ds_mef_cfg {
 #define MWIFIEX_VSIE_MASK_SCAN     0x01
 #define MWIFIEX_VSIE_MASK_ASSOC    0x02
 #define MWIFIEX_VSIE_MASK_ADHOC    0x04
+#define MWIFIEX_VSIE_MASK_BGSCAN   0x08
 
 enum {
 	MWIFIEX_FUNC_INIT = 1,

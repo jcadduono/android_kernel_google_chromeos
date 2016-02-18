@@ -24,6 +24,7 @@
 #include <linux/delay.h>
 #include <linux/uaccess.h>
 #include <linux/module.h>
+#include <linux/reboot.h>
 #include <linux/of.h>
 #include <linux/of_device.h>
 #include <linux/of_platform.h>
@@ -61,10 +62,6 @@ static struct resource thermal_resources[] = {
 };
 
 static const struct regmap_irq max77620_top_lbt_irqs[] = {
-	[MAX77620_IRQ_TOP_GLBL] = {
-		.mask = MAX77620_IRQ_TOP_GLBL_MASK,
-		.reg_offset = 0,
-	},
 	[MAX77620_IRQ_TOP_SD] = {
 		.mask = MAX77620_IRQ_TOP_SD_MASK,
 		.reg_offset = 0,
@@ -162,6 +159,12 @@ int max77620_top_lbt_irq_chip_pre_irq(void *data)
 	int ret = 0;
 
 	ret = max77620_reg_update(chip->dev, MAX77620_PWR_SLAVE,
+		MAX77620_REG_IRQTOPM, MAX77620_IRQ_TOP_GLBL_MASK,
+		MAX77620_IRQ_TOP_GLBL_MASK);
+	if (ret < 0)
+		dev_err(chip->dev, "IRQ_GLBLM masking failed: %d\n", ret);
+
+	ret = max77620_reg_update(chip->dev, MAX77620_PWR_SLAVE,
 		MAX77620_REG_INTENLBT, MAX77620_GLBLM_MASK,
 		MAX77620_GLBLM_MASK);
 	if (ret < 0)
@@ -174,6 +177,11 @@ int max77620_top_lbt_irq_chip_post_irq(void *data)
 {
 	struct max77620_chip *chip = data;
 	int ret = 0;
+
+	ret = max77620_reg_update(chip->dev, MAX77620_PWR_SLAVE,
+		MAX77620_REG_IRQTOPM, MAX77620_IRQ_TOP_GLBL_MASK, 0);
+	if (ret < 0)
+		dev_err(chip->dev, "IRQ_GLBLM unmasking failed: %d\n", ret);
 
 	ret = max77620_reg_update(chip->dev, MAX77620_PWR_SLAVE,
 		MAX77620_REG_INTENLBT, MAX77620_GLBLM_MASK, 0);
@@ -492,11 +500,60 @@ static int max77620_read_es_version(struct max77620_chip *chip)
 	return ret;
 }
 
+static int max77620_init_mbattlow(struct device *dev)
+{
+	unsigned int mask = 0, lbval = 0;
+	u32 val;
+	int ret;
+
+	if (!dev->of_node) {
+		dev_err(dev, "DT device is not found.\n");
+		return -ENODEV;
+	}
+
+	ret = of_property_read_u32(dev->of_node,
+				   "maxim,lb-threshold-vol", &val);
+	if (ret) {
+		dev_warn(dev, "No Low-Battery threshold setting.\n");
+		goto lbdac_en;
+	}
+
+	switch (val) {
+	case 2700: lbval = 0x0; break;
+	case 2800: lbval = 0x2; break;
+	case 2900: lbval = 0x4; break;
+	case 3000: lbval = 0x6; break;
+	case 3100: lbval = 0x8; break;
+	case 3200: lbval = 0xa; break;
+	case 3300: lbval = 0xc; break;
+	case 3400: lbval = 0xe; break;
+	default:
+		dev_warn(dev,
+			"Low-Battery threshold invalid, use default value.\n");
+		goto lbdac_en;
+	};
+
+	mask = MAX77620_CNFGGLBL1_LBDAC;
+
+lbdac_en:
+	lbval |= MAX77620_CNFGGLBL1_LBDAC_EN;
+	mask |= MAX77620_CNFGGLBL1_LBDAC_EN;
+
+	ret = max77620_reg_update(dev, MAX77620_PWR_SLAVE, MAX77620_REG_CNFGGLBL1,
+				  mask, lbval);
+	if (ret < 0)
+		dev_err(dev, "Reg CNFGGLBL1 update failed: %d\n", ret);
+
+	return ret;
+}
+
 static irqreturn_t max77620_mbattlow_irq(int irq, void *data)
 {
 	struct max77620_chip *max77620 = data;
 
 	dev_info(max77620->dev, "MBATTLOW interrupt occurred\n");
+
+	kernel_power_off();
 
 	return IRQ_HANDLED;
 }
@@ -603,6 +660,10 @@ static int max77620_probe(struct i2c_client *client,
 		goto fail_free_irq;
 	}
 
+	ret = max77620_init_mbattlow(&client->dev);
+	if (ret < 0)
+		dev_err(&client->dev,
+			"Monitor Low-Battery initialize failed, use default setting.\n");
 	chip->irq_mbattlow = max77620_irq_get_virq(chip->dev,
 					MAX77620_IRQ_LBT_MBATLOW);
 	if (chip->irq_mbattlow) {

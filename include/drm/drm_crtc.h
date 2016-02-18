@@ -409,9 +409,6 @@ struct drm_crtc_funcs {
  * @funcs: CRTC control functions
  * @gamma_size: size of gamma ramp
  * @gamma_store: gamma ramp values
- * @framedur_ns: precise frame timing
- * @linedur_ns: precise line timing
- * @pixeldur_ns: precise pixel timing
  * @helper_private: mid-layer private data
  * @properties: property tracking for this CRTC
  * @state: current atomic state for this CRTC
@@ -463,9 +460,6 @@ struct drm_crtc {
 	/* CRTC gamma size for reporting to userspace */
 	uint32_t gamma_size;
 	uint16_t *gamma_store;
-
-	/* Constants needed for precise vblank and swap timestamping. */
-	int framedur_ns, linedur_ns, pixeldur_ns;
 
 	/* if you are using the helper */
 	void *helper_private;
@@ -818,6 +812,7 @@ enum drm_plane_type {
  * @possible_crtcs: pipes this plane can be bound to
  * @format_types: array of formats supported by this plane
  * @format_count: number of formats supported
+ * @format_default: driver hasn't supplied supported formats for the plane
  * @crtc: currently bound CRTC
  * @fb: currently bound fb
  * @old_fb: Temporary tracking of the old fb while a modeset is ongoing. Used by
@@ -837,7 +832,8 @@ struct drm_plane {
 
 	uint32_t possible_crtcs;
 	uint32_t *format_types;
-	uint32_t format_count;
+	unsigned int format_count;
+	bool format_default;
 
 	struct drm_crtc *crtc;
 	struct drm_framebuffer *fb;
@@ -977,7 +973,7 @@ struct drm_mode_set {
 struct drm_mode_config_funcs {
 	struct drm_framebuffer *(*fb_create)(struct drm_device *dev,
 					     struct drm_file *file_priv,
-					     struct drm_mode_fb_cmd2 *mode_cmd);
+					     const struct drm_mode_fb_cmd2 *mode_cmd);
 	void (*output_poll_changed)(struct drm_device *dev);
 
 	int (*atomic_check)(struct drm_device *dev,
@@ -1166,11 +1162,13 @@ struct drm_prop_enum_list {
 	char *name;
 };
 
-extern int drm_crtc_init_with_planes(struct drm_device *dev,
-				     struct drm_crtc *crtc,
-				     struct drm_plane *primary,
-				     struct drm_plane *cursor,
-				     const struct drm_crtc_funcs *funcs);
+extern __printf(6, 7)
+int drm_crtc_init_with_planes(struct drm_device *dev,
+			      struct drm_crtc *crtc,
+			      struct drm_plane *primary,
+			      struct drm_plane *cursor,
+			      const struct drm_crtc_funcs *funcs,
+			      const char *name, ...);
 extern void drm_crtc_cleanup(struct drm_crtc *crtc);
 extern unsigned int drm_crtc_index(struct drm_crtc *crtc);
 
@@ -1216,10 +1214,11 @@ void drm_bridge_mode_set(struct drm_bridge *bridge,
 void drm_bridge_pre_enable(struct drm_bridge *bridge);
 void drm_bridge_enable(struct drm_bridge *bridge);
 
-extern int drm_encoder_init(struct drm_device *dev,
-			    struct drm_encoder *encoder,
-			    const struct drm_encoder_funcs *funcs,
-			    int encoder_type);
+extern __printf(5, 6)
+int drm_encoder_init(struct drm_device *dev,
+		     struct drm_encoder *encoder,
+		     const struct drm_encoder_funcs *funcs,
+		     int encoder_type, const char *name, ...);
 
 /**
  * drm_encoder_crtc_ok - can a given crtc drive a given encoder?
@@ -1234,23 +1233,27 @@ static inline bool drm_encoder_crtc_ok(struct drm_encoder *encoder,
 	return !!(encoder->possible_crtcs & drm_crtc_mask(crtc));
 }
 
-extern int drm_universal_plane_init(struct drm_device *dev,
-				    struct drm_plane *plane,
-				    unsigned long possible_crtcs,
-				    const struct drm_plane_funcs *funcs,
-				    const uint32_t *formats,
-				    uint32_t format_count,
-				    enum drm_plane_type type);
+extern __printf(8, 9)
+int drm_universal_plane_init(struct drm_device *dev,
+			     struct drm_plane *plane,
+			     unsigned long possible_crtcs,
+			     const struct drm_plane_funcs *funcs,
+			     const uint32_t *formats,
+			     unsigned int format_count,
+			     enum drm_plane_type type,
+			     const char *name, ...);
 extern int drm_plane_init(struct drm_device *dev,
 			  struct drm_plane *plane,
 			  unsigned long possible_crtcs,
 			  const struct drm_plane_funcs *funcs,
-			  const uint32_t *formats, uint32_t format_count,
+			  const uint32_t *formats, unsigned int format_count,
 			  bool is_primary);
 extern void drm_plane_cleanup(struct drm_plane *plane);
 extern unsigned int drm_plane_index(struct drm_plane *plane);
 extern struct drm_plane * drm_plane_from_index(struct drm_device *dev, int idx);
 extern void drm_plane_force_disable(struct drm_plane *plane);
+extern int drm_plane_check_pixel_format(const struct drm_plane *plane,
+					u32 format);
 extern void drm_crtc_get_hv_timing(const struct drm_display_mode *mode,
 				   int *hdisplay, int *vdisplay);
 extern int drm_crtc_check_viewport(const struct drm_crtc *crtc,

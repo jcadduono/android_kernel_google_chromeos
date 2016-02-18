@@ -392,7 +392,6 @@ static int devfreq_notifier_call(struct notifier_block *nb, unsigned long type,
 /**
  * _remove_devfreq() - Remove devfreq from the list and release its resources.
  * @devfreq:	the devfreq struct
- * @skip:	skip calling device_unregister().
  */
 static void _remove_devfreq(struct devfreq *devfreq)
 {
@@ -493,7 +492,7 @@ struct devfreq *devfreq_add_device(struct device *dev,
 	if (err) {
 		put_device(&devfreq->dev);
 		mutex_unlock(&devfreq->lock);
-		goto err_dev;
+		goto err_out;
 	}
 
 	mutex_unlock(&devfreq->lock);
@@ -519,7 +518,6 @@ struct devfreq *devfreq_add_device(struct device *dev,
 err_init:
 	list_del(&devfreq->node);
 	device_unregister(&devfreq->dev);
-err_dev:
 	kfree(devfreq);
 err_out:
 	return ERR_PTR(err);
@@ -796,8 +794,10 @@ static ssize_t governor_store(struct device *dev, struct device_attribute *attr,
 		ret = PTR_ERR(governor);
 		goto out;
 	}
-	if (df->governor == governor)
+	if (df->governor == governor) {
+		ret = 0;
 		goto out;
+	}
 
 	if (df->governor) {
 		ret = df->governor->event_handler(df, DEVFREQ_GOV_STOP, NULL);

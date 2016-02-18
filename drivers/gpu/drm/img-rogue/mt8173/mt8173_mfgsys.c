@@ -22,6 +22,7 @@
 #include <linux/pm_opp.h>
 #include <linux/pm_runtime.h>
 #include <linux/regulator/consumer.h>
+#include <linux/thermal.h>
 
 #include "mt8173_mfgsys.h"
 
@@ -44,11 +45,6 @@ static const char * const top_mfg_clk_name[] = {
 #define REG_MFG_CG_STA 0x00
 #define REG_MFG_CG_SET 0x04
 #define REG_MFG_CG_CLR 0x08
-
-static void mtk_mfg_set_clock_gating(void __iomem *reg)
-{
-	writel(REG_MFG_ALL, reg + REG_MFG_CG_SET);
-}
 
 static void mtk_mfg_clr_clock_gating(void __iomem *reg)
 {
@@ -106,7 +102,6 @@ static void mtk_mfg_disable_clock(struct mtk_mfg *mfg)
 {
 	int i;
 
-	mtk_mfg_set_clock_gating(mfg->reg_base);
 	for (i = MAX_TOP_MFG_CLK - 1; i >= 0; i--)
 		clk_disable(mfg->top_clk[i]);
 }
@@ -120,17 +115,6 @@ static void mtk_mfg_enable_hw_apm(struct mtk_mfg *mfg)
 	writel(0x002b0234, mfg->reg_base + 0xe8);
 	writel(0x80000000, mfg->reg_base + 0xec);
 	writel(0x08000000, mfg->reg_base + 0xa0);
-}
-
-static void mtk_mfg_disable_hw_apm(struct mtk_mfg *mfg)
-{
-	writel(0x00, mfg->reg_base + 0x24);
-	writel(0x00, mfg->reg_base + 0x28);
-	writel(0x00, mfg->reg_base + 0xe0);
-	writel(0x00, mfg->reg_base + 0xe4);
-	writel(0x00, mfg->reg_base + 0xe8);
-	writel(0x00, mfg->reg_base + 0xec);
-	writel(0x00, mfg->reg_base + 0xa0);
 }
 
 int mtk_mfg_enable(struct mtk_mfg *mfg)
@@ -164,7 +148,6 @@ err_regulator_disable:
 
 void mtk_mfg_disable(struct mtk_mfg *mfg)
 {
-	mtk_mfg_disable_hw_apm(mfg);
 	mtk_mfg_disable_clock(mfg);
 	pm_runtime_put_sync(mfg->dev);
 	regulator_disable(mfg->vgpu);
@@ -208,7 +191,7 @@ static int mtk_mfg_bind_device_resource(struct mtk_mfg *mfg)
 {
 	struct device *dev = mfg->dev;
 	struct platform_device *pdev = to_platform_device(dev);
-	int i, err;
+	int i;
 	struct resource *res;
 
 	mfg->top_clk = devm_kcalloc(dev, MAX_TOP_MFG_CLK,
@@ -246,15 +229,15 @@ static int mtk_mfg_bind_device_resource(struct mtk_mfg *mfg)
 		}
 	}
 
+	mfg->tz = thermal_zone_get_zone_by_name("cpu_thermal");
+	if (IS_ERR(mfg->tz)) {
+		dev_err(dev, "Failed to get cpu_thermal zone\n");
+		return PTR_ERR(mfg->tz);
+	}
+
 	mfg->vgpu = devm_regulator_get(dev, "mfgsys-power");
 	if (IS_ERR(mfg->vgpu))
 		return PTR_ERR(mfg->vgpu);
-
-	err = of_init_opp_table(dev);
-	if (err) {
-		dev_err(dev, "failed to init opp table, %d\n", err);
-		return err;
-	}
 
 	pm_runtime_enable(dev);
 
@@ -266,7 +249,6 @@ static void mtk_mfg_unbind_device_resource(struct mtk_mfg *mfg)
 	struct device *dev = mfg->dev;
 
 	pm_runtime_disable(dev);
-	of_free_opp_table(dev);
 }
 
 int MTKMFGBaseInit(struct device *dev)
