@@ -740,6 +740,9 @@ static void add_files(struct ieee80211_sub_if_data *sdata)
 		add_mesh_files(sdata);
 		add_mesh_stats(sdata);
 		add_mesh_config(sdata);
+		if (sdata->vif.debugfs_dir)
+			sdata->debugfs.subdir_destinations = debugfs_create_dir(
+					"destinations", sdata->vif.debugfs_dir);
 #endif
 		break;
 	case NL80211_IFTYPE_STATION:
@@ -780,6 +783,9 @@ void ieee80211_debugfs_remove_netdev(struct ieee80211_sub_if_data *sdata)
 	debugfs_remove_recursive(sdata->vif.debugfs_dir);
 	sdata->vif.debugfs_dir = NULL;
 	sdata->debugfs.subdir_stations = NULL;
+#ifdef CONFIG_MAC80211_MESH
+	sdata->debugfs.subdir_destinations = NULL;
+#endif
 }
 
 void ieee80211_debugfs_rename_netdev(struct ieee80211_sub_if_data *sdata)

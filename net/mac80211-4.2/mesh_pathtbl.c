@@ -17,6 +17,7 @@
 #include "wme.h"
 #include "ieee80211_i.h"
 #include "mesh.h"
+#include "debugfs_sta.h"
 
 /* There will be initially 2^INIT_PATHS_SIZE_ORDER buckets */
 #define INIT_PATHS_SIZE_ORDER	2
@@ -671,6 +672,9 @@ struct mesh_path *mesh_path_add(struct ieee80211_sub_if_data *sdata,
 		set_bit(MESH_WORK_GROW_MPATH_TABLE,  &ifmsh->wrkq_flags);
 		ieee80211_queue_work(&local->hw, &sdata->work);
 	}
+#ifdef CONFIG_MAC80211_DEBUGFS
+	mesh_path_debugfs_add(new_mpath);
+#endif
 	mpath = new_mpath;
 found:
 	spin_unlock(&tbl->hashwlock[hash_idx]);
@@ -862,6 +866,9 @@ static void mesh_path_node_reclaim(struct rcu_head *rp)
 	struct mpath_node *node = container_of(rp, struct mpath_node, rcu);
 
 	del_timer_sync(&node->mpath->timer);
+#ifdef CONFIG_MAC80211_DEBUGFS
+	mesh_path_debugfs_remove(node->mpath);
+#endif
 	kfree(node->mpath);
 	kfree(node);
 }
@@ -1228,6 +1235,33 @@ void mesh_path_expire(struct ieee80211_sub_if_data *sdata)
 				  expired_deleted);
 		mesh_path_table_debug_dump(sdata);
 	}
+}
+
+void mesh_path_update_stats(struct ieee80211_sub_if_data *sdata)
+{
+	struct mesh_table *tbl;
+	struct mesh_path *mpath;
+	struct mpath_node *node;
+	int i;
+	int expired_deleted=0;
+
+	rcu_read_lock();
+	tbl = rcu_dereference(mesh_paths);
+	for_each_mesh_entry(tbl, node, i) {
+		if (node->mpath->sdata != sdata)
+			continue;
+		mpath = node->mpath;
+
+		spin_lock_bh(&mpath->state_lock);
+		mpath->pstats.aggr_qlen += mpath->frame_queue.qlen;
+		if (mpath->frame_queue.qlen > 0)
+			mpath->pstats.nz_qlen_count++;
+		mpath->pstats.aggr_hop_count += mpath->hop_count;
+		mpath->pstats.sample_size++;
+		spin_unlock_bh(&mpath->state_lock);
+
+	}
+	rcu_read_unlock();
 }
 
 void mesh_pathtbl_unregister(void)

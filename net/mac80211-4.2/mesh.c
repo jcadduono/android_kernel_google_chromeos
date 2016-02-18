@@ -50,6 +50,17 @@ static void ieee80211_mesh_housekeeping_timer(unsigned long data)
 	ieee80211_queue_work(&local->hw, &sdata->work);
 }
 
+static void ieee80211_mesh_mpath_stats_timer(unsigned long data)
+{
+	struct ieee80211_sub_if_data *sdata = (void *) data;
+	struct ieee80211_local *local = sdata->local;
+	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
+
+	set_bit(MESH_WORK_MPATH_STATS, &ifmsh->wrkq_flags);
+
+	ieee80211_queue_work(&local->hw, &sdata->work);
+}
+
 /**
  * mesh_matches_local - check if the config of a mesh point matches ours
  *
@@ -652,6 +663,17 @@ static void ieee80211_mesh_housekeeping(struct ieee80211_sub_if_data *sdata)
 				IEEE80211_MESH_HOUSEKEEPING_INTERVAL));
 }
 
+static void ieee80211_mesh_update_mpath_stats(struct ieee80211_sub_if_data *sdata)
+{
+	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
+
+	mesh_path_update_stats(sdata);
+
+	mod_timer(&ifmsh->mpath_stats_timer,
+		  round_jiffies(jiffies +
+				MESH_PATH_STATS_UPDATE_INTERVAL));
+}
+
 static void ieee80211_mesh_rootpath(struct ieee80211_sub_if_data *sdata)
 {
 	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
@@ -861,6 +883,7 @@ int ieee80211_start_mesh(struct ieee80211_sub_if_data *sdata)
 	ifmsh->adjusting_tbtt = false;
 	ifmsh->sync_offset_clockdrift_max = 0;
 	set_bit(MESH_WORK_HOUSEKEEPING, &ifmsh->wrkq_flags);
+	set_bit(MESH_WORK_MPATH_STATS, &ifmsh->wrkq_flags);
 	ieee80211_mesh_root_setup(ifmsh);
 	ieee80211_queue_work(&local->hw, &sdata->work);
 	sdata->vif.bss_conf.ht_operation_mode =
@@ -910,6 +933,7 @@ void ieee80211_stop_mesh(struct ieee80211_sub_if_data *sdata)
 	del_timer_sync(&sdata->u.mesh.housekeeping_timer);
 	del_timer_sync(&sdata->u.mesh.mesh_path_root_timer);
 	del_timer_sync(&sdata->u.mesh.mesh_path_timer);
+	del_timer_sync(&sdata->u.mesh.mpath_stats_timer);
 
 	/* clear any mesh work (for next join) we may have accrued */
 	ifmsh->wrkq_flags = 0;
@@ -1357,6 +1381,9 @@ void ieee80211_mesh_work(struct ieee80211_sub_if_data *sdata)
 	if (test_and_clear_bit(MESH_WORK_HOUSEKEEPING, &ifmsh->wrkq_flags))
 		ieee80211_mesh_housekeeping(sdata);
 
+	if (test_and_clear_bit(MESH_WORK_MPATH_STATS, &ifmsh->wrkq_flags))
+		ieee80211_mesh_update_mpath_stats(sdata);
+
 	if (test_and_clear_bit(MESH_WORK_ROOT, &ifmsh->wrkq_flags))
 		ieee80211_mesh_rootpath(sdata);
 
@@ -1406,6 +1433,9 @@ void ieee80211_mesh_init_sdata(struct ieee80211_sub_if_data *sdata)
 		    (unsigned long) sdata);
 	setup_timer(&ifmsh->mesh_path_root_timer,
 		    ieee80211_mesh_path_root_timer,
+		    (unsigned long) sdata);
+	setup_timer(&ifmsh->mpath_stats_timer,
+		    ieee80211_mesh_mpath_stats_timer,
 		    (unsigned long) sdata);
 	INIT_LIST_HEAD(&ifmsh->preq_queue.list);
 	skb_queue_head_init(&ifmsh->ps.bc_buf);

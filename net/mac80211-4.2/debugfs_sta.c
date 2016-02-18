@@ -16,7 +16,6 @@
 #include "debugfs_sta.h"
 #include "sta_info.h"
 #include "driver-ops.h"
-#include "mesh.h"
 
 /* sta attributtes */
 
@@ -49,6 +48,14 @@ static const struct file_operations sta_ ##name## _ops = {		\
 #define STA_FILE(name, field, format)					\
 		STA_READ_##format(name, field)				\
 		STA_OPS(name)
+
+#define MPATH_OPS_RW(name)						\
+static const struct file_operations mpath_ ##name## _ops = {		\
+	.read = mpath_##name##_read,					\
+	.write = mpath_##name##_write,					\
+	.open = simple_open,						\
+	.llseek = generic_file_llseek,					\
+}
 
 STA_FILE(aid, sta.aid, D);
 STA_FILE(last_ack_signal, last_ack_signal, D);
@@ -458,6 +465,74 @@ static ssize_t sta_mesh_link_metric_read(struct file *file,
 
 STA_OPS(mesh_link_metric);
 
+static ssize_t mpath_path_stats_read(struct file *file,
+	char __user *userbuf, size_t count, loff_t *ppos)
+{
+	char buf[256], *p = buf;
+	struct mesh_path *mpath = file->private_data;
+	struct mpath_stats pstats;
+
+	if (!mpath) {
+		return -ENOENT;
+	}
+
+	rcu_read_lock();
+	pstats = mpath->pstats;
+
+	p += scnprintf(p, sizeof(buf)+buf-p, "avg queue depth: %d\n",
+			(u32) (pstats.aggr_qlen / pstats.sample_size));
+	p += scnprintf(p, sizeof(buf)+buf-p, "%% time non-empty queue: %d\n",
+			pstats.nz_qlen_count * 100 / pstats.sample_size );
+	p += scnprintf(p, sizeof(buf)+buf-p, "hop count: %d\n", mpath->hop_count);
+	p += scnprintf(p, sizeof(buf)+buf-p, "avg hop count: %d\n",
+			pstats.aggr_hop_count / pstats.sample_size);
+	p += scnprintf(p, sizeof(buf)+buf-p, "path change count: %d\n",
+			pstats.path_change_count);
+	p += scnprintf(p, sizeof(buf)+buf-p, "path change per min: %d\n",
+			pstats.path_change_count * 60 / pstats.sample_size);
+	p += scnprintf(p, sizeof(buf)+buf-p, "sample size: %d\n",
+			pstats.sample_size);
+	p += scnprintf(p, sizeof(buf)+buf-p, "is root: %s\n",
+			mpath->is_root ? "T" : "F");
+	p += scnprintf(p, sizeof(buf)+buf-p, "is gate: %s\n",
+			mpath->is_gate ? "T" : "F");
+	rcu_read_unlock();
+
+	return simple_read_from_buffer(userbuf, count, ppos, buf, p - buf);
+}
+
+static ssize_t mpath_path_stats_write(struct file *file,
+	const char __user *userbuf, size_t count, loff_t *ppos)
+{
+	char _buf[8] = {}, *buf = _buf;
+	struct mesh_path *mpath = file->private_data;
+
+	if (!mpath) {
+		return -ENOENT;
+	}
+
+	if (count > sizeof(_buf))
+		return -EINVAL;
+
+	if (copy_from_user(buf, userbuf, count))
+		return -EFAULT;
+
+	buf[sizeof(_buf) - 1] = '\0';
+
+	if (strncmp(buf, "reset", 5) == 0) {
+		rcu_read_lock();
+		spin_lock_bh(&mpath->state_lock);
+		memset(&mpath->pstats, 0, sizeof(mpath->pstats));
+		spin_unlock_bh(&mpath->state_lock);
+		rcu_read_unlock();
+	} else
+		return -EINVAL;
+
+	return count;
+}
+
+MPATH_OPS_RW(path_stats);
+
 #endif
 
 #define DEBUGFS_ADD(name) \
@@ -654,3 +729,34 @@ void ieee80211_sta_debugfs_remove(struct sta_info *sta)
 	debugfs_remove_recursive(sta->debugfs.dir);
 	sta->debugfs.dir = NULL;
 }
+
+#ifdef CONFIG_MAC80211_MESH
+void mesh_path_debugfs_add(struct mesh_path *mpath)
+{
+	struct dentry *destinations_dir = mpath->sdata->debugfs.subdir_destinations;
+	u8 mac[3*ETH_ALEN];
+
+	mpath->debugfs.add_has_run = true;
+
+	if (!destinations_dir)
+		return;
+
+	snprintf(mac, sizeof(mac), "%pM", mpath->dst);
+
+	mpath->debugfs.dir = debugfs_create_dir(mac, destinations_dir);
+	if (!mpath->debugfs.dir)
+		return;
+
+#define MPATH_ADD(name) \
+	debugfs_create_file(#name, 0400, \
+		mpath->debugfs.dir, mpath, &mpath_ ##name## _ops);
+
+	MPATH_ADD(path_stats);
+}
+
+void mesh_path_debugfs_remove(struct mesh_path *mpath)
+{
+	debugfs_remove_recursive(mpath->debugfs.dir);
+	mpath->debugfs.dir = NULL;
+}
+#endif

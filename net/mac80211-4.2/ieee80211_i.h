@@ -648,6 +648,7 @@ struct ieee80211_if_mesh {
 	struct timer_list housekeeping_timer;
 	struct timer_list mesh_path_timer;
 	struct timer_list mesh_path_root_timer;
+	struct timer_list mpath_stats_timer;
 
 	unsigned long wrkq_flags;
 	unsigned long mbss_changed;
@@ -940,6 +941,9 @@ struct ieee80211_sub_if_data {
 		struct dentry *default_unicast_key;
 		struct dentry *default_multicast_key;
 		struct dentry *default_mgmt_key;
+#ifdef CONFIG_MAC80211_MESH
+		struct dentry *subdir_destinations;
+#endif
 	} debugfs;
 #endif
 
