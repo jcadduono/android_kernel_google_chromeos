@@ -47,6 +47,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include <linux/of_irq.h>
 #include <linux/platform_device.h>
 #include <linux/pm_opp.h>
+#include <linux/thermal.h>
+#include <linux/devfreq_cooling.h>
 
 #include "physheap.h"
 #include "pvrsrv_device.h"
@@ -59,13 +61,20 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define RGX_HW_SYSTEM_NAME "RGX HW"
 #define RGX_HW_CORE_CLOCK_SPEED 395000000
 
-static RGX_TIMING_INFORMATION	gsRGXTimingInfo;
-static RGX_DATA			gsRGXData;
+/* Setup RGX specific timing data */
+static RGX_TIMING_INFORMATION gsRGXTimingInfo = {
+	.ui32CoreClockSpeed = RGX_HW_CORE_CLOCK_SPEED,
+	.bEnableActivePM = IMG_TRUE,
+	.ui32ActivePMLatencyms = SYS_RGX_ACTIVE_POWER_LATENCY_MS,
+	.bEnableRDPowIsland = IMG_TRUE,
+};
+
+static RGX_DATA gsRGXData = {
+	.psRGXTimingInfo = &gsRGXTimingInfo,
+};
+
 static PVRSRV_DEVICE_CONFIG	gsDevice;
 static PVRSRV_SYSTEM_CONFIG	gsSysConfig;
-
-static PHYS_HEAP_FUNCTIONS	gsPhysHeapFuncs;
-static PHYS_HEAP_CONFIG		gsPhysHeapConfig;
 
 static IMG_UINT32 gauiBIFTilingHeapXStrides[RGXFWIF_NUM_BIF_TILING_CONFIGS] = {
 	0, /* BIF tiling heap 1 x-stride */
@@ -113,6 +122,21 @@ void UMAPhysHeapDevPAddrToCpuPAddr(IMG_HANDLE hPrivData,
 			psCpuPAddr[ui32Idx].uiAddr = psDevPAddr[ui32Idx].uiAddr;
 	}
 }
+
+static PHYS_HEAP_FUNCTIONS gsPhysHeapFuncs = {
+	.pfnCpuPAddrToDevPAddr = UMAPhysHeapCpuPAddrToDevPAddr,
+	.pfnDevPAddrToCpuPAddr = UMAPhysHeapDevPAddrToCpuPAddr,
+};
+
+static PHYS_HEAP_CONFIG gsPhysHeapConfig = {
+	.ui32PhysHeapID = 0,
+	.pszPDumpMemspaceName = "SYSMEM",
+	.eType = PHYS_HEAP_TYPE_UMA,
+	.psMemFuncs = &gsPhysHeapFuncs,
+	.sStartAddr.uiAddr = 0,
+	.uiSize = 0,
+	.hPrivData = &gsSysConfig,
+};
 
 static PVRSRV_ERROR MTKSysDevPrePowerState(
 		PVRSRV_DEV_POWER_STATE eNewPowerState,
@@ -164,12 +188,162 @@ done:
 	return ret;
 }
 
+#ifdef PVR_DVFS
+
+#define FALLBACK_STATIC_TEMPERATURE 65000
+
+/* Temperatures on power over-temp-and-voltage curve (C) */
+static const int vt_temperatures[] = { 25, 45, 65, 85, 105 };
+
+/* Voltages on power over-temp-and-voltage curve (mV) */
+static const int vt_voltages[] = { 900, 1000, 1130 };
+
+#define POWER_TABLE_NUM_TEMP ARRAY_SIZE(vt_temperatures)
+#define POWER_TABLE_NUM_VOLT ARRAY_SIZE(vt_voltages)
+
+static const unsigned int
+power_table[POWER_TABLE_NUM_VOLT][POWER_TABLE_NUM_TEMP] = {
+	/*   25     45      65      85     105 */
+	{ 14540, 35490,  60420, 120690, 230000 },  /*  900 mV */
+	{ 21570, 41910,  82380, 159140, 298620 },  /* 1000 mV */
+	{ 32320, 72950, 111320, 209290, 382700 },  /* 1130 mV */
+};
+
+/** Frequency and Power in Khz and mW respectively */
+static const int f_range[] = {253500, 299000, 396500, 455000, 494000, 598000};
+static const IMG_UINT32 max_dynamic_power[] = {612, 722, 957, 1100, 1194, 1445};
+
+static u32 interpolate(int value, const int *x, const unsigned int *y, int len)
+{
+	u64 tmp64;
+	u32 dx;
+	u32 dy;
+	int i, ret;
+
+	if (value <= x[0])
+		return y[0];
+	if (value >= x[len - 1])
+		return y[len - 1];
+
+	for (i = 1; i < len - 1; i++) {
+		/* If value is identical, no need to interpolate */
+		if (value == x[i])
+			return y[i];
+		if (value < x[i])
+			break;
+	}
+
+	/* Linear interpolation between the two (x,y) points */
+	dy = y[i] - y[i - 1];
+	dx = x[i] - x[i - 1];
+
+	tmp64 = value - x[i - 1];
+	tmp64 *= dy;
+	do_div(tmp64, dx);
+	ret = y[i - 1] + tmp64;
+
+	return ret;
+}
+
+static unsigned long mtk_mfg_get_static_power(unsigned long voltage)
+{
+	struct mtk_mfg *mfg = gsDevice.hSysData;
+	struct thermal_zone_device *tz = mfg->tz;
+	unsigned long power;
+	int temperature = FALLBACK_STATIC_TEMPERATURE;
+	int low_idx = 0, high_idx = POWER_TABLE_NUM_VOLT - 1;
+	int i;
+
+	if (tz->ops->get_temp(tz, &temperature))
+		dev_warn(mfg->dev, "Failed to read temperature\n");
+	do_div(temperature, 1000);
+
+	for (i = 0; i < POWER_TABLE_NUM_VOLT; i++) {
+		if (voltage <= vt_voltages[POWER_TABLE_NUM_VOLT - 1 - i])
+			high_idx = POWER_TABLE_NUM_VOLT - 1 - i;
+
+		 if (voltage >= vt_voltages[i])
+			low_idx = i;
+	}
+
+	if (low_idx == high_idx) {
+		power = interpolate(temperature,
+				    vt_temperatures,
+				    &power_table[low_idx][0],
+				    POWER_TABLE_NUM_TEMP);
+	} else {
+		unsigned long dvt =
+				vt_voltages[high_idx] - vt_voltages[low_idx];
+		unsigned long power1, power2;
+
+		power1 = interpolate(temperature,
+				     vt_temperatures,
+				     &power_table[high_idx][0],
+				     POWER_TABLE_NUM_TEMP);
+
+		power2 = interpolate(temperature,
+				     vt_temperatures,
+				     &power_table[low_idx][0],
+				     POWER_TABLE_NUM_TEMP);
+
+		power = (power1 - power2) * (voltage - vt_voltages[low_idx]);
+		do_div(power, dvt);
+		power += power2;
+	}
+
+	/* convert to mw */
+	do_div(power, 1000);
+
+	mtk_mfg_debug("mtk_mfg_get_static_power: %lu at Temperature %d\n",
+		      power, temperature);
+	return power;
+}
+
+static unsigned long mtk_mfg_get_dynamic_power(unsigned long freq,
+					       unsigned long voltage)
+{
+	#define NUM_RANGE  ARRAY_SIZE(f_range)
+	/** Frequency and Power in Khz and mW respectively */
+	IMG_INT32 i, low_idx = 0, high_idx = NUM_RANGE - 1;
+	IMG_UINT32 power;
+
+	for (i = 0; i < NUM_RANGE; i++) {
+		if (freq <= f_range[NUM_RANGE - 1 - i])
+			high_idx = NUM_RANGE - 1 - i;
+
+		if (freq >= f_range[i])
+			low_idx = i;
+	}
+
+	if (low_idx == high_idx) {
+		power = max_dynamic_power[low_idx];
+	} else {
+		IMG_UINT32 f_interval = f_range[high_idx] - f_range[low_idx];
+		IMG_UINT32 p_interval = max_dynamic_power[high_idx] -
+				max_dynamic_power[low_idx];
+
+		power = p_interval * (freq - f_range[low_idx]);
+		do_div(power, f_interval);
+		power += max_dynamic_power[low_idx];
+	}
+
+	power = (IMG_UINT32)(((IMG_UINT64)power * voltage * voltage)/1000000);
+
+	return power;
+	#undef NUM_RANGE
+}
+
+static struct devfreq_cooling_power sPowerOps = {
+	.get_static_power = mtk_mfg_get_static_power,
+	.get_dynamic_power = mtk_mfg_get_dynamic_power,
+};
+
 static void SetFrequency(IMG_UINT32 freq)
 {
 	struct mtk_mfg *mfg = gsDevice.hSysData;
 
-	/* freq is in kHz */
-	mtk_mfg_freq_set(mfg, freq * 1000);
+	/* freq is in Hz */
+	mtk_mfg_freq_set(mfg, freq);
 }
 
 static void SetVoltage(IMG_UINT32 volt)
@@ -178,103 +352,19 @@ static void SetVoltage(IMG_UINT32 volt)
 
 	mtk_mfg_volt_set(mfg, volt);
 }
+#endif
 
-static int SetupDVFSInfo(struct device *dev, PVRSRV_DVFS *hDVFS)
+static
+PVRSRV_ERROR SysDevInit(void *pvOSDevice, PVRSRV_DEVICE_CONFIG **ppsDevConfig)
 {
-	IMG_OPP *opp_table;
-	IMG_DVFS_DEVICE_CFG *img_dvfs_cfg;
-	int i;
-	int count;
-	unsigned long freq;
-
-	/* Start RCU read-side critical section to access device opp_list. */
-	rcu_read_lock();
-	count = dev_pm_opp_get_opp_count(dev);
-	if (count < 0) {
-		dev_err(dev, "Could not fetch OPP count, %d\n", count);
-		rcu_read_unlock();
-		return count;
-	}
-
-	opp_table = devm_kcalloc(dev, count, sizeof(*opp_table), GFP_KERNEL);
-	if (!opp_table) {
-		rcu_read_unlock();
-		return -ENOMEM;
-	}
-
-	img_dvfs_cfg = &hDVFS->sDVFSDeviceCfg;
-
-	/*
-	 * Iterate over OPP table.
-	 * Iteration 0 finds "opp w/ freq >= 0 Hz".
-	 * Iteration n > 0 finds "opp w/ freq >= (opp[n-1].freq + 1)".
-	 */
-	for (i = 0, freq = 0; i < count; i++, freq++) {
-		struct dev_pm_opp *opp = dev_pm_opp_find_freq_ceil(dev, &freq);
-
-		opp_table[i].ui32Freq = freq / 1000;
-		opp_table[i].ui32Volt = dev_pm_opp_get_voltage(opp);
-
-		dev_info(dev, "opp[%d/%d]: (%u kHz, %u uV)\n", i + 1, count,
-			 opp_table[i].ui32Freq, opp_table[i].ui32Volt);
-	}
-	rcu_read_unlock();
-
-	img_dvfs_cfg->bIdleReq = IMG_FALSE;
-	img_dvfs_cfg->pasOPPTable = opp_table;
-	img_dvfs_cfg->ui32OPPTableSize = count;
-	img_dvfs_cfg->ui32FreqMin = opp_table[0].ui32Freq;
-	img_dvfs_cfg->ui32FreqMax = opp_table[count - 1].ui32Freq;
-	img_dvfs_cfg->pfnSetFrequency = SetFrequency;
-	img_dvfs_cfg->pfnSetVoltage = SetVoltage;
-	img_dvfs_cfg->ui32PollMs = MTK_DVFS_SWITCH_INTERVAL;
-
-	hDVFS->sDVFSGovernorCfg.ui32UpThreshold = 90;
-	hDVFS->sDVFSGovernorCfg.ui32DownDifferential = 10;
-
-	return 0;
-}
-
-PVRSRV_ERROR SysCreateConfigData(PVRSRV_SYSTEM_CONFIG **ppsSysConfig, void *hDevice)
-{
-	struct platform_device *pDevice = hDevice;
+	struct platform_device *pDevice = pvOSDevice;
 	struct device *dev = &pDevice->dev;
 	struct mtk_mfg *mfg = dev_get_platdata(dev);
-	int ret;
 
 	if (!pDevice) {
 		PVR_DPF((PVR_DBG_ERROR, "pDevice = NULL!"));
 		return PVRSRV_ERROR_INIT_FAILURE;
 	}
-
-	/* Setup information about physical memory heap(s) we have */
-	gsPhysHeapFuncs.pfnCpuPAddrToDevPAddr = UMAPhysHeapCpuPAddrToDevPAddr;
-	gsPhysHeapFuncs.pfnDevPAddrToCpuPAddr = UMAPhysHeapDevPAddrToCpuPAddr;
-
-	gsPhysHeapConfig.ui32PhysHeapID = 0;
-	gsPhysHeapConfig.pszPDumpMemspaceName = "SYSMEM";
-	gsPhysHeapConfig.eType = PHYS_HEAP_TYPE_UMA;
-	gsPhysHeapConfig.psMemFuncs = &gsPhysHeapFuncs;
-	gsPhysHeapConfig.hPrivData = &gsSysConfig;
-	gsPhysHeapConfig.sStartAddr.uiAddr = 0;
-	gsPhysHeapConfig.uiSize = 0;
-
-	gsSysConfig.pasPhysHeaps = &gsPhysHeapConfig;
-	gsSysConfig.ui32PhysHeapCount = 1;
-	gsSysConfig.pui32BIFTilingHeapConfigs = gauiBIFTilingHeapXStrides;
-	gsSysConfig.ui32BIFTilingHeapCount = IMG_ARR_NUM_ELEMS(gauiBIFTilingHeapXStrides);
-
-	/* Setup RGX specific timing data */
-	gsRGXTimingInfo.ui32CoreClockSpeed = RGX_HW_CORE_CLOCK_SPEED;
-
-	gsRGXTimingInfo.bEnableActivePM = IMG_TRUE;
-	gsRGXTimingInfo.ui32ActivePMLatencyms = SYS_RGX_ACTIVE_POWER_LATENCY_MS;
-
-	/* for HWAPM enable */
-	gsRGXTimingInfo.bEnableRDPowIsland = IMG_TRUE;
-
-	/* Setup RGX specific data */
-	gsRGXData.psRGXTimingInfo = &gsRGXTimingInfo;
 
 	/* Setup RGX device */
 	gsDevice.eDeviceType = PVRSRV_DEVICE_TYPE_RGX;
@@ -287,9 +377,16 @@ PVRSRV_ERROR SysCreateConfigData(PVRSRV_SYSTEM_CONFIG **ppsSysConfig, void *hDev
 	gsDevice.sRegsCpuPBase.uiAddr = mfg->rgx_start;
 	gsDevice.ui32RegsSize = mfg->rgx_size;
 
-	ret = SetupDVFSInfo(dev, &gsDevice.sDVFS);
-	if (ret)
-		return PVRSRV_ERROR_INIT_FAILURE;
+#ifdef PVR_DVFS
+	gsDevice.sDVFS.sDVFSDeviceCfg.bIdleReq = IMG_FALSE;
+	gsDevice.sDVFS.sDVFSDeviceCfg.pfnSetFrequency = SetFrequency;
+	gsDevice.sDVFS.sDVFSDeviceCfg.pfnSetVoltage = SetVoltage;
+	gsDevice.sDVFS.sDVFSDeviceCfg.ui32PollMs = MTK_DVFS_SWITCH_INTERVAL;
+	gsDevice.sDVFS.sDVFSDeviceCfg.psPowerOps = &sPowerOps;
+
+	gsDevice.sDVFS.sDVFSGovernorCfg.ui32UpThreshold = 90;
+	gsDevice.sDVFS.sDVFSGovernorCfg.ui32DownDifferential = 10;
+#endif
 
 	/* Device's physical heap IDs */
 	gsDevice.aui32PhysHeapID[PVRSRV_DEVICE_PHYS_HEAP_GPU_LOCAL] = 0;
@@ -309,17 +406,29 @@ PVRSRV_ERROR SysCreateConfigData(PVRSRV_SYSTEM_CONFIG **ppsSysConfig, void *hDev
 	gsDevice.hDevData = &gsRGXData;
 	gsDevice.hSysData = mfg;
 
-	/* Setup system config */
+	*ppsDevConfig = &gsDevice;
+
+	return PVRSRV_OK;
+}
+
+PVRSRV_ERROR SysCreateConfigData(PVRSRV_SYSTEM_CONFIG **ppsSysConfig,
+				 void *hDevice)
+{
+	PVRSRV_ERROR ret;
+
+	gsSysConfig.pasPhysHeaps = &gsPhysHeapConfig;
+	gsSysConfig.ui32PhysHeapCount = 1;
+
+	gsSysConfig.pui32BIFTilingHeapConfigs = gauiBIFTilingHeapXStrides;
+	gsSysConfig.ui32BIFTilingHeapCount =
+			IMG_ARR_NUM_ELEMS(gauiBIFTilingHeapXStrides);
+
 	gsSysConfig.pszSystemName = RGX_HW_SYSTEM_NAME;
 	gsSysConfig.uiDeviceCount = 1;
-	gsSysConfig.pasDevices = &gsDevice;
+	ret = SysDevInit(hDevice, &gsSysConfig.pasDevices);
+	if (ret != PVRSRV_OK)
+		return ret;
 
-	/* cache snooping */
-	gsSysConfig.eCacheSnoopingMode = 0;
-
-	gsSysConfig.uiSysFlags = 0;
-
-	/* Setup other system specific stuff */
 	*ppsSysConfig = &gsSysConfig;
 
 	return PVRSRV_OK;

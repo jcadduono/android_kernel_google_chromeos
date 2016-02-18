@@ -378,7 +378,7 @@ void rtw_cfg80211_indicate_disconnect(struct rtw_adapter *padapter)
 						GFP_ATOMIC);
 		} else {
 			cfg80211_disconnected(padapter->pnetdev, 0, NULL,
-					      0, GFP_ATOMIC);
+					      0, false, GFP_ATOMIC);
 		}
 	}
 }
@@ -2856,8 +2856,10 @@ static int cfg80211_rtw_add_station(struct wiphy *wiphy,
 }
 
 static int cfg80211_rtw_del_station(struct wiphy *wiphy,
-				    struct net_device *ndev, const u8 *mac)
+				    struct net_device *ndev,
+				    struct station_del_parameters *params)
 {
+	const u8 *mac = params->mac;
 	int ret = 0;
 	struct list_head *phead, *plist, *ptmp;
 	u8 updated = 0;

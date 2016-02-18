@@ -362,6 +362,7 @@ struct tegra_xudc_request {
 	size_t buf_queued;
 	unsigned int trbs_queued;
 	unsigned int trbs_needed;
+	bool need_zlp;
 
 	struct tegra_xudc_trb *first_trb;
 	struct tegra_xudc_trb *last_trb;
@@ -881,7 +882,8 @@ static void tegra_xudc_queue_one_trb(struct tegra_xudc_ep *ep,
 	trb_write_transfer_len(trb, len);
 	trb_write_td_size(trb, req->trbs_needed - req->trbs_queued - 1);
 
-	if (req->trbs_queued == req->trbs_needed - 1)
+	if (req->trbs_queued == req->trbs_needed - 1 ||
+		(req->need_zlp && req->trbs_queued == req->trbs_needed - 2))
 		trb_write_chain(trb, 0);
 	else
 		trb_write_chain(trb, 1);
@@ -930,6 +932,7 @@ static unsigned int tegra_xudc_queue_trbs(struct tegra_xudc_ep *ep,
 					  struct tegra_xudc_request *req)
 {
 	unsigned int i, count, available;
+	bool wait_td = false;
 
 	available = ep_available_trbs(ep);
 	count = req->trbs_needed - req->trbs_queued;
@@ -938,6 +941,26 @@ static unsigned int tegra_xudc_queue_trbs(struct tegra_xudc_ep *ep,
 		ep->ring_full = true;
 	}
 
+	/*
+	 * To generate zero-length packet on USB bus, SW needs schedule a
+	 * standalone zero-length TD. According to HW's behavior, SW needs
+	 * to schedule TDs in different ways for different endpoint types.
+	 *
+	 * For control endpoint:
+	 * - Data stage TD (IOC = 1, CH = 0)
+	 * - Ring doorbell and wait transfer event
+	 * - Data stage TD for ZLP (IOC = 1, CH = 0)
+	 * - Ring doorbell
+	 *
+	 * For bulk and interrupt endpoints:
+	 * - Normal transfer TD (IOC = 0, CH = 0)
+	 * - Normal transfer TD for ZLP (IOC = 1, CH = 0)
+	 * - Ring doorbell
+	 */
+
+	if (req->need_zlp && usb_endpoint_xfer_control(ep->desc) && count > 1)
+		wait_td = true;
+
 	if (!req->first_trb)
 		req->first_trb = &ep->transfer_ring[ep->enq_ptr];
 
@@ -945,7 +968,7 @@ static unsigned int tegra_xudc_queue_trbs(struct tegra_xudc_ep *ep,
 		struct tegra_xudc_trb *trb = &ep->transfer_ring[ep->enq_ptr];
 		bool ioc = false;
 
-		if (i == count - 1)
+		if ((i == count - 1) || (wait_td && i == count - 2))
 			ioc = true;
 
 		tegra_xudc_queue_one_trb(ep, req, trb, ioc);
@@ -958,6 +981,9 @@ static unsigned int tegra_xudc_queue_trbs(struct tegra_xudc_ep *ep,
 			ep->pcs = !ep->pcs;
 			ep->enq_ptr = 0;
 		}
+
+		if (ioc)
+			break;
 	}
 
 	return count;
@@ -1032,14 +1058,17 @@ __tegra_xudc_ep_queue(struct tegra_xudc_ep *ep, struct tegra_xudc_request *req)
 	req->last_trb = NULL;
 	req->buf_queued = 0;
 	req->trbs_queued = 0;
+	req->need_zlp = false;
 	req->trbs_needed = DIV_ROUND_UP(req->usb_req.length,
 					XUDC_TRB_MAX_BUFFER_SIZE);
 	if (req->usb_req.length == 0)
 		req->trbs_needed++;
 	if (!usb_endpoint_xfer_isoc(ep->desc) &&
 	    req->usb_req.zero && (req->usb_req.length != 0) &&
-	    ((req->usb_req.length % ep->usb_ep.maxpacket) == 0))
+	    ((req->usb_req.length % ep->usb_ep.maxpacket) == 0)) {
 		req->trbs_needed++;
+		req->need_zlp = true;
+	}
 
 	req->usb_req.status = -EINPROGRESS;
 	req->usb_req.actual = 0;
@@ -1123,18 +1152,45 @@ static void squeeze_transfer_ring(struct tegra_xudc_ep *ep,
 	}
 }
 
-static bool trb_processed(struct tegra_xudc_ep *ep, struct tegra_xudc_trb *trb)
+/*
+ * Determine if the given TRB is in the range [first trb, last trb] for the
+ * given request.
+ */
+static bool trb_in_request(struct tegra_xudc_ep *ep,
+			   struct tegra_xudc_request *req,
+			   struct tegra_xudc_trb *trb)
 {
-	struct tegra_xudc_trb *deq_trb, *enq_trb;
+	dev_dbg(ep->xudc->dev, "%s: request %p -> %p; trb %p\n", __func__,
+		req->first_trb, req->last_trb, trb);
 
-	deq_trb = trb_phys_to_virt(ep, ep_ctx_read_deq_ptr(ep->context));
-	enq_trb = &ep->transfer_ring[ep->enq_ptr];
+	if (trb >= req->first_trb && (trb <= req->last_trb ||
+				      req->last_trb < req->first_trb))
+		return true;
+	if (trb < req->first_trb && trb <= req->last_trb &&
+	    req->last_trb < req->first_trb)
+		return true;
+	return false;
+}
 
-	if (trb > deq_trb && (enq_trb > trb || enq_trb < deq_trb))
-		return false;
-	if (trb < deq_trb && enq_trb > trb && enq_trb < deq_trb)
-		return false;
-	return true;
+/*
+ * Determine if the given TRB is in the range [EP enqueue pointer, first TRB)
+ * for the given endpoint and request.
+ */
+static bool trb_before_request(struct tegra_xudc_ep *ep,
+			       struct tegra_xudc_request *req,
+			       struct tegra_xudc_trb *trb)
+{
+	struct tegra_xudc_trb *enq_trb = &ep->transfer_ring[ep->enq_ptr];
+
+	dev_dbg(ep->xudc->dev, "%s: request %p -> %p; enq ptr: %p; trb %p\n",
+		__func__, req->first_trb, req->last_trb, enq_trb, trb);
+
+	if (trb < req->first_trb && (enq_trb <= trb ||
+				     req->first_trb < enq_trb))
+		return true;
+	if (trb > req->first_trb && req->first_trb < enq_trb && enq_trb <= trb)
+		return true;
+	return false;
 }
 
 static int
@@ -1143,7 +1199,8 @@ __tegra_xudc_ep_dequeue(struct tegra_xudc_ep *ep,
 {
 	struct tegra_xudc *xudc = ep->xudc;
 	struct tegra_xudc_request *r;
-	bool kick_queue = false;
+	struct tegra_xudc_trb *deq_trb;
+	bool busy, kick_queue = false;
 	int ret = 0;
 
 	/* Make sure the request is actually queued to this endpoint. */
@@ -1151,7 +1208,7 @@ __tegra_xudc_ep_dequeue(struct tegra_xudc_ep *ep,
 		if (r == req)
 			break;
 	}
-	if (!r)
+	if (r != req)
 		return -EINVAL;
 
 	/* Request hasn't been queued in the transfer ring yet. */
@@ -1166,21 +1223,11 @@ __tegra_xudc_ep_dequeue(struct tegra_xudc_ep *ep,
 		ep_wait_for_inactive(xudc, ep->index);
 	}
 
-	if (!trb_processed(ep, req->first_trb)) {
-		/* Request hasn't started processing yet. */
-		squeeze_transfer_ring(ep, req);
+	deq_trb = trb_phys_to_virt(ep, ep_ctx_read_deq_ptr(ep->context));
+	/* Is the hardware processing the TRB at the dequeue pointer? */
+	busy = (trb_read_cycle(deq_trb) == ep_ctx_read_dcs(ep->context));
 
-		tegra_xudc_req_done(ep, req, -ECONNRESET);
-		kick_queue = true;
-	} else if (req->trbs_queued == req->trbs_needed &&
-		   trb_processed(ep, req->last_trb)) {
-		/*
-		 * Request has completed, but we haven't processed the
-		 * completion event yet.
-		 */
-		tegra_xudc_req_done(ep, req, -ECONNRESET);
-		ret = -EINVAL;
-	} else {
+	if (trb_in_request(ep, req, deq_trb) && busy) {
 		dma_addr_t deq_ptr;
 
 		/* Request has been partially completed. */
@@ -1200,6 +1247,19 @@ __tegra_xudc_ep_dequeue(struct tegra_xudc_ep *ep,
 		ep_ctx_write_dcs(ep->context, ep->pcs);
 
 		ep_reload(xudc, ep->index);
+	} else if (trb_before_request(ep, req, deq_trb) && busy) {
+		/* Request hasn't started processing yet. */
+		squeeze_transfer_ring(ep, req);
+
+		tegra_xudc_req_done(ep, req, -ECONNRESET);
+		kick_queue = true;
+	} else {
+		/*
+		 * Request has completed, but we haven't processed the
+		 * completion event yet.
+		 */
+		tegra_xudc_req_done(ep, req, -ECONNRESET);
+		ret = -EINVAL;
 	}
 
 	/* Resume the endpoint. */
@@ -1264,13 +1324,13 @@ static int __tegra_xudc_ep_set_halt(struct tegra_xudc_ep *ep, bool halt)
 		ep_ctx_write_state(ep->context, EP_STATE_DISABLED);
 
 		ep_reload(xudc, ep->index);
-		ep_unhalt(xudc, ep->index);
 
 		ep_ctx_write_state(ep->context, EP_STATE_RUNNING);
 		ep_ctx_write_seq_num(ep->context, 0);
 
 		ep_reload(xudc, ep->index);
 		ep_unpause(xudc, ep->index);
+		ep_unhalt(xudc, ep->index);
 
 		tegra_xudc_ep_ring_doorbell(ep);
 	}
@@ -1394,12 +1454,90 @@ static void setup_link_trb(struct tegra_xudc_ep *ep,
 	trb_write_toggle_cycle(trb, 1);
 }
 
+static int __tegra_xudc_ep_disable(struct tegra_xudc_ep *ep)
+{
+	struct tegra_xudc *xudc = ep->xudc;
+
+	if (ep_ctx_read_state(ep->context) == EP_STATE_DISABLED) {
+		dev_err(xudc->dev, "endpoint %u already disabled\n",
+			ep->index);
+		return -EINVAL;
+	}
+	ep_ctx_write_state(ep->context, EP_STATE_DISABLED);
+
+	ep_reload(xudc, ep->index);
+
+	tegra_xudc_ep_nuke(ep, -ESHUTDOWN);
+
+	xudc->nr_enabled_eps--;
+	if (usb_endpoint_xfer_isoc(ep->desc))
+		xudc->nr_isoch_eps--;
+
+	ep->desc = NULL;
+	ep->comp_desc = NULL;
+
+	memset(ep->context, 0, sizeof(*ep->context));
+
+	ep_unpause(xudc, ep->index);
+	ep_unhalt(xudc, ep->index);
+	if (xudc_readl(xudc, EP_STOPPED) & BIT(ep->index))
+		xudc_writel(xudc, BIT(ep->index), EP_STOPPED);
+
+	/*
+	 * If this is the last endpoint disabled in a de-configure request,
+	 * switch back to address state.
+	 */
+	if ((xudc->device_state == USB_STATE_CONFIGURED) &&
+	    (xudc->nr_enabled_eps == 1)) {
+		u32 val;
+
+		xudc->device_state = USB_STATE_ADDRESS;
+
+		val = xudc_readl(xudc, CTRL);
+		val &= ~CTRL_RUN;
+		xudc_writel(xudc, val, CTRL);
+	}
+
+	dev_info(xudc->dev, "ep %u disabled\n", ep->index);
+
+	return 0;
+}
+
+static int tegra_xudc_ep_disable(struct usb_ep *usb_ep)
+{
+	struct tegra_xudc_ep *ep;
+	struct tegra_xudc *xudc;
+	unsigned long flags;
+	int ret;
+
+	if (!usb_ep)
+		return -EINVAL;
+
+	ep = to_xudc_ep(usb_ep);
+	xudc = ep->xudc;
+
+	spin_lock_irqsave(&xudc->lock, flags);
+	if (xudc->powergated) {
+		ret = -ESHUTDOWN;
+		goto unlock;
+	}
+	ret = __tegra_xudc_ep_disable(ep);
+unlock:
+	spin_unlock_irqrestore(&xudc->lock, flags);
+
+	return ret;
+}
+
 static int __tegra_xudc_ep_enable(struct tegra_xudc_ep *ep,
 				  const struct usb_endpoint_descriptor *desc)
 {
 	struct tegra_xudc *xudc = ep->xudc;
 	unsigned int i;
 	u32 val;
+
+	/* Disable the EP if it is not disabled */
+	if (ep_ctx_read_state(ep->context) != EP_STATE_DISABLED)
+		__tegra_xudc_ep_disable(ep);
 
 	ep->desc = desc;
 	ep->comp_desc = ep->usb_ep.comp_desc;
@@ -1501,80 +1639,6 @@ unlock:
 	return ret;
 }
 
-static int __tegra_xudc_ep_disable(struct tegra_xudc_ep *ep)
-{
-	struct tegra_xudc *xudc = ep->xudc;
-
-	if (ep_ctx_read_state(ep->context) == EP_STATE_DISABLED) {
-		dev_err(xudc->dev, "endpoint %u already disabled\n",
-			ep->index);
-		return -EINVAL;
-	}
-	ep_ctx_write_state(ep->context, EP_STATE_DISABLED);
-
-	ep_reload(xudc, ep->index);
-
-	tegra_xudc_ep_nuke(ep, -ESHUTDOWN);
-
-	xudc->nr_enabled_eps--;
-	if (usb_endpoint_xfer_isoc(ep->desc))
-		xudc->nr_isoch_eps--;
-
-	ep->desc = NULL;
-	ep->comp_desc = NULL;
-
-	memset(ep->context, 0, sizeof(*ep->context));
-
-	ep_unpause(xudc, ep->index);
-	ep_unhalt(xudc, ep->index);
-	if (xudc_readl(xudc, EP_STOPPED) & BIT(ep->index))
-		xudc_writel(xudc, BIT(ep->index), EP_STOPPED);
-
-	/*
-	 * If this is the last endpoint disabled in a de-configure request,
-	 * switch back to address state.
-	 */
-	if ((xudc->device_state == USB_STATE_CONFIGURED) &&
-	    (xudc->nr_enabled_eps == 1)) {
-		u32 val;
-
-		xudc->device_state = USB_STATE_ADDRESS;
-
-		val = xudc_readl(xudc, CTRL);
-		val &= ~CTRL_RUN;
-		xudc_writel(xudc, val, CTRL);
-	}
-
-	dev_info(xudc->dev, "ep %u disabled\n", ep->index);
-
-	return 0;
-}
-
-static int tegra_xudc_ep_disable(struct usb_ep *usb_ep)
-{
-	struct tegra_xudc_ep *ep;
-	struct tegra_xudc *xudc;
-	unsigned long flags;
-	int ret;
-
-	if (!usb_ep)
-		return -EINVAL;
-
-	ep = to_xudc_ep(usb_ep);
-	xudc = ep->xudc;
-
-	spin_lock_irqsave(&xudc->lock, flags);
-	if (xudc->powergated) {
-		ret = -ESHUTDOWN;
-		goto unlock;
-	}
-	ret = __tegra_xudc_ep_disable(ep);
-unlock:
-	spin_unlock_irqrestore(&xudc->lock, flags);
-
-	return ret;
-}
-
 static struct usb_request *
 tegra_xudc_ep_alloc_request(struct usb_ep *usb_ep, gfp_t gfp)
 {
@@ -1656,10 +1720,10 @@ static void tegra_xudc_resume_device_state(struct tegra_xudc *xudc)
 
 	/* Direct link to U0. */
 	val = xudc_readl(xudc, PORTSC);
-	if (((val & PORTSC_PLS_MASK) >> PORTSC_PLS_SHIFT) != PORTSC_PLS_U0) {
+	if (((val >> PORTSC_PLS_SHIFT) & PORTSC_PLS_MASK) != PORTSC_PLS_U0) {
 		val &= ~(PORTSC_CHANGE_MASK |
 			 (PORTSC_PLS_MASK << PORTSC_PLS_SHIFT));
-		val |= PORTSC_LWS | (PORTSC_PLS_RXDETECT << PORTSC_PLS_SHIFT);
+		val |= PORTSC_LWS | (PORTSC_PLS_U0 << PORTSC_PLS_SHIFT);
 		xudc_writel(xudc, val, PORTSC);
 	}
 
@@ -2242,11 +2306,7 @@ trb_to_request(struct tegra_xudc_ep *ep, struct tegra_xudc_trb *trb)
 		if (!req->trbs_queued)
 			break;
 
-		if (trb >= req->first_trb && (trb <= req->last_trb ||
-					      req->last_trb < req->first_trb))
-			return req;
-		if (trb < req->first_trb && trb < req->last_trb &&
-		    req->last_trb < req->first_trb)
+		if (trb_in_request(ep, req, trb))
 			return req;
 	}
 
@@ -2270,7 +2330,8 @@ static void tegra_xudc_handle_transfer_completion(struct tegra_xudc *xudc,
 	 * TDs are complete on short packet or when the completed TRB is the
 	 * last TRB in the TD (the CHAIN bit is unset).
 	 */
-	if (req && (short_packet || !trb_read_chain(trb))) {
+	if (req && (short_packet || (!trb_read_chain(trb) &&
+		(req->trbs_needed == req->trbs_queued)))) {
 		struct tegra_xudc_trb *last = req->last_trb;
 		unsigned int residual;
 
@@ -2477,10 +2538,13 @@ static void tegra_xudc_port_connect(struct tegra_xudc *xudc)
 		val &= ~(PORTPM_U2TIMEOUT_MASK << PORTPM_U2TIMEOUT_SHIFT);
 		xudc_writel(xudc, val, PORTPM);
 	}
-	if (!xudc->soc->lpm_enable && xudc->gadget.speed <= USB_SPEED_HIGH) {
+	if (xudc->gadget.speed <= USB_SPEED_HIGH) {
 		val = xudc_readl(xudc, PORTPM);
 		val &= ~(PORTPM_L1S_MASK << PORTPM_L1S_SHIFT);
-		val |= PORTPM_L1S_NYET << PORTPM_L1S_SHIFT;
+		if (xudc->soc->lpm_enable)
+			val |= PORTPM_L1S_ACCEPT << PORTPM_L1S_SHIFT;
+		else
+			val |= PORTPM_L1S_NYET << PORTPM_L1S_SHIFT;
 		xudc_writel(xudc, val, PORTPM);
 	}
 
@@ -2560,7 +2624,7 @@ static void __tegra_xudc_handle_port_status(struct tegra_xudc *xudc)
 	portsc = xudc_readl(xudc, PORTSC);
 	if (portsc & PORTSC_PRC) {
 		dev_dbg(xudc->dev, "PRC, PORTSC = %#x\n", portsc);
-		clear_port_change(xudc, PORTSC_PRC);
+		clear_port_change(xudc, PORTSC_PRC | PORTSC_PED);
 		if (!(xudc_readl(xudc, PORTSC) & PORTSC_PR))
 			tegra_xudc_port_reset(xudc);
 	}
@@ -2568,7 +2632,7 @@ static void __tegra_xudc_handle_port_status(struct tegra_xudc *xudc)
 	portsc = xudc_readl(xudc, PORTSC);
 	if (portsc & PORTSC_WRC) {
 		dev_dbg(xudc->dev, "WRC, PORTSC = %#x\n", portsc);
-		clear_port_change(xudc, PORTSC_WRC);
+		clear_port_change(xudc, PORTSC_WRC | PORTSC_PED);
 		if (!(xudc_readl(xudc, PORTSC) & PORTSC_WPR))
 			tegra_xudc_port_reset(xudc);
 	}
@@ -2833,9 +2897,9 @@ static int tegra_xudc_alloc_event_ring(struct tegra_xudc *xudc)
 	return 0;
 
 free_dma:
-	for (; i >= 0; i--) {
+	for (; i > 0; i--) {
 		dma_free_coherent(xudc->dev, XUDC_EVENT_RING_SIZE *
-				  sizeof(*xudc->event_ring[i]),
+				  sizeof(*xudc->event_ring[i - 1]),
 				  xudc->event_ring[i - 1],
 				  xudc->event_ring_phys[i - 1]);
 	}
@@ -2964,7 +3028,7 @@ static void tegra_xudc_device_params_init(struct tegra_xudc *xudc)
 	val |= CFG_DEV_FE_PORTREGSEL_HSFS_PI << CFG_DEV_FE_PORTREGSEL_SHIFT;
 	xudc_writel(xudc, val, CFG_DEV_FE);
 
-	xudc_readl(xudc, PORTSC);
+	val = xudc_readl(xudc, PORTSC);
 	val &= ~(PORTSC_CHANGE_MASK | (PORTSC_PLS_MASK << PORTSC_PLS_SHIFT));
 	val |= PORTSC_LWS | (PORTSC_PLS_RXDETECT << PORTSC_PLS_SHIFT);
 	xudc_writel(xudc, val, PORTSC);

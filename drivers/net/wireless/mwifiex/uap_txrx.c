@@ -153,15 +153,15 @@ static void mwifiex_uap_queue_bridged_pkt(struct mwifiex_private *priv,
 	skb_pull(skb, hdr_chop);
 
 	if (skb_headroom(skb) < MWIFIEX_MIN_DATA_HEADER_LEN) {
-		dev_dbg(priv->adapter->dev,
-			"data: Tx: insufficient skb headroom %d\n",
-			skb_headroom(skb));
+		mwifiex_dbg(priv->adapter, DATA,
+			    "data: Tx: insufficient skb headroom %d\n",
+			    skb_headroom(skb));
 		/* Insufficient skb headroom - allocate a new skb */
 		new_skb =
 			skb_realloc_headroom(skb, MWIFIEX_MIN_DATA_HEADER_LEN);
 		if (unlikely(!new_skb)) {
-			dev_err(priv->adapter->dev,
-				"Tx: cannot allocate new_skb\n");
+			mwifiex_dbg(adapter, ERROR,
+				    "Tx: cannot allocate new_skb\n");
 			kfree_skb(skb);
 			priv->stats.tx_dropped++;
 			return;
@@ -169,8 +169,9 @@ static void mwifiex_uap_queue_bridged_pkt(struct mwifiex_private *priv,
 
 		kfree_skb(skb);
 		skb = new_skb;
-		dev_dbg(priv->adapter->dev, "info: new skb headroom %d\n",
-			skb_headroom(skb));
+		mwifiex_dbg(priv->adapter, INFO,
+			    "info: new skb headroom %d\n",
+			    skb_headroom(skb));
 	}
 
 	tx_info = MWIFIEX_SKB_TXCB(skb);
@@ -225,7 +226,8 @@ int mwifiex_handle_uap_rx_forward(struct mwifiex_private *priv,
 
 	/* don't do packet forwarding in disconnected state */
 	if (!priv->media_connected) {
-		dev_err(adapter->dev, "drop packet in disconnected state.\n");
+		mwifiex_dbg(adapter, ERROR,
+			    "drop packet in disconnected state.\n");
 		dev_kfree_skb_any(skb);
 		return 0;
 	}
@@ -286,7 +288,8 @@ int mwifiex_process_uap_rx_packet(struct mwifiex_private *priv,
 	if (rx_pkt_type == PKT_TYPE_MGMT) {
 		ret = mwifiex_process_mgmt_packet(priv, skb);
 		if (ret)
-			dev_err(adapter->dev, "Rx of mgmt packet failed");
+			mwifiex_dbg(adapter, ERROR,
+				    "Rx of mgmt packet failed");
 		dev_kfree_skb_any(skb);
 		return ret;
 	}
@@ -345,31 +348,33 @@ void *mwifiex_process_uap_txpd(struct mwifiex_private *priv,
 	struct mwifiex_adapter *adapter = priv->adapter;
 	struct uap_txpd *txpd;
 	struct mwifiex_txinfo *tx_info = MWIFIEX_SKB_TXCB(skb);
-	int pad, len;
-	u16 pkt_type;
+	int pad;
+	u16 pkt_type, pkt_offset;
+	int hroom = (priv->adapter->iface_type == MWIFIEX_USB) ? 0 :
+		       INTF_HEADER_LEN;
 
 	if (!skb->len) {
-		dev_err(adapter->dev, "Tx: bad packet length: %d\n", skb->len);
+		mwifiex_dbg(adapter, ERROR,
+			    "Tx: bad packet length: %d\n", skb->len);
 		tx_info->status_code = -1;
 		return skb->data;
 	}
 
+	BUG_ON(skb_headroom(skb) < MWIFIEX_MIN_DATA_HEADER_LEN);
+
 	pkt_type = mwifiex_is_skb_mgmt_frame(skb) ? PKT_TYPE_MGMT : 0;
 
-	/* If skb->data is not aligned, add padding */
-	pad = (4 - (((void *)skb->data - NULL) & 0x3)) % 4;
+	pad = ((void *)skb->data - (sizeof(*txpd) + hroom) - NULL) &
+			(MWIFIEX_DMA_ALIGN_SZ - 1);
 
-	len = sizeof(*txpd) + pad;
-
-	BUG_ON(skb_headroom(skb) < len + INTF_HEADER_LEN);
-
-	skb_push(skb, len);
+	skb_push(skb, sizeof(*txpd) + pad);
 
 	txpd = (struct uap_txpd *)skb->data;
 	memset(txpd, 0, sizeof(*txpd));
 	txpd->bss_num = priv->bss_num;
 	txpd->bss_type = priv->bss_type;
-	txpd->tx_pkt_length = cpu_to_le16((u16)(skb->len - len));
+	txpd->tx_pkt_length = cpu_to_le16((u16)(skb->len - (sizeof(*txpd) +
+						pad)));
 
 	txpd->priority = (u8)skb->priority;
 	txpd->pkt_delay_2ms = mwifiex_wmm_compute_drv_pkt_delay(priv, skb);
@@ -383,16 +388,17 @@ void *mwifiex_process_uap_txpd(struct mwifiex_private *priv,
 		    cpu_to_le32(priv->wmm.user_pri_pkt_tx_ctrl[txpd->priority]);
 
 	/* Offset of actual data */
+	pkt_offset = sizeof(*txpd) + pad;
 	if (pkt_type == PKT_TYPE_MGMT) {
 		/* Set the packet type and add header for management frame */
 		txpd->tx_pkt_type = cpu_to_le16(pkt_type);
-		len += MWIFIEX_MGMT_FRAME_HEADER_SIZE;
+		pkt_offset += MWIFIEX_MGMT_FRAME_HEADER_SIZE;
 	}
 
-	txpd->tx_pkt_offset = cpu_to_le16(len);
+	txpd->tx_pkt_offset = cpu_to_le16(pkt_offset);
 
 	/* make space for INTF_HEADER_LEN */
-	skb_push(skb, INTF_HEADER_LEN);
+	skb_push(skb, hroom);
 
 	if (!txpd->tx_control)
 		/* TxCtrl set by user or default */

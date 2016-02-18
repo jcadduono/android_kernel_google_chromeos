@@ -93,10 +93,9 @@ static struct tegra_ictlr_info *lic;
 
 static inline void tegra_ictlr_write_mask(struct irq_data *d, unsigned long reg)
 {
-	void __iomem *base;
+	void __iomem *base = d->chip_data;
 	u32 mask;
 
-	base = lic->base[(d->hwirq - 32) / 32];
 	mask = BIT(d->hwirq % 32);
 	writel_relaxed(mask, base + reg);
 }
@@ -226,6 +225,7 @@ static struct irq_chip tegra_ictlr_chip = {
 	.irq_unmask		= tegra_unmask,
 	.irq_retrigger		= tegra_retrigger,
 	.irq_set_wake		= tegra_set_wake,
+	.irq_set_type		= irq_chip_set_type_parent,
 	.flags			= IRQCHIP_MASK_ON_SUSPEND,
 #ifdef CONFIG_SMP
 	.irq_set_affinity	= irq_chip_set_affinity_parent,
@@ -275,7 +275,7 @@ static int tegra_ictlr_domain_alloc(struct irq_domain *domain,
 
 		irq_domain_set_hwirq_and_chip(domain, virq + i, hwirq + i,
 					      &tegra_ictlr_chip,
-					      &info->base[ictlr]);
+					      info->base[ictlr]);
 	}
 
 	parent_args = *args;

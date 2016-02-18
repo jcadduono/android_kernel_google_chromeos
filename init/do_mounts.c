@@ -113,7 +113,7 @@ no_match:
  *
  * Returns the matching dev_t on success or 0 on failure.
  */
-dev_t devt_from_partuuid(const char *uuid_str)
+static dev_t devt_from_partuuid(const char *uuid_str)
 {
 	dev_t res = 0;
 	struct uuidcmp cmp;
@@ -287,6 +287,7 @@ fail:
 done:
 	return res;
 }
+EXPORT_SYMBOL_GPL(name_to_dev_t);
 
 static int __init root_dev_setup(char *line)
 {

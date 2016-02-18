@@ -922,92 +922,79 @@ gk20a_pmu_queue_init(struct gk20a_pmu_priv *priv,
 	return 0;
 }
 
-static int
-gk20a_pmu_queue_head_get(struct gk20a_pmu_priv *priv, struct pmu_queue *queue,
-			u32 *head)
+static u32
+gk20a_pmu_queue_head_get(struct gk20a_pmu_priv *priv, struct pmu_queue *queue)
 {
 	struct nvkm_pmu *pmu = &priv->base;
 
-	if (WARN_ON(!head))
-		return -EINVAL;
-
 	if (PMU_IS_COMMAND_QUEUE(queue->id)) {
-		if (queue->index >= 0x00000004)
-			return -EINVAL;
+		/*
+		 * Return some safe value to avoid overwriting some other
+		 * data if write is attempted to such incorrect queue.
+		 *
+		 * The queue will be always seen as empty.
+		 */
+		if (WARN_ON(queue->index > 3))
+			return queue->offset;
 
-		*head = nv_rd32(pmu, 0x0010a4a0 + (queue->index * 4)) &
-				0xffffffff;
-	} else {
-		*head = nv_rd32(pmu, 0x0010a4c8) & 0xffffffff;
+		return nv_rd32(pmu, 0x0010a4a0 + 4 * (queue->index & 3));
 	}
 
-	return 0;
+	return nv_rd32(pmu, 0x0010a4c8);
 }
 
-static int
+static void
 gk20a_pmu_queue_head_set(struct gk20a_pmu_priv *priv, struct pmu_queue *queue,
-			u32 *head)
+			 u32 head)
 {
 	struct nvkm_pmu *pmu = &priv->base;
 
-	if (WARN_ON(!head))
-		return -EINVAL;
-
 	if (PMU_IS_COMMAND_QUEUE(queue->id)) {
-		if (queue->index >= 0x00000004)
-			return -EINVAL;
+		if (WARN_ON(queue->index > 3))
+			return;
 
-		nv_wr32(pmu, (0x0010a4a0 + (queue->index * 4)),
-						(*head & 0xffffffff));
-	} else {
-		nv_wr32(pmu, 0x0010a4c8, (*head & 0xffffffff));
+		nv_wr32(pmu, 0x0010a4a0 + 4 * (queue->index & 3), head);
+		return;
 	}
 
-	return 0;
+	nv_wr32(pmu, 0x0010a4c8, head);
 }
 
-static int
-gk20a_pmu_queue_tail_get(struct gk20a_pmu_priv *priv, struct pmu_queue *queue,
-			u32 *tail)
+static u32
+gk20a_pmu_queue_tail_get(struct gk20a_pmu_priv *priv, struct pmu_queue *queue)
 {
 	struct nvkm_pmu *pmu = &priv->base;
 
-	if (WARN_ON(!tail))
-		return -EINVAL;
-
 	if (PMU_IS_COMMAND_QUEUE(queue->id)) {
-		if (queue->index >= 0x00000004)
-			return -EINVAL;
+		/*
+		 * Return some safe value to avoid overwriting some other
+		 * data if write is attempted to such incorrect queue.
+		 *
+		 * The queue will be always seen as empty.
+		 */
+		if (WARN_ON(queue->index > 3))
+			return queue->offset;
 
-		*tail = nv_rd32(pmu, 0x0010a4b0 + (queue->index * 4)) &
-				0xffffffff;
-	} else {
-		*tail = nv_rd32(pmu, 0x0010a4cc) & 0xffffffff;
+		return nv_rd32(pmu, 0x0010a4b0 + 4 * (queue->index & 3));
 	}
 
-	return 0;
+	return nv_rd32(pmu, 0x0010a4cc);
 }
 
-static int
+static void
 gk20a_pmu_queue_tail_set(struct gk20a_pmu_priv *priv, struct pmu_queue *queue,
-			u32 *tail)
+			 u32 tail)
 {
 	struct nvkm_pmu *pmu = &priv->base;
 
-	if (WARN_ON(!tail))
-		return -EINVAL;
-
 	if (PMU_IS_COMMAND_QUEUE(queue->id)) {
-		if (queue->index >= 0x00000004)
-			return -EINVAL;
+		if (WARN_ON(queue->index > 3))
+			return;
 
-		nv_wr32(pmu, (0x0010a4b0 + (queue->index * 4)),
-						(*tail & 0xffffffff));
-	} else {
-		nv_wr32(pmu, 0x0010a4cc, (*tail & 0xffffffff));
+		nv_wr32(pmu, 0x0010a4b0 + 4 * (queue->index & 3), tail);
 	}
 
-	return 0;
+	nv_wr32(pmu, 0x0010a4cc, tail);
 }
 
 static inline void
@@ -1024,14 +1011,14 @@ gk20a_pmu_queue_write(struct gk20a_pmu_priv *priv,
 	gk20a_pmu_copy_to_dmem(priv, offset, src, size, 0);
 }
 
-static int
+int
 gk20a_pmu_mutex_acquire(struct nvkm_pmu *pmu, u32 id, u32 *token)
 {
 	struct gk20a_pmu_priv *priv = to_gk20a_priv(pmu);
 	struct pmu_mutex *mutex;
 	u32 data, owner, max_retry;
 
-	if (!priv->initialized)
+	if (WARN_ON(!priv->out_of_reset))
 		return -EINVAL;
 
 	if (WARN_ON(!token))
@@ -1065,7 +1052,8 @@ gk20a_pmu_mutex_acquire(struct nvkm_pmu *pmu, u32 id, u32 *token)
 			nv_warn(pmu,
 				"fail to generate mutex token: val 0x%08x\n",
 				owner);
-			break; /* Break and returns -EBUSY */
+			usleep_range(20, 40);
+			continue;
 		}
 
 		owner = data;
@@ -1097,14 +1085,14 @@ gk20a_pmu_mutex_acquire(struct nvkm_pmu *pmu, u32 id, u32 *token)
 	return -EBUSY;
 }
 
-static int
+int
 gk20a_pmu_mutex_release(struct nvkm_pmu *pmu, u32 id, u32 *token)
 {
 	struct gk20a_pmu_priv *priv = to_gk20a_priv(pmu);
 	struct pmu_mutex *mutex;
 	u32 owner;
 
-	if (!priv->initialized)
+	if (WARN_ON(!priv->out_of_reset))
 		return -EINVAL;
 
 	if (WARN_ON(!token))
@@ -1181,11 +1169,11 @@ gk20a_pmu_queue_is_empty(struct gk20a_pmu_priv *priv,
 {
 	u32 head, tail;
 
-	gk20a_pmu_queue_head_get(priv, queue, &head);
+	head = gk20a_pmu_queue_head_get(priv, queue);
 	if (queue->opened && queue->oflag == OFLAG_READ)
 		tail = queue->position;
 	else
-		gk20a_pmu_queue_tail_get(priv, queue, &tail);
+		tail = gk20a_pmu_queue_tail_get(priv, queue);
 
 	return head == tail;
 }
@@ -1199,8 +1187,8 @@ gk20a_pmu_queue_has_room(struct gk20a_pmu_priv *priv,
 
 	size = ALIGN(size, QUEUE_ALIGNMENT);
 
-	gk20a_pmu_queue_head_get(priv, queue, &head);
-	gk20a_pmu_queue_tail_get(priv, queue, &tail);
+	head = gk20a_pmu_queue_head_get(priv, queue);
+	tail = gk20a_pmu_queue_tail_get(priv, queue);
 
 	if (head >= tail) {
 		free = queue->offset + queue->size - head;
@@ -1253,7 +1241,7 @@ gk20a_pmu_queue_pop(struct gk20a_pmu_priv *priv,
 		return -EINVAL;
 	}
 
-	gk20a_pmu_queue_head_get(priv, queue, &head);
+	head = gk20a_pmu_queue_head_get(priv, queue);
 	tail = queue->position;
 
 	if (head == tail) {
@@ -1317,7 +1305,7 @@ gk20a_pmu_queue_open_read(struct gk20a_pmu_priv *priv,
 	if (WARN_ON(queue->opened))
 		return -EBUSY;
 
-	gk20a_pmu_queue_tail_get(priv, queue, &queue->position);
+	queue->position = gk20a_pmu_queue_tail_get(priv, queue);
 	queue->oflag = OFLAG_READ;
 	queue->opened = true;
 
@@ -1349,7 +1337,7 @@ gk20a_pmu_queue_open_write(struct gk20a_pmu_priv *priv,
 		return -EAGAIN;
 	}
 
-	gk20a_pmu_queue_head_get(priv, queue, &queue->position);
+	queue->position = gk20a_pmu_queue_head_get(priv, queue);
 	queue->oflag = OFLAG_WRITE;
 	queue->opened = true;
 
@@ -1374,10 +1362,10 @@ gk20a_pmu_queue_close(struct gk20a_pmu_priv *priv,
 	if (commit) {
 		if (queue->oflag == OFLAG_READ) {
 			gk20a_pmu_queue_tail_set(priv, queue,
-				&queue->position);
+				queue->position);
 		} else {
 			gk20a_pmu_queue_head_set(priv, queue,
-				&queue->position);
+				queue->position);
 		}
 	}
 
@@ -2215,7 +2203,6 @@ gk20a_pmu_setup_hw_enable_elpg(struct nvkm_pmu *pmu)
 	struct nvkm_ltc *ltc = nvkm_ltc(priv);
 	int ret;
 
-	priv->initialized = true;
 	priv->pmu_state = PMU_STATE_STARTED;
 
 	if (gr->wait_idle) {
@@ -2696,41 +2683,37 @@ gk20a_pmu_init_vm(struct gk20a_pmu_priv *priv, const struct firmware *fw)
 	struct nvkm_device *device = nv_device(&priv->base);
 	struct nvkm_vm *vm;
 	struct nvkm_pmu *pmu = &priv->base;
+	struct nvkm_mmu *mmu = nvkm_mmu(priv);
 	const u64 pmu_area_len = 300*1024;
 
-	/* mem for inst blk*/
+	/* allocate inst blk */
 	ret = nvkm_gpuobj_new(nv_object(priv), NULL, 0x1000, 0, 0, &pmuvm->mem);
 	if (ret)
 		return ret;
 
-	/* mem for pgd*/
-	ret = nvkm_gpuobj_new(nv_object(priv), NULL, 0x8000, 0, 0, &pmuvm->pgd);
+	/* allocate pgd and initialize inst blk */
+	ret = mmu->create_pgd(mmu, nv_object(priv), pmuvm->mem,
+				pmu_area_len, &pmuvm->pgd);
 	if (ret)
-		return ret;
+		goto err_pgd;
 
-	/*allocate virtual memory range*/
+	/* allocate virtual memory range */
 	ret = nvkm_vm_new(device, 0, pmu_area_len, 0, &vm);
 	if (ret)
-		return ret;
+		goto err_vm;
 
 	atomic_inc(&vm->engref[NVDEV_SUBDEV_PMU]);
 
 	/* update VM with pgd */
 	ret = nvkm_vm_ref(vm, &pmuvm->vm, pmuvm->pgd);
 	if (ret)
-		return ret;
-
-	/*update pgd in inst blk */
-	nv_wo32(pmuvm->mem, 0x0200, lower_32_bits(pmuvm->pgd->addr));
-	nv_wo32(pmuvm->mem, 0x0204, upper_32_bits(pmuvm->pgd->addr));
-	nv_wo32(pmuvm->mem, 0x0208, lower_32_bits(pmu_area_len - 1));
-	nv_wo32(pmuvm->mem, 0x020c, upper_32_bits(pmu_area_len - 1));
+		goto err_ref;
 
 	/* allocate memory for pmu fw to be copied to*/
 	ret = nvkm_gpuobj_new(nv_object(priv), NULL, GK20A_PMU_UCODE_SIZE_MAX,
 			      0x1000, 0, &priv->ucode.obj);
 	if (ret)
-		return ret;
+		goto err_fw;
 
 	ucode_image = (u32 *)((u8 *)desc + desc->descriptor_size);
 	gpu_obj_memwr(priv->ucode.obj, 0,
@@ -2740,10 +2723,24 @@ gk20a_pmu_init_vm(struct gk20a_pmu_priv *priv, const struct firmware *fw)
 	ret = nvkm_gpuobj_map_vm(priv->ucode.obj, vm, NV_MEM_ACCESS_RW,
 				 &priv->ucode.vma);
 	if (ret)
-		return ret;
+		goto err_map;
 
 	pmu->pmu_vm = pmuvm;
+	return 0;
 
+err_map:
+	nvkm_gpuobj_destroy(priv->ucode.obj);
+	priv->ucode.obj = NULL;
+err_fw:
+	nvkm_vm_ref(NULL, &vm, pmuvm->pgd);
+err_ref:
+	nvkm_vm_ref(NULL, &vm, NULL);
+err_vm:
+	nvkm_gpuobj_destroy(pmuvm->pgd);
+	pmuvm->pgd = NULL;
+err_pgd:
+	nvkm_gpuobj_destroy(pmuvm->mem);
+	pmuvm->mem = NULL;
 	return ret;
 }
 
@@ -3166,6 +3163,8 @@ gk20a_pmu_init(struct nvkm_object *object)
 	if (ret)
 		return ret;
 
+	priv->out_of_reset = true;
+
 	gk20a_pmu_dvfs_init(priv);
 	pmu->fecs_secure_boot = false;
 	pmu->elcg_enabled = true;
@@ -3180,7 +3179,11 @@ gk20a_pmu_init(struct nvkm_object *object)
 	nvkm_timer_alarm(priv, PMU_DVFS_INTERVAL, &priv->alarm);
 
 	mutex_lock(&priv->elpg_mutex);
-	priv->elpg_disable_depth = 0;
+	/*
+	 * ELPG will be enabled when PMU finishes booting, so setting the
+	 * counter to 1 initialy.
+	 */
+	priv->elpg_disable_depth = 1;
 	mutex_unlock(&priv->elpg_mutex);
 
 	mutex_lock(&priv->clk_gating_mutex);
@@ -3202,10 +3205,6 @@ gk20a_pmu_fini(struct nvkm_object *object, bool suspend)
 	cancel_work_sync(&priv->base.recv.work);
 	cancel_work_sync(&priv->pg_init);
 
-	mutex_lock(&priv->elpg_mutex);
-	priv->elpg_disable_depth = 0;
-	mutex_unlock(&priv->elpg_mutex);
-
 	mutex_lock(&priv->clk_gating_mutex);
 	priv->clk_gating_disable_depth = 0;
 	mutex_unlock(&priv->clk_gating_mutex);
@@ -3217,6 +3216,7 @@ gk20a_pmu_fini(struct nvkm_object *object, bool suspend)
 
 	priv->pmu_state = PMU_STATE_OFF;
 	priv->pmu_ready = false;
+	priv->out_of_reset = false;
 
 	pmu->elcg_enabled = false;
 	pmu->slcg_enabled = false;
@@ -3276,9 +3276,9 @@ gk20a_pmu_ctor(struct nvkm_object *parent, struct nvkm_object *engine,
 	mutex_init(&priv->allow_elpg_mutex);
 	mutex_init(&priv->elpg_mutex);
 	mutex_init(&priv->clk_gating_mutex);
-	init_completion(&pmu->gr_init);
 	priv->data = &gk20a_dvfs_data;
 	pmu = &priv->base;
+	init_completion(&pmu->gr_init);
 	pmc = nvkm_mc(pmu);
 	nv_subdev(pmu)->intr = gk20a_pmu_intr;
 	pmu->enable_elpg = gk20a_pmu_enable_elpg;
@@ -3344,5 +3344,7 @@ gk20a_pmu_oclass = &(struct nvkm_pmu_impl) {
 		.fini = gk20a_pmu_fini,
 	},
 	.pgob = gk20a_pmu_pgob,
+	.acquire_mutex = gk20a_pmu_mutex_acquire,
+	.release_mutex = gk20a_pmu_mutex_release,
 }.base;
 

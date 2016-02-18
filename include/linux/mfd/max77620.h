@@ -262,6 +262,12 @@
 #define MAX77620_TWD_64s			0x2
 #define MAX77620_TWD_128s			0x3
 
+#define MAX77620_CNFGGLBL1_LBDAC_EN		BIT(7)
+#define MAX77620_CNFGGLBL1_MBLPD		BIT(6)
+#define MAX77620_CNFGGLBL1_LBHYST		(BIT(5) | BIT(4))
+#define MAX77620_CNFGGLBL1_LBDAC		(BIT(3) | BIT(2) | BIT(1))
+#define MAX77620_CNFGGLBL1_LBRSTEN		BIT(0)
+
 /* CNFG BBC registers */
 #define MAX77620_CNFGBBC_ENABLE			BIT(0)
 #define MAX77620_CNFGBBC_CURRENT_MASK		0x06
@@ -301,7 +307,6 @@ enum {
  */
 
 enum {
-	MAX77620_IRQ_TOP_GLBL,		/* Low-Battery */
 	MAX77620_IRQ_TOP_SD,		/* SD power fail */
 	MAX77620_IRQ_TOP_LDO,		/* LDO power fail */
 	MAX77620_IRQ_TOP_GPIO,		/* TOP GPIO internal int to MAX77620 */
@@ -309,7 +314,7 @@ enum {
 	MAX77620_IRQ_TOP_32K,		/* 32kHz oscillator */
 	MAX77620_IRQ_TOP_ONOFF,		/* ON/OFF oscillator */
 
-	MAX77620_IRQ_LBT_MBATLOW,	/* Thermal alarm status, > 120C */
+	MAX77620_IRQ_LBT_MBATLOW,	/* Low-Battery */
 	MAX77620_IRQ_LBT_TJALRM1,	/* Thermal alarm status, > 120C */
 	MAX77620_IRQ_LBT_TJALRM2,	/* Thermal alarm status, > 140C */
 

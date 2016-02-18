@@ -20,6 +20,15 @@
 #ifndef	_MWIFIEX_SDIO_H
 #define	_MWIFIEX_SDIO_H
 
+#define REG_DBG_MAX_NUM 16
+struct sdio_reg_dbg {
+	char name[REG_DBG_MAX_NUM];
+	u8 fn;
+	int delay;
+	int num_regs;
+	u32 reg[REG_DBG_MAX_NUM];
+	u8 val[REG_DBG_MAX_NUM];
+};
 
 #include <linux/mmc/sdio.h>
 #include <linux/mmc/sdio_ids.h>
@@ -33,7 +42,7 @@
 #define SD8787_DEFAULT_FW_NAME "mrvl/sd8787_uapsta.bin"
 #define SD8797_DEFAULT_FW_NAME "mrvl/sd8797_uapsta.bin"
 #define SD8897_DEFAULT_FW_NAME "mrvl/sd8897_uapsta.bin"
-#define SD8887_DEFAULT_FW_NAME "mrvl/sd8887_uapsta.bin"
+#define SD8887_DEFAULT_FW_NAME "mrvl/sd8887_wlan_a2.bin"
 
 #define BLOCK_MODE	1
 #define BYTE_MODE	0
@@ -63,6 +72,8 @@
 
 #define MWIFIEX_MP_AGGR_BUF_SIZE_16K	(16384)
 #define MWIFIEX_MP_AGGR_BUF_SIZE_32K	(32768)
+/* we leave one block of 256 bytes for DMA alignment*/
+#define MWIFIEX_MP_AGGR_BUF_SIZE_MAX    (65280)
 
 /* Misc. Config Register : Auto Re-enable interrupts */
 #define AUTO_RE_ENABLE_INT              BIT(4)
@@ -191,6 +202,7 @@ struct mwifiex_sdio_card_reg {
 	u8 status_reg_0;
 	u8 status_reg_1;
 	u8 sdio_int_mask;
+	u8 host_int_mask;
 	u32 data_port_mask;
 	u8 io_port_0_reg;
 	u8 io_port_1_reg;
@@ -207,6 +219,9 @@ struct mwifiex_sdio_card_reg {
 	u8 rd_len_p0_l;
 	u8 rd_len_p0_u;
 	u8 card_misc_cfg_reg;
+	u8 card_int_status;
+	u8 card_int_rsr;
+	u8 card_fw_status0;
 	u8 card_cfg_2_1_reg;
 	u8 cmd_rd_len_0;
 	u8 cmd_rd_len_1;
@@ -277,6 +292,7 @@ static const struct mwifiex_sdio_card_reg mwifiex_reg_sd87xx = {
 	.status_reg_0 = 0x60,
 	.status_reg_1 = 0x61,
 	.sdio_int_mask = 0x3f,
+	.host_int_mask = 0x34,
 	.data_port_mask = 0x0000fffe,
 	.io_port_0_reg = 0x78,
 	.io_port_1_reg = 0x79,
@@ -289,6 +305,9 @@ static const struct mwifiex_sdio_card_reg mwifiex_reg_sd87xx = {
 	.rd_len_p0_l = 0x08,
 	.rd_len_p0_u = 0x09,
 	.card_misc_cfg_reg = 0x6c,
+	.card_int_status = 0x38,
+	.card_int_rsr = 0x3c,
+	.card_fw_status0 = 0x60,
 };
 
 static const struct mwifiex_sdio_card_reg mwifiex_reg_sd8897 = {
@@ -305,6 +324,7 @@ static const struct mwifiex_sdio_card_reg mwifiex_reg_sd8897 = {
 	.status_reg_0 = 0xc0,
 	.status_reg_1 = 0xc1,
 	.sdio_int_mask = 0xff,
+	.host_int_mask = 0x54,
 	.data_port_mask = 0xffffffff,
 	.io_port_0_reg = 0xD8,
 	.io_port_1_reg = 0xD9,
@@ -321,6 +341,9 @@ static const struct mwifiex_sdio_card_reg mwifiex_reg_sd8897 = {
 	.rd_len_p0_l = 0x0c,
 	.rd_len_p0_u = 0x0d,
 	.card_misc_cfg_reg = 0xcc,
+	.card_int_status = 0x58,
+	.card_int_rsr = 0x5c,
+	.card_fw_status0 = 0xc0,
 	.card_cfg_2_1_reg = 0xcd,
 	.cmd_rd_len_0 = 0xb4,
 	.cmd_rd_len_1 = 0xb5,
@@ -436,8 +459,8 @@ static const struct mwifiex_sdio_device mwifiex_sdio_sd8887 = {
 	.supports_sdio_new_mode = true,
 	.has_control_mask = false,
 	.tx_buf_size = MWIFIEX_TX_DATA_BUF_SIZE_4K,
-	.mp_tx_agg_buf_size = MWIFIEX_MP_AGGR_BUF_SIZE_32K,
-	.mp_rx_agg_buf_size = MWIFIEX_MP_AGGR_BUF_SIZE_32K,
+	.mp_tx_agg_buf_size = MWIFIEX_MP_AGGR_BUF_SIZE_MAX,
+	.mp_rx_agg_buf_size = MWIFIEX_MP_AGGR_BUF_SIZE_MAX,
 	.supports_fw_dump = false,
 };
 
@@ -515,9 +538,9 @@ mp_tx_aggr_port_limit_reached(struct sdio_mmc_card *card)
 
 /* Prepare to copy current packet from card to SDIO Rx aggregation buffer */
 static inline void mp_rx_aggr_setup(struct sdio_mmc_card *card,
-				    struct sk_buff *skb, u8 port)
+				    u16 rx_len, u8 port)
 {
-	card->mpa_rx.buf_len += skb->len;
+	card->mpa_rx.buf_len += rx_len;
 
 	if (!card->mpa_rx.pkt_cnt)
 		card->mpa_rx.start_port = port;
@@ -530,8 +553,8 @@ static inline void mp_rx_aggr_setup(struct sdio_mmc_card *card,
 		else
 			card->mpa_rx.ports |= 1 << (card->mpa_rx.pkt_cnt + 1);
 	}
-	card->mpa_rx.skb_arr[card->mpa_rx.pkt_cnt] = skb;
-	card->mpa_rx.len_arr[card->mpa_rx.pkt_cnt] = skb->len;
+	card->mpa_rx.skb_arr[card->mpa_rx.pkt_cnt] = NULL;
+	card->mpa_rx.len_arr[card->mpa_rx.pkt_cnt] = rx_len;
 	card->mpa_rx.pkt_cnt++;
 }
 #endif /* _MWIFIEX_SDIO_H */

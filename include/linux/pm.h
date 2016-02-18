@@ -585,17 +585,14 @@ struct wakeup_source;
  *			suspended or some invalid state.
  */
 
-enum wakeup_type {
+enum pm_wakeup_type {
 	WAKEUP_UNKNOWN = 0,
 	WAKEUP_AUTOMATIC,
 	WAKEUP_USER,
 	WAKEUP_INVALID,
 };
 
-struct pm_domain_data {
-	struct list_head list_node;
-	struct device *dev;
-};
+struct pm_domain_data;
 
 struct pm_subsys_data {
 	spinlock_t lock;
@@ -625,7 +622,7 @@ struct dev_pm_info {
 	struct completion	completion;
 	struct wakeup_source	*wakeup;
 	void			*wakeup_data;
-	enum wakeup_type	wakeup_source_type;
+	enum pm_wakeup_type	wakeup_source_type;
 	bool			wakeup_path:1;
 	bool			syscore:1;
 	bool			use_dark_resume:1;
@@ -672,10 +669,18 @@ extern int dev_pm_put_subsys_data(struct device *dev);
  * Power domains provide callbacks that are executed during system suspend,
  * hibernation, system resume and during runtime PM transitions along with
  * subsystem-level and driver-level callbacks.
+ *
+ * @detach: Called when removing a device from the domain.
+ * @activate: Called before executing probe routines for bus types and drivers.
+ * @sync: Called after successful driver probe.
+ * @dismiss: Called after unsuccessful driver probe and after driver removal.
  */
 struct dev_pm_domain {
 	struct dev_pm_ops	ops;
 	void (*detach)(struct device *dev, bool power_off);
+	int (*activate)(struct device *dev);
+	void (*sync)(struct device *dev);
+	void (*dismiss)(struct device *dev);
 };
 
 /*

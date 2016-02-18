@@ -274,10 +274,25 @@ static const struct reg_default rt5677_reg[] = {
 	{RT5677_VENDOR_ID2		, 0x6327},
 };
 
+/* The following registers are modified by the hotword DSP firmware and the
+ * codec driver. When CONFIG_SND_SOC_RT5677_HOTWORD is enabled, they need to
+ * be marked as volatile to disable regcache so that changes made by the DSP
+ * firmware are visible to the codec driver. When the hotword config is enabled
+ * but the user decides not to use hotwording during suspend, these registers
+ * need to be manually saved/restored at suspend/resume because the codec loses
+ * power and resets when there is no active stream at suspend. regcache doesn't
+ * save/restore them in this case because they are volatile.
+ */
+unsigned int regs_used_by_dsp_fw[] = {
+	RT5677_PWR_ANLG2,
+	RT5677_GPIO_CTRL1,
+	RT5677_GPIO_CTRL2,
+	RT5677_GEN_CTRL2,
+};
+
 static bool rt5677_volatile_register(struct device *dev, unsigned int reg)
 {
 	int i;
-	struct rt5677_priv *rt5677 = dev_get_drvdata(dev);
 
 	for (i = 0; i < ARRAY_SIZE(rt5677_ranges); i++) {
 		if (reg >= rt5677_ranges[i].range_min &&
@@ -285,6 +300,11 @@ static bool rt5677_volatile_register(struct device *dev, unsigned int reg)
 			return true;
 		}
 	}
+
+	if (IS_ENABLED(CONFIG_SND_SOC_RT5677_HOTWORD))
+		for (i = 0; i < ARRAY_SIZE(regs_used_by_dsp_fw); i++)
+			if (reg == regs_used_by_dsp_fw[i])
+				return true;
 
 	switch (reg) {
 	case RT5677_RESET:
@@ -297,7 +317,6 @@ static bool rt5677_volatile_register(struct device *dev, unsigned int reg)
 	case RT5677_I2C_MASTER_CTRL7:
 	case RT5677_I2C_MASTER_CTRL8:
 	case RT5677_HAP_GENE_CTRL2:
-	case RT5677_PWR_ANLG2: /* Modified by DSP firmware */
 	case RT5677_PWR_DSP_ST:
 	case RT5677_PRIV_DATA:
 	case RT5677_PLL1_CTRL2:
@@ -319,9 +338,6 @@ static bool rt5677_volatile_register(struct device *dev, unsigned int reg)
 	case RT5677_VENDOR_ID1:
 	case RT5677_VENDOR_ID2:
 		return true;
-	case RT5677_GPIO_CTRL1:
-	case RT5677_GPIO_CTRL2:
-		return rt5677->pdata.gpio_ctl_volatile;
 	default:
 		return false;
 	}
@@ -4789,11 +4805,40 @@ static int rt5677_remove(struct snd_soc_codec *codec)
 }
 
 #ifdef CONFIG_PM
+static void rt5677_save_dsp_regs(struct rt5677_priv *rt5677)
+{
+	int i;
+
+	if (!IS_ENABLED(CONFIG_SND_SOC_RT5677_HOTWORD))
+		return;
+	if (!rt5677->regcache) {
+		rt5677->regcache = devm_kzalloc(rt5677->codec->dev,
+			sizeof(regs_used_by_dsp_fw), GFP_KERNEL);
+		if (!rt5677->regcache)
+			return;
+	}
+	for (i = 0; i < ARRAY_SIZE(regs_used_by_dsp_fw); i++)
+		regmap_read(rt5677->regmap, regs_used_by_dsp_fw[i],
+			&rt5677->regcache[i]);
+}
+
+static void rt5677_restore_dsp_regs(struct rt5677_priv *rt5677)
+{
+	int i;
+
+	if (!rt5677->regcache)
+		return;
+	for (i = 0; i < ARRAY_SIZE(regs_used_by_dsp_fw); i++)
+		regmap_write(rt5677->regmap, regs_used_by_dsp_fw[i],
+			rt5677->regcache[i]);
+}
+
 static int rt5677_suspend(struct snd_soc_codec *codec)
 {
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
 
 	if (!rt5677->dsp_vad_en) {
+		rt5677_save_dsp_regs(rt5677);
 		regcache_cache_only(rt5677->regmap, true);
 		regcache_mark_dirty(rt5677->regmap);
 
@@ -4809,6 +4854,9 @@ static int rt5677_resume(struct snd_soc_codec *codec)
 	struct rt5677_priv *rt5677 = snd_soc_codec_get_drvdata(codec);
 
 	if (!rt5677->dsp_vad_en) {
+		rt5677->pll_src = 0;
+		rt5677->pll_in = 0;
+		rt5677->pll_out = 0;
 		gpiod_set_value_cansleep(rt5677->pow_ldo2, 1);
 		gpiod_set_value_cansleep(rt5677->reset_pin, 0);
 		if (rt5677->pow_ldo2 || rt5677->reset_pin)
@@ -4816,6 +4864,7 @@ static int rt5677_resume(struct snd_soc_codec *codec)
 
 		regcache_cache_only(rt5677->regmap, false);
 		regcache_sync(rt5677->regmap);
+		rt5677_restore_dsp_regs(rt5677);
 	}
 
 	/* All private registers are volatile so we have to restore it
@@ -4887,6 +4936,11 @@ static struct snd_soc_dai_ops rt5677_aif_dai_ops = {
 	.set_sysclk = rt5677_set_dai_sysclk,
 	.set_pll = rt5677_set_dai_pll,
 	.set_tdm_slot = rt5677_set_tdm_slot,
+};
+
+static struct snd_soc_dai_ops rt5677_dsp_dai_ops = {
+	.set_sysclk = rt5677_set_dai_sysclk,
+	.set_pll = rt5677_set_dai_pll,
 };
 
 static struct snd_soc_dai_driver rt5677_dai[] = {
@@ -4995,6 +5049,7 @@ static struct snd_soc_dai_driver rt5677_dai[] = {
 			.rates = SNDRV_PCM_RATE_16000,
 			.formats = SNDRV_PCM_FMTBIT_S16_LE,
 		},
+		.ops = &rt5677_dsp_dai_ops,
 	},
 };
 
@@ -5079,8 +5134,6 @@ static void rt5677_read_device_properties(struct rt5677_priv *rt5677,
 
 	rt5677->pdata.i2s1_pulldown = device_property_read_bool(dev,
 			"realtek,i2s1-pulldown");
-	rt5677->pdata.gpio_ctl_volatile = device_property_read_bool(dev,
-			"realtek,gpio_ctl_volatile");
 }
 
 static struct regmap_irq rt5677_irqs[] = {

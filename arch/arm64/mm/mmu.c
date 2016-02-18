@@ -46,80 +46,6 @@
 struct page *empty_zero_page;
 EXPORT_SYMBOL(empty_zero_page);
 
-struct cachepolicy {
-	const char	policy[16];
-	u64		mair;
-	u64		tcr;
-};
-
-static struct cachepolicy cache_policies[] __initdata = {
-	{
-		.policy		= "uncached",
-		.mair		= 0x44,			/* inner, outer non-cacheable */
-		.tcr		= TCR_IRGN_NC | TCR_ORGN_NC,
-	}, {
-		.policy		= "writethrough",
-		.mair		= 0xaa,			/* inner, outer write-through, read-allocate */
-		.tcr		= TCR_IRGN_WT | TCR_ORGN_WT,
-	}, {
-		.policy		= "writeback",
-		.mair		= 0xee,			/* inner, outer write-back, read-allocate */
-		.tcr		= TCR_IRGN_WBnWA | TCR_ORGN_WBnWA,
-	}
-};
-
-/*
- * These are useful for identifying cache coherency problems by allowing the
- * cache or the cache and writebuffer to be turned off. It changes the Normal
- * memory caching attributes in the MAIR_EL1 register.
- */
-static int __init early_cachepolicy(char *p)
-{
-	int i;
-	u64 tmp;
-
-	for (i = 0; i < ARRAY_SIZE(cache_policies); i++) {
-		int len = strlen(cache_policies[i].policy);
-
-		if (memcmp(p, cache_policies[i].policy, len) == 0)
-			break;
-	}
-	if (i == ARRAY_SIZE(cache_policies)) {
-		pr_err("ERROR: unknown or unsupported cache policy: %s\n", p);
-		return 0;
-	}
-
-	flush_cache_all();
-
-	/*
-	 * Modify MT_NORMAL attributes in MAIR_EL1.
-	 */
-	asm volatile(
-	"	mrs	%0, mair_el1\n"
-	"	bfi	%0, %1, %2, #8\n"
-	"	msr	mair_el1, %0\n"
-	"	isb\n"
-	: "=&r" (tmp)
-	: "r" (cache_policies[i].mair), "i" (MT_NORMAL * 8));
-
-	/*
-	 * Modify TCR PTW cacheability attributes.
-	 */
-	asm volatile(
-	"	mrs	%0, tcr_el1\n"
-	"	bic	%0, %0, %2\n"
-	"	orr	%0, %0, %1\n"
-	"	msr	tcr_el1, %0\n"
-	"	isb\n"
-	: "=&r" (tmp)
-	: "r" (cache_policies[i].tcr), "r" (TCR_IRGN_MASK | TCR_ORGN_MASK));
-
-	flush_cache_all();
-
-	return 0;
-}
-early_param("cachepolicy", early_cachepolicy);
-
 pgprot_t phys_mem_access_prot(struct file *file, unsigned long pfn,
 			      unsigned long size, pgprot_t vma_prot)
 {
@@ -503,13 +429,6 @@ void __init paging_init(void)
 	map_mem();
 	fixup_executable();
 
-	/*
-	 * Finally flush the caches and tlb to ensure that we're in a
-	 * consistent state.
-	 */
-	flush_cache_all();
-	flush_tlb_all();
-
 	/* allocate the zero page. */
 	zero_page = early_alloc(PAGE_SIZE);
 
@@ -619,10 +538,10 @@ void vmemmap_free(unsigned long start, unsigned long end)
 #endif	/* CONFIG_SPARSEMEM_VMEMMAP */
 
 static pte_t bm_pte[PTRS_PER_PTE] __page_aligned_bss;
-#if CONFIG_ARM64_PGTABLE_LEVELS > 2
+#if CONFIG_PGTABLE_LEVELS > 2
 static pmd_t bm_pmd[PTRS_PER_PMD] __page_aligned_bss;
 #endif
-#if CONFIG_ARM64_PGTABLE_LEVELS > 3
+#if CONFIG_PGTABLE_LEVELS > 3
 static pud_t bm_pud[PTRS_PER_PUD] __page_aligned_bss;
 #endif
 

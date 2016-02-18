@@ -139,9 +139,13 @@ EXPORT_SYMBOL_GPL(snd_hdac_stream_reset);
 int snd_hdac_stream_setup(struct hdac_stream *azx_dev)
 {
 	struct hdac_bus *bus = azx_dev->bus;
-	struct snd_pcm_runtime *runtime = azx_dev->substream->runtime;
+	struct snd_pcm_runtime *runtime;
 	unsigned int val;
 
+	if (azx_dev->substream)
+		runtime = azx_dev->substream->runtime;
+	else
+		runtime = NULL;
 	/* make sure the run bit is zero for SD */
 	snd_hdac_stream_clear(azx_dev);
 	/* program the stream_tag */
@@ -189,14 +193,15 @@ int snd_hdac_stream_setup(struct hdac_stream *azx_dev)
 	 * we ignore it; currently set the threshold statically to
 	 * 64 frames
 	 */
-	if (runtime->period_size > 64)
+	if (runtime && runtime->period_size > 64)
 		azx_dev->delay_negative_threshold =
 			-frames_to_bytes(runtime, 64);
 	else
 		azx_dev->delay_negative_threshold = 0;
 
 	/* wallclk has 24Mhz clock source */
-	azx_dev->period_wallclk = (((runtime->period_size * 24000) /
+	if (runtime)
+		azx_dev->period_wallclk = (((runtime->period_size * 24000) /
 				    runtime->rate) * 1000);
 
 	return 0;
@@ -280,6 +285,28 @@ void snd_hdac_stream_release(struct hdac_stream *azx_dev)
 	spin_unlock_irq(&bus->reg_lock);
 }
 EXPORT_SYMBOL_GPL(snd_hdac_stream_release);
+
+/**
+ * snd_hdac_get_stream - return hdac_stream based on stream_tag and
+ * direction
+ *
+ * @bus: HD-audio core bus
+ * @dir: direction for the stream to be found
+ * @stream_tag: stream tag for stream to be found
+ */
+struct hdac_stream *snd_hdac_get_stream(struct hdac_bus *bus,
+					int dir, int stream_tag)
+{
+	struct hdac_stream *s;
+
+	list_for_each_entry(s, &bus->stream_list, list) {
+		if (s->direction == dir && s->stream_tag == stream_tag)
+			return s;
+	}
+
+	return NULL;
+}
+EXPORT_SYMBOL_GPL(snd_hdac_get_stream);
 
 /*
  * set up a BDL entry
@@ -611,6 +638,7 @@ int snd_hdac_dsp_prepare(struct hdac_stream *azx_dev, unsigned int format,
 	if (err < 0)
 		goto err_alloc;
 
+	azx_dev->substream = NULL;
 	azx_dev->bufsize = byte_size;
 	azx_dev->period_bytes = byte_size;
 	azx_dev->format_val = format;

@@ -102,8 +102,6 @@ static int substream_alloc_pages(struct azx *chip,
 				 struct snd_pcm_substream *substream,
 				 size_t size)
 {
-	struct azx_dev *azx_dev = get_azx_dev(substream);
-
 	return snd_pcm_lib_malloc_pages(substream, size);
 }
 
@@ -304,7 +302,7 @@ static int hda_tegra_dev_free(struct snd_device *device)
 
 	azx_free_stream_pages(chip);
 	azx_free_streams(chip);
-	snd_hdac_bus_exit(bus);
+	snd_hdac_bus_exit(azx_bus(chip));
 
 	return 0;
 }
@@ -329,8 +327,8 @@ static int hda_tegra_init_chip(struct azx *chip, struct platform_device *pdev)
 
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
 	hda->regs = devm_ioremap_resource(dev, res);
-	if (IS_ERR(chip->remap_addr))
-		return PTR_ERR(chip->remap_addr);
+	if (IS_ERR(hda->regs))
+		return PTR_ERR(hda->regs);
 
 	bus->remap_addr = hda->regs + HDA_BAR0;
 	bus->addr = res->start + HDA_BAR0;
@@ -441,6 +439,10 @@ static int hda_tegra_create(struct snd_card *card,
 	chip->single_cmd = false;
 	chip->snoop = true;
 
+	err = azx_bus_init(chip, NULL, &hda_tegra_io_ops);
+	if (err < 0)
+		return err;
+
 	err = snd_device_new(card, SNDRV_DEV_LOWLEVEL, chip, &ops);
 	if (err < 0) {
 		dev_err(card->dev, "Error creating device\n");
@@ -476,10 +478,6 @@ static int hda_tegra_probe(struct platform_device *pdev)
 		dev_err(&pdev->dev, "Error creating card!\n");
 		return err;
 	}
-
-	err = azx_bus_init(chip, NULL, &hda_tegra_io_ops);
-	if (err < 0)
-		goto out_free;
 
 	err = hda_tegra_create(card, driver_flags, hda);
 	if (err < 0)

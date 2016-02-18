@@ -32,7 +32,23 @@ config USB_XHCI_PCI
        default y
 
 config USB_XHCI_PLATFORM
-	tristate
+	tristate "Generic xHCI driver for a platform device"
+	---help---
+	  Adds an xHCI host driver for a generic platform device, which
+	  provides a memory space and an irq.
+	  It is also a prerequisite for platform specific drivers that
+	  implement some extra quirks.
+
+	  If unsure, say N.
+
+config USB_XHCI_MTK
+	tristate "xHCI support for Mediatek MT65xx"
+	select MFD_SYSCON
+	depends on ARCH_MEDIATEK || COMPILE_TEST
+	---help---
+	  Say 'Y' to enable the support for the xHCI host controller
+	  found in Mediatek MT65xx SoCs.
+	  If unsure, say N.
 
 config USB_XHCI_MVEBU
 	tristate "xHCI support for Marvell Armada 375/38x"
@@ -52,7 +68,7 @@ config USB_XHCI_RCAR
 
 config USB_XHCI_TEGRA
 	tristate "xHCI support for NVIDIA Tegra SoCs"
-	depends on MFD_TEGRA_XUSB || COMPILE_TEST
+	depends on MFD_TEGRA_XUSB
 	depends on MAILBOX
 	depends on RESET_CONTROLLER
 	select FW_LOADER
