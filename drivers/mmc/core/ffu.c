@@ -315,7 +315,7 @@ static int mmc_ffu_switch_mode(struct mmc_card *card , int mode)
 	return err;
 }
 
-static int mmc_ffu_install(struct mmc_card *card, u8 *ext_csd)
+static int mmc_ffu_install(struct mmc_card *card, u8 **ext_csd)
 {
 	int err;
 	u32 timeout;
@@ -338,7 +338,7 @@ static int mmc_ffu_install(struct mmc_card *card, u8 *ext_csd)
 			return err;
 		}
 	} else {
-		timeout = ext_csd[EXT_CSD_OPERATION_CODE_TIMEOUT];
+		timeout = (*ext_csd)[EXT_CSD_OPERATION_CODE_TIMEOUT];
 		if (timeout == 0 || timeout > 0x17) {
 			timeout = 0x17;
 			pr_warn("FFU: %s: Using maximum timeout: %s\n",
@@ -358,10 +358,14 @@ static int mmc_ffu_install(struct mmc_card *card, u8 *ext_csd)
 		}
 	}
 
-	/* Free ext_csd allocation from previous mmc_get_ext_csd() call */
-	kfree(ext_csd);
+	/*
+	 * Free ext_csd allocation from previous mmc_get_ext_csd() call, and
+	 * zero it out so no one touches it again
+	 */
+	kfree(*ext_csd);
+	*ext_csd = NULL;
 	/* read ext_csd */
-	err = mmc_get_ext_csd(card, &ext_csd);
+	err = mmc_get_ext_csd(card, ext_csd);
 	if (err) {
 		pr_err("FFU: %s: error %d sending ext_csd\n",
 		       mmc_hostname(card->host), err);
@@ -369,7 +373,7 @@ static int mmc_ffu_install(struct mmc_card *card, u8 *ext_csd)
 	}
 
 	/* return status */
-	err = ext_csd[EXT_CSD_FFU_STATUS];
+	err = (*ext_csd)[EXT_CSD_FFU_STATUS];
 	if (err) {
 		pr_err("FFU: %s: FFU status 0x%02x, expected 0\n",
 		       mmc_hostname(card->host), err);
@@ -461,8 +465,12 @@ int mmc_ffu_invoke(struct mmc_card *card, const struct mmc_ffu_args *args)
 	}
 	/* payload  will be checked only in op_mode supported */
 	if (card->ext_csd.ffu_mode_op) {
-		/* Free ext_csd allocation from previous mmc_get_ext_csd() call */
+		/*
+		 * Free ext_csd allocation from previous mmc_get_ext_csd()
+		 * call, and zero it out in case it gets used again.
+		 */
 		kfree(ext_csd);
+		ext_csd = NULL;
 		/* Read the EXT_CSD */
 		err = mmc_get_ext_csd(card, &ext_csd);
 		if (err) {
@@ -488,7 +496,7 @@ int mmc_ffu_invoke(struct mmc_card *card, const struct mmc_ffu_args *args)
 		}
 	}
 
-	err = mmc_ffu_install(card, ext_csd);
+	err = mmc_ffu_install(card, &ext_csd);
 	if (err) {
 		pr_err("FFU: %s: error firmware install %d\n",
 		       mmc_hostname(card->host), err);
