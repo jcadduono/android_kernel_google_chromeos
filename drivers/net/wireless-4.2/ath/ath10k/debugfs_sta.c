@@ -60,6 +60,7 @@ void ath10k_update_peer_tx_stats(struct ath10k *ar,
 			       (pream == WMI_RATE_PREAMBLE_OFDM));
 
 		tx_stats->ba_fails += ATH10K_HW_BA_FAIL(peer_stats->flags[i]);
+		gi = ATH10K_HW_GI(peer_stats->flags[i]);
 
 		if (legacy_rate) {
 			rate = ATH10K_HW_LEGACY_RATE(peer_stats->ratecode[i]);
