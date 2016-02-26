@@ -9786,6 +9786,9 @@ static bool haswell_get_pipe_config(struct intel_crtc *crtc,
 
 	intel_get_pipe_timings(crtc, pipe_config);
 
+	pipe_config->gamma_mode =
+		I915_READ(GAMMA_MODE(crtc->pipe)) & GAMMA_MODE_MODE_MASK;
+
 	if (INTEL_INFO(dev)->gen >= 9) {
 		skl_init_scalers(dev, crtc, pipe_config);
 	}

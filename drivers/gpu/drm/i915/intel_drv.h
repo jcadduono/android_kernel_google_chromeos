@@ -453,6 +453,9 @@ struct intel_crtc_state {
 
 	/* w/a for waiting 2 vblanks during crtc enable */
 	enum pipe hsw_workaround_pipe;
+
+	/* Gamma mode programmed on the pipe */
+	uint32_t gamma_mode;
 };
 
 struct vlv_wm_state {
