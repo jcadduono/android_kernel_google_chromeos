@@ -315,11 +315,18 @@ static ssize_t sta_rx_stats_read(struct file *file, char __user *userbuf,
 	if (buf == NULL)
 		return -ENOMEM;
 
-	len += scnprintf(buf + len, size - len, "MCS packets: ");
+	len += scnprintf(buf + len, size - len, "VHT MCS packets: ");
 	for (i = 0; i < IEEE80211_VHT_MCS_NUM; i++)
 		len += scnprintf(buf + len, size - len, "%llu, ",
-				 sta->rx_mcs_pkt[i]);
+				 sta->rx_mcs_vht_pkt[i]);
 	len += scnprintf(buf + len, size - len, "\n");
+
+	len += scnprintf(buf + len, size - len, "HT MCS packets: ");
+	for (i = 0; i < IEEE80211_HT_MCS_NUM; i++)
+		len += scnprintf(buf + len, size - len, "%llu, ",
+				 sta->rx_mcs_ht_pkt[i]);
+	len += scnprintf(buf + len, size - len, "\n");
+
 	len += scnprintf(buf + len, size - len,
 			"BW packets:  20Mhz: %llu\t40Mhz: %llu\t80Mhz: %llu\t",
 			sta->rx_bw_pkt[0], sta->rx_bw_pkt[1],
@@ -367,12 +374,19 @@ static ssize_t sta_rx_stats_read(struct file *file, char __user *userbuf,
 	}
 	len += scnprintf(buf + len, size - len, "\n\n");
 
-	/* Below function can be merged into a macro with above part*/
-	len += scnprintf(buf + len, size - len, "MCS bytes: ");
+	/* Below function can be merged into a macro with above part */
+	len += scnprintf(buf + len, size - len, "VHT MCS bytes: ");
 	for (i = 0; i < IEEE80211_VHT_MCS_NUM; i++)
 		len += scnprintf(buf + len, size - len, "%llu, ",
-				 sta->rx_mcs_byte[i]);
+				 sta->rx_mcs_vht_byte[i]);
 	len += scnprintf(buf + len, size - len, "\n");
+
+	len += scnprintf(buf + len, size - len, "HT MCS bytes: ");
+	for (i = 0; i < IEEE80211_HT_MCS_NUM; i++)
+		len += scnprintf(buf + len, size - len, "%llu, ",
+				 sta->rx_mcs_ht_byte[i]);
+	len += scnprintf(buf + len, size - len, "\n");
+
 	len += scnprintf(buf + len, size - len,
 			 "BW bytes:  20Mhz: %llu, 40Mhz: %llu, 80Mhz: %llu, 160Mhz: %llu\n",
 			 sta->rx_bw_byte[0], sta->rx_bw_byte[1],
@@ -553,7 +567,7 @@ void ieee80211_rx_h_sta_stats(struct sta_info *sta, struct sk_buff *skb)
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *)skb->data;
 	struct ieee80211_local *local = sta->local;
 	unsigned int pkt_len = skb->len;
-	unsigned int bw_idx, gi_idx, i;
+	unsigned int bw_idx, gi_idx, mcs_idx = 0, nss_idx = 0, i;
 
 	if (!local->rx_stats_enabled)
 		return;
@@ -575,32 +589,43 @@ void ieee80211_rx_h_sta_stats(struct sta_info *sta, struct sk_buff *skb)
 	else
 		bw_idx = 0;
 
-	sta->rx_bw_pkt[bw_idx]++;
-	sta->rx_bw_byte[bw_idx] += pkt_len;
+	if (status->flag & RX_FLAG_HT) {
+		mcs_idx = status->rate_idx;
+		nss_idx = (mcs_idx >> 3) - 1;
 
+		if (status->rate_idx > IEEE80211_HT_MCS_NUM - 1 ||
+		    nss_idx > IEEE80211_VHT_NSS_NUM - 1)
+			goto out;
+
+		sta->rx_mcs_ht_pkt[mcs_idx]++;
+		sta->rx_mcs_ht_byte[mcs_idx] += pkt_len;
+		sta->rx_nss_pkt[nss_idx]++;
+		sta->rx_nss_byte[nss_idx] += pkt_len;
+		/* To fit into rate table for HT packets */
+		mcs_idx = mcs_idx % 8;
+	} else if (status->flag & RX_FLAG_VHT) {
+		mcs_idx = status->rate_idx;
+		nss_idx = status->vht_nss - 1;
+
+		if (nss_idx > IEEE80211_VHT_NSS_NUM - 1 ||
+		    mcs_idx > (IEEE80211_VHT_MCS_NUM - 1))
+			goto out;
+
+		sta->rx_mcs_vht_pkt[mcs_idx]++;
+		sta->rx_mcs_vht_byte[mcs_idx] += pkt_len;
+		sta->rx_nss_pkt[nss_idx]++;
+		sta->rx_nss_byte[nss_idx] += pkt_len;
+	}
 
 	gi_idx = (status->flag & RX_FLAG_SHORT_GI) ? 1 : 0;
 	sta->rx_gi_pkt[gi_idx]++;
 	sta->rx_gi_byte[gi_idx] += pkt_len;
+	sta->rx_bw_pkt[bw_idx]++;
+	sta->rx_bw_byte[bw_idx] += pkt_len;
 
-	if (status->flag & RX_FLAG_VHT) {
-		/* Keep silent quit for all packet not statisfy the
-		 * statistics requirement in the data path
-		 */
-		if (status->rate_idx > (IEEE80211_VHT_MCS_NUM - 1))
-			goto out;
-
-		if (status->vht_nss > IEEE80211_VHT_NSS_NUM ||
-		    !status->vht_nss)
-			goto out;
-
-		sta->rx_nss_pkt[status->vht_nss - 1]++;
-		sta->rx_nss_byte[status->vht_nss - 1] += pkt_len;
-
-		sta->rx_mcs_pkt[status->rate_idx]++;
-		sta->rx_mcs_byte[status->rate_idx] += pkt_len;
-
-		i = status->rate_idx * 8 + 8 * 10 * (status->vht_nss - 1);
+	if (status->flag & (RX_FLAG_HT | RX_FLAG_VHT)) {
+		/* Update Rate table for HT and VHT packets */
+		i = mcs_idx * 8 + 8 * 10 * nss_idx;
 		i += bw_idx * 2 + gi_idx;
 		sta->rx_rate_pkt[i]++;
 		sta->rx_rate_byte[i] += pkt_len;
@@ -609,7 +634,7 @@ void ieee80211_rx_h_sta_stats(struct sta_info *sta, struct sk_buff *skb)
 		int shift = ieee80211_vif_get_shift(&sta->sdata->vif);
 		u16 brate, legacy_rate;
 
-		if (status->rate_idx > (IEEE80211_RX_LEGACY_RATE_NUM - 1))
+		if (status->rate_idx > IEEE80211_RX_LEGACY_RATE_NUM - 1)
 			goto out;
 
 		sband = sta->local->hw.wiphy->bands[

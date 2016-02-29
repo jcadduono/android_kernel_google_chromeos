@@ -245,6 +245,7 @@ struct sta_ampdu_mlme {
 
 #define IEEE80211_FAST_XMIT_MAX_IV	18
 
+#define IEEE80211_HT_MCS_NUM	32
 #define IEEE80211_VHT_MCS_NUM	10
 #define IEEE80211_VHT_BW_NUM	4
 #define IEEE80211_VHT_NSS_NUM	4
@@ -516,13 +517,15 @@ struct sta_info {
 	} debugfs;
 
 	u64 rx_legacy_pkt[IEEE80211_RX_LEGACY_RATE_NUM];
-	u64 rx_mcs_pkt[IEEE80211_VHT_MCS_NUM];
+	u64 rx_mcs_ht_pkt[IEEE80211_HT_MCS_NUM];
+	u64 rx_mcs_vht_pkt[IEEE80211_VHT_MCS_NUM];
 	u64 rx_bw_pkt[IEEE80211_VHT_BW_NUM];
 	u64 rx_nss_pkt[IEEE80211_VHT_NSS_NUM];
 	u64 rx_gi_pkt[IEEE80211_VHT_GI_NUM];
 	u64 rx_rate_pkt[IEEE80211_VHT_RATE_NUM];
 	u64 rx_legacy_byte[IEEE80211_RX_LEGACY_RATE_NUM];
-	u64 rx_mcs_byte[IEEE80211_VHT_MCS_NUM];
+	u64 rx_mcs_ht_byte[IEEE80211_HT_MCS_NUM];
+	u64 rx_mcs_vht_byte[IEEE80211_VHT_MCS_NUM];
 	u64 rx_bw_byte[IEEE80211_VHT_BW_NUM];
 	u64 rx_nss_byte[IEEE80211_VHT_NSS_NUM];
 	u64 rx_gi_byte[IEEE80211_VHT_GI_NUM];
