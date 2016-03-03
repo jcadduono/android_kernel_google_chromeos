@@ -117,7 +117,10 @@ pvrsrvkm-$(CONFIG_DRM_POWERVR_ROGUE_KERNEL_SRVINIT) += \
  os_srvinit_param.o \
  srvinit_km.o
 pvrsrvkm-$(CONFIG_DRM_POWERVR_ROGUE_PDUMP) += \
+ client_pdump_bridge.o \
+ client_pdumpctrl_bridge.o \
  client_pdumpmm_bridge.o \
+ client_rgxpdump_bridge.o \
  server_pdump_bridge.o \
  server_pdumpctrl_bridge.o \
  server_pdumpmm_bridge.o \

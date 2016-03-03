@@ -752,6 +752,7 @@ const char *v4l2_ctrl_get_name(u32 id)
 	case V4L2_CID_MPEG_VIDEO_MV_H_SEARCH_RANGE:		return "Horizontal MV Search Range";
 	case V4L2_CID_MPEG_VIDEO_MV_V_SEARCH_RANGE:		return "Vertical MV Search Range";
 	case V4L2_CID_MPEG_VIDEO_REPEAT_SEQ_HEADER:		return "Repeat Sequence Header";
+	case V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME:		return "Force Key Frame";
 
 	/* VPX controls */
 	case V4L2_CID_MPEG_VIDEO_VPX_NUM_PARTITIONS:		return "VPX Number of Partitions";
@@ -991,6 +992,7 @@ void v4l2_ctrl_fill(u32 id, const char **name, enum v4l2_ctrl_type *type,
 	case V4L2_CID_MPEG_VIDEO_MV_V_SEARCH_RANGE:
 		*type = V4L2_CTRL_TYPE_INTEGER;
 		break;
+	case V4L2_CID_MPEG_VIDEO_FORCE_KEY_FRAME:
 	case V4L2_CID_PAN_RESET:
 	case V4L2_CID_TILT_RESET:
 	case V4L2_CID_FLASH_STROBE:
@@ -1669,16 +1671,6 @@ static int cluster_changed(struct v4l2_ctrl *master)
 
 		if (ctrl->flags & V4L2_CTRL_FLAG_EXECUTE_ON_WRITE)
 			changed = ctrl_changed = true;
-
-		if (ctrl->flags & V4L2_CTRL_FLAG_VOLATILE) {
-			/*
-			 * Set has_changed to false to avoid generating
-			 * the event V4L2_EVENT_CTRL_CH_VALUE
-			 */
-			ctrl->has_changed = false;
-			changed = true;
-			continue;
-		}
 
 		if (ctrl->store)
 			ptr = ctrl->p_stores[ctrl->store - 1];

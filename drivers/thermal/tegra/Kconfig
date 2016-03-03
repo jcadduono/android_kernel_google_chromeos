@@ -36,7 +36,7 @@ config TEGRA210_SOCTHERM
 
 config TEGRA_THERM_EST
 	bool "Tegra thermal estimator driver"
-	depends on THERMAL_OF
+	depends on THERMAL_OF && THERMAL=y
 	default n
 	help
 	  Tegra thermal driver which estimates temperature based

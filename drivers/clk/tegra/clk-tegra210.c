@@ -74,6 +74,7 @@
 #define PLLM_MISC2 0x9c
 #define PLLM_MISC1 0x98
 #define PLLP_BASE 0xa0
+#define PLLP_OUTA 0xa4
 #define PLLP_OUTB 0xa8
 #define PLLP_MISC0 0xac
 #define PLLP_MISC1 0x680
@@ -86,6 +87,8 @@
 #define PLLD_MISC1 0xd8
 #define PLLU_BASE 0xc0
 #define PLLU_OUTA 0xc4
+#define PLLU_OUTA_OUT1_OVRRIDE		BIT(2)
+#define PLLU_OUTA_OUT2_OVRRIDE		BIT(18)
 #define PLLU_MISC0 0xcc
 #define PLLU_MISC1 0xc8
 #define PLLX_BASE 0xe0
@@ -116,8 +119,12 @@
 #define PLLMB_MISC1 0x5ec
 #define PLLA1_BASE 0x6a4
 #define PLLA1_MISC0 0x6a8
+#define PLLA1_MISC0_EXT_FRU_OFFSET	4
+#define PLLA1_MISC0_EXT_FRU_MASK	(0xffff << PLLA1_MISC0_EXT_FRU_OFFSET)
 #define PLLA1_MISC1 0x6ac
 #define PLLA1_MISC2 0x6b0
+#define PLLA1_MISC2_FLL_LD_MEM_OFFSET	8
+#define PLLA1_MISC2_FLL_LD_MEM_MASK	(0xff << PLLA1_MISC2_FLL_LD_MEM_OFFSET)
 #define PLLA1_MISC3 0x6b4
 
 #define PLLU_IDDQ_BIT 31
@@ -188,8 +195,13 @@
 
 #define SCLK_BURST_POLICY	0x28
 #define SYSTEM_CLK_RATE		0x30
+#define SYSTEM_CLK_RATE_AHB_RATE_OFFSET		4
+#define SYSTEM_CLK_RATE_AHB_RATE_MASK		(3 << SYSTEM_CLK_RATE_AHB_RATE_OFFSET)
 #define CLK_MASK_ARM		0x44
 #define MISC_CLK_ENB		0x48
+#define OSC_CTRL		0x50
+#define OSC_CTRL_XOFS_OFFSET	4
+#define OSC_CTRL_XOFS_MASK	(0x3f << OSC_CTRL_XOFS_OFFSET)
 #define CCLKG_BURST_POLICY	0x368
 #define CCLKLP_BURST_POLICY	0x370
 #define CPU_SOFTRST_CTRL	0x380
@@ -472,7 +484,7 @@ void tegra210_csi_source_from_plld(void)
 }
 EXPORT_SYMBOL_GPL(tegra210_csi_source_from_plld);
 
-static inline void _pll_misc_chk_default(void __iomem *base,
+static inline void _pll_misc_chk_default(void __iomem *base, const char *name,
 					struct tegra_clk_pll_params *params,
 					u8 misc_num, u32 default_val, u32 mask)
 {
@@ -481,8 +493,8 @@ static inline void _pll_misc_chk_default(void __iomem *base,
 	boot_val &= mask;
 	default_val &= mask;
 	if (boot_val != default_val) {
-		pr_warn("boot misc%d 0x%x: expected 0x%x\n",
-			misc_num, boot_val, default_val);
+		pr_warn("[%s]boot misc%d 0x%x: expected 0x%x\n",
+			name, misc_num, boot_val, default_val);
 		pr_warn(" (comparison mask = 0x%x)\n", mask);
 		params->defaults_set = false;
 	}
@@ -493,37 +505,39 @@ static inline void _pll_misc_chk_default(void __iomem *base,
  * Hybrid PLLs with dynamic ramp. Dynamic ramp is allowed for any transition
  * that changes NDIV only, while PLL is already locked.
  */
-static void pllcx_check_defaults(struct tegra_clk_pll_params *params)
+static void pllcx_check_defaults(const char *name,
+				 struct tegra_clk_pll_params *params)
 {
 	u32 default_val;
 
 	default_val = PLLCX_MISC0_DEFAULT_VALUE & (~PLLCX_MISC0_RESET);
-	_pll_misc_chk_default(clk_base, params, 0, default_val,
+	_pll_misc_chk_default(clk_base, name, params, 0, default_val,
 			PLLCX_MISC0_WRITE_MASK);
 
 	default_val = PLLCX_MISC1_DEFAULT_VALUE & (~PLLCX_MISC1_IDDQ);
-	_pll_misc_chk_default(clk_base, params, 1, default_val,
+	_pll_misc_chk_default(clk_base, name, params, 1, default_val,
 			PLLCX_MISC1_WRITE_MASK);
 
 	default_val = PLLCX_MISC2_DEFAULT_VALUE;
-	_pll_misc_chk_default(clk_base, params, 2, default_val,
+	_pll_misc_chk_default(clk_base, name, params, 2, default_val,
 			PLLCX_MISC2_WRITE_MASK);
 
 	default_val = PLLCX_MISC3_DEFAULT_VALUE;
-	_pll_misc_chk_default(clk_base, params, 3, default_val,
+	_pll_misc_chk_default(clk_base, name, params, 3, default_val,
 			PLLCX_MISC3_WRITE_MASK);
 }
 
-static void tegra210_pllcx_set_defaults(struct tegra_clk_pll *pllcx)
+static void tegra210_pllcx_set_defaults(const char *name,
+					struct tegra_clk_pll *pllcx)
 {
 	pllcx->params->defaults_set = true;
 
 	if (readl_relaxed(clk_base + pllcx->params->base_reg) &
 			PLL_ENABLE) {
 		/* PLL is ON: only check if defaults already set */
-		pllcx_check_defaults(pllcx->params);
+		pllcx_check_defaults(name, pllcx->params);
 		pr_warn("%s already enabled. Postponing set full defaults\n",
-			__clk_get_name(pllcx->hw.clk));
+			name);
 		return;
 	}
 
@@ -536,7 +550,30 @@ static void tegra210_pllcx_set_defaults(struct tegra_clk_pll *pllcx)
 			clk_base + pllcx->params->ext_misc_reg[2]);
 	writel_relaxed(PLLCX_MISC3_DEFAULT_VALUE,
 			clk_base + pllcx->params->ext_misc_reg[3]);
+
+	pr_debug("%s:%d: Set defaults for %s\n", __func__, __LINE__, name);
+
 	udelay(1);
+}
+
+void _pllc_set_defaults(struct tegra_clk_pll *pllcx)
+{
+	tegra210_pllcx_set_defaults("PLL_C", pllcx);
+}
+
+void _pllc2_set_defaults(struct tegra_clk_pll *pllcx)
+{
+	tegra210_pllcx_set_defaults("PLL_C2", pllcx);
+}
+
+void _pllc3_set_defaults(struct tegra_clk_pll *pllcx)
+{
+	tegra210_pllcx_set_defaults("PLL_C3", pllcx);
+}
+
+void _plla1_set_defaults(struct tegra_clk_pll *pllcx)
+{
+	tegra210_pllcx_set_defaults("PLL_A1", pllcx);
 }
 
 /*
@@ -561,16 +598,15 @@ static void tegra210_plla_set_defaults(struct tegra_clk_pll *plla)
 			plla->params->defaults_set = false;
 		}
 
-		pr_warn("%s already enabled. Postponing set full defaults\n",
-			__clk_get_name(plla->hw.clk));
+		pr_warn("PLL_A already enabled. Postponing set full defaults\n");
 
 		val = PLLA_MISC0_DEFAULT_VALUE;	/* ignore lock enable */
 		mask = PLLA_MISC0_LOCK_ENABLE | PLLA_MISC0_LOCK_OVERRIDE;
-		_pll_misc_chk_default(clk_base, plla->params, 0, val,
+		_pll_misc_chk_default(clk_base, "PLL_A", plla->params, 0, val,
 				~mask & PLLA_MISC0_WRITE_MASK);
 
 		val = PLLA_MISC2_DEFAULT_VALUE; /* ignore all but control bit */
-		_pll_misc_chk_default(clk_base, plla->params, 2, val,
+		_pll_misc_chk_default(clk_base, "PLL_A", plla->params, 2, val,
 				PLLA_MISC2_EN_DYNRAMP);
 
 		/* Enable lock detect */
@@ -583,6 +619,7 @@ static void tegra210_plla_set_defaults(struct tegra_clk_pll *plla)
 		return;
 	}
 
+	pr_debug("%s:%d: Set defaults for %s\n", __func__, __LINE__, "PLL_A");
 	/* set IDDQ, enable lock detect, disable dynamic ramp and SDM */
 	val |= PLLA_BASE_IDDQ;
 	writel_relaxed(val, clk_base + plla->params->base_reg);
@@ -606,22 +643,21 @@ static void tegra210_plld_set_defaults(struct tegra_clk_pll *plld)
 
 	if (readl_relaxed(clk_base + plld->params->base_reg) &
 			PLL_ENABLE) {
-		pr_warn("%s already enabled. Postponing set full defaults\n",
-			__clk_get_name(plld->hw.clk));
+		pr_warn("PLL_D already enabled. Postponing set full defaults\n");
 
 		/*
 		 * PLL is ON: check if defaults already set, then set those
 		 * that can be updated in flight.
 		 */
 		val = PLLD_MISC1_DEFAULT_VALUE;
-		_pll_misc_chk_default(clk_base, plld->params, 1,
+		_pll_misc_chk_default(clk_base, "PLL_D", plld->params, 1,
 				val, PLLD_MISC1_WRITE_MASK);
 
 		/* ignore lock, DSI and SDM controls, make sure IDDQ not set */
 		val = PLLD_MISC0_DEFAULT_VALUE & (~PLLD_MISC0_IDDQ);
 		mask |= PLLD_MISC0_DSI_CLKENABLE | PLLD_MISC0_LOCK_ENABLE |
 			PLLD_MISC0_LOCK_OVERRIDE | PLLD_MISC0_EN_SDM;
-		_pll_misc_chk_default(clk_base, plld->params, 0, val,
+		_pll_misc_chk_default(clk_base, "PLL_D", plld->params, 0, val,
 				~mask & PLLD_MISC0_WRITE_MASK);
 
 		/* Enable lock detect */
@@ -635,6 +671,7 @@ static void tegra210_plld_set_defaults(struct tegra_clk_pll *plld)
 		return;
 	}
 
+	pr_debug("%s:%d: Set defaults for %s\n", __func__, __LINE__, "PLL_D");
 	val = readl_relaxed(clk_base + plld->params->ext_misc_reg[0]);
 	val &= PLLD_MISC0_DSI_CLKENABLE;
 	val |= PLLD_MISC0_DEFAULT_VALUE;
@@ -649,7 +686,7 @@ static void tegra210_plld_set_defaults(struct tegra_clk_pll *plld)
  * PLLD2, PLLDP
  * PLL with fractional SDM and Spread Spectrum (SDM is a must if SSC is used).
  */
-static void plldss_defaults(struct tegra_clk_pll *plldss,
+static void plldss_defaults(const char *name, struct tegra_clk_pll *plldss,
 		u32 misc0_val, u32 misc1_val, u32 misc2_val, u32 misc3_val)
 {
 	u32 default_val;
@@ -659,7 +696,7 @@ static void plldss_defaults(struct tegra_clk_pll *plldss,
 
 	if (val & PLL_ENABLE) {
 		pr_warn("%s already enabled. Postponing set full defaults\n",
-			__clk_get_name(plldss->hw.clk));
+			name);
 
 		/*
 		 * PLL is ON: check if defaults already set, then set those
@@ -672,8 +709,8 @@ static void plldss_defaults(struct tegra_clk_pll *plldss,
 
 		/* ignore lock enable */
 		default_val = misc0_val;
-		_pll_misc_chk_default(clk_base, plldss->params, 0, default_val,
-				     PLLDSS_MISC0_WRITE_MASK &
+		_pll_misc_chk_default(clk_base, name, plldss->params, 0,
+				      default_val, PLLDSS_MISC0_WRITE_MASK &
 				     (~PLLDSS_MISC0_LOCK_ENABLE));
 
 		/*
@@ -683,17 +720,17 @@ static void plldss_defaults(struct tegra_clk_pll *plldss,
 		 */
 		if (plldss->params->ssc_ctrl_en_mask) {
 			default_val = misc1_val;
-			_pll_misc_chk_default(clk_base, plldss->params, 1,
+			_pll_misc_chk_default(clk_base, name, plldss->params, 1,
 				default_val, PLLDSS_MISC1_CFG_WRITE_MASK);
 			default_val = misc2_val;
-			_pll_misc_chk_default(clk_base, plldss->params, 2,
+			_pll_misc_chk_default(clk_base, name, plldss->params, 2,
 				default_val, PLLDSS_MISC2_CTRL1_WRITE_MASK);
 			default_val = misc3_val;
-			_pll_misc_chk_default(clk_base, plldss->params, 3,
+			_pll_misc_chk_default(clk_base, name, plldss->params, 3,
 				default_val, PLLDSS_MISC3_CTRL2_WRITE_MASK);
 		} else if (plldss->params->ext_misc_reg[1]) {
 			default_val = misc1_val;
-			_pll_misc_chk_default(clk_base, plldss->params, 1,
+			_pll_misc_chk_default(clk_base, name, plldss->params, 1,
 				default_val, PLLDSS_MISC1_CFG_WRITE_MASK &
 				(~PLLDSS_MISC1_CFG_EN_SDM));
 		}
@@ -739,7 +776,7 @@ static void plldss_defaults(struct tegra_clk_pll *plldss,
 
 static void tegra210_plld2_set_defaults(struct tegra_clk_pll *plld2)
 {
-	plldss_defaults(plld2, PLLD2_MISC0_DEFAULT_VALUE,
+	plldss_defaults("PLL_D2", plld2, PLLD2_MISC0_DEFAULT_VALUE,
 			PLLD2_MISC1_CFG_DEFAULT_VALUE,
 			PLLD2_MISC2_CTRL1_DEFAULT_VALUE,
 			PLLD2_MISC3_CTRL2_DEFAULT_VALUE);
@@ -747,7 +784,7 @@ static void tegra210_plld2_set_defaults(struct tegra_clk_pll *plld2)
 
 static void tegra210_plldp_set_defaults(struct tegra_clk_pll *plldp)
 {
-	plldss_defaults(plldp, PLLDP_MISC0_DEFAULT_VALUE,
+	plldss_defaults("PLL_DP", plldp, PLLDP_MISC0_DEFAULT_VALUE,
 			PLLDP_MISC1_CFG_DEFAULT_VALUE,
 			PLLDP_MISC2_CTRL1_DEFAULT_VALUE,
 			PLLDP_MISC3_CTRL2_DEFAULT_VALUE);
@@ -760,7 +797,7 @@ static void tegra210_plldp_set_defaults(struct tegra_clk_pll *plldp)
  */
 static void tegra210_pllc4_set_defaults(struct tegra_clk_pll *pllc4)
 {
-	plldss_defaults(pllc4, PLLC4_MISC0_DEFAULT_VALUE, 0, 0, 0);
+	plldss_defaults("PLL_C4", pllc4, PLLC4_MISC0_DEFAULT_VALUE, 0, 0, 0);
 }
 
 /*
@@ -775,8 +812,7 @@ static void tegra210_pllre_set_defaults(struct tegra_clk_pll *pllre)
 	pllre->params->defaults_set = true;
 
 	if (val & PLL_ENABLE) {
-		pr_warn("%s already enabled. Postponing set full defaults\n",
-			__clk_get_name(pllre->hw.clk));
+		pr_warn("PLL_RE already enabled. Postponing set full defaults\n");
 
 		/*
 		 * PLL is ON: check if defaults already set, then set those
@@ -794,7 +830,7 @@ static void tegra210_pllre_set_defaults(struct tegra_clk_pll *pllre)
 		/* Ignore lock enable */
 		val = PLLRE_MISC0_DEFAULT_VALUE & (~PLLRE_MISC0_IDDQ);
 		mask = PLLRE_MISC0_LOCK_ENABLE | PLLRE_MISC0_LOCK_OVERRIDE;
-		_pll_misc_chk_default(clk_base, pllre->params, 0, val,
+		_pll_misc_chk_default(clk_base, "PLL_RE", pllre->params, 0, val,
 				~mask & PLLRE_MISC0_WRITE_MASK);
 
 		/* Enable lock detect */
@@ -807,6 +843,7 @@ static void tegra210_pllre_set_defaults(struct tegra_clk_pll *pllre)
 		return;
 	}
 
+	pr_debug("%s:%d: Set defaults for %s\n", __func__, __LINE__, "PLL_RE");
 	/* set IDDQ, enable lock detect */
 	val &= ~PLLRE_BASE_DEFAULT_MASK;
 	val |= PLLRE_BASE_DEFAULT_VALUE & PLLRE_BASE_DEFAULT_MASK;
@@ -856,28 +893,28 @@ static void pllx_check_defaults(struct tegra_clk_pll *pll)
 
 	default_val = PLLX_MISC0_DEFAULT_VALUE;
 	/* ignore lock enable */
-	_pll_misc_chk_default(clk_base, pll->params, 0, default_val,
+	_pll_misc_chk_default(clk_base, "PLL_X", pll->params, 0, default_val,
 			PLLX_MISC0_WRITE_MASK & (~PLLX_MISC0_LOCK_ENABLE));
 
 	default_val = PLLX_MISC1_DEFAULT_VALUE;
-	_pll_misc_chk_default(clk_base, pll->params, 1, default_val,
+	_pll_misc_chk_default(clk_base, "PLL_X", pll->params, 1, default_val,
 			PLLX_MISC1_WRITE_MASK);
 
 	/* ignore all but control bit */
 	default_val = PLLX_MISC2_DEFAULT_VALUE;
-	_pll_misc_chk_default(clk_base, pll->params, 2,
+	_pll_misc_chk_default(clk_base, "PLL_X", pll->params, 2,
 			default_val, PLLX_MISC2_EN_DYNRAMP);
 
 	default_val = PLLX_MISC3_DEFAULT_VALUE & (~PLLX_MISC3_IDDQ);
-	_pll_misc_chk_default(clk_base, pll->params, 3, default_val,
+	_pll_misc_chk_default(clk_base, "PLL_X", pll->params, 3, default_val,
 			PLLX_MISC3_WRITE_MASK);
 
 	default_val = PLLX_MISC4_DEFAULT_VALUE;
-	_pll_misc_chk_default(clk_base, pll->params, 4, default_val,
+	_pll_misc_chk_default(clk_base, "PLL_X", pll->params, 4, default_val,
 			PLLX_MISC4_WRITE_MASK);
 
 	default_val = PLLX_MISC5_DEFAULT_VALUE;
-	_pll_misc_chk_default(clk_base, pll->params, 5, default_val,
+	_pll_misc_chk_default(clk_base, "PLL_X", pll->params, 5, default_val,
 			PLLX_MISC5_WRITE_MASK);
 }
 
@@ -896,8 +933,7 @@ static void tegra210_pllx_set_defaults(struct tegra_clk_pll *pllx)
 	val |= step_b << PLLX_MISC2_DYNRAMP_STEPB_SHIFT;
 
 	if (readl_relaxed(clk_base + pllx->params->base_reg) & PLL_ENABLE) {
-		pr_warn("%s already enabled. Postponing set full defaults\n",
-			__clk_get_name(pllx->hw.clk));
+		pr_warn("PLL_X already enabled. Postponing set full defaults\n");
 
 		/*
 		 * PLL is ON: check if defaults already set, then set those
@@ -918,6 +954,7 @@ static void tegra210_pllx_set_defaults(struct tegra_clk_pll *pllx)
 		return;
 	}
 
+	pr_debug("%s:%d: Set defaults for %s\n", __func__, __LINE__, "PLL_X");
 	/* Enable lock detect and CPU output */
 	writel_relaxed(PLLX_MISC0_DEFAULT_VALUE, clk_base +
 			pllx->params->ext_misc_reg[0]);
@@ -949,8 +986,7 @@ static void tegra210_pllmb_set_defaults(struct tegra_clk_pll *pllmb)
 	pllmb->params->defaults_set = true;
 
 	if (val & PLL_ENABLE) {
-		pr_warn("%s already enabled. Postponing set full defaults\n",
-			__clk_get_name(pllmb->hw.clk));
+		pr_warn("PLL_MB already enabled. Postponing set full defaults\n");
 
 		/*
 		 * PLL is ON: check if defaults already set, then set those
@@ -958,7 +994,7 @@ static void tegra210_pllmb_set_defaults(struct tegra_clk_pll *pllmb)
 		 */
 		val = PLLMB_MISC1_DEFAULT_VALUE & (~PLLMB_MISC1_IDDQ);
 		mask = PLLMB_MISC1_LOCK_ENABLE | PLLMB_MISC1_LOCK_OVERRIDE;
-		_pll_misc_chk_default(clk_base, pllmb->params, 0, val,
+		_pll_misc_chk_default(clk_base, "PLL_MB", pllmb->params, 0, val,
 				~mask & PLLMB_MISC1_WRITE_MASK);
 
 		/* Enable lock detect */
@@ -971,6 +1007,7 @@ static void tegra210_pllmb_set_defaults(struct tegra_clk_pll *pllmb)
 		return;
 	}
 
+	pr_debug("%s:%d: Set defaults for %s\n", __func__, __LINE__, "PLL_MB");
 	/* set IDDQ, enable lock detect */
 	writel_relaxed(PLLMB_MISC1_DEFAULT_VALUE,
 			clk_base + pllmb->params->ext_misc_reg[0]);
@@ -992,13 +1029,13 @@ static void pllp_check_defaults(struct tegra_clk_pll *pll, bool enabled)
 	mask = PLLP_MISC0_LOCK_ENABLE | PLLP_MISC0_LOCK_OVERRIDE;
 	if (!enabled)
 		mask |= PLLP_MISC0_IDDQ;
-	_pll_misc_chk_default(clk_base, pll->params, 0, val,
+	_pll_misc_chk_default(clk_base, "PLL_P", pll->params, 0, val,
 			~mask & PLLP_MISC0_WRITE_MASK);
 
 	/* Ignore branch controls */
 	val = PLLP_MISC1_DEFAULT_VALUE;
 	mask = PLLP_MISC1_HSIO_EN | PLLP_MISC1_XUSB_EN;
-	_pll_misc_chk_default(clk_base, pll->params, 1, val,
+	_pll_misc_chk_default(clk_base, "PLL_P", pll->params, 1, val,
 			~mask & PLLP_MISC1_WRITE_MASK);
 }
 
@@ -1010,8 +1047,7 @@ static void tegra210_pllp_set_defaults(struct tegra_clk_pll *pllp)
 	pllp->params->defaults_set = true;
 
 	if (val & PLL_ENABLE) {
-		pr_warn("%s already enabled. Postponing set full defaults\n",
-			__clk_get_name(pllp->hw.clk));
+		pr_warn("PLL_P already enabled. Postponing set full defaults\n");
 
 		/*
 		 * PLL is ON: check if defaults already set, then set those
@@ -1030,6 +1066,7 @@ static void tegra210_pllp_set_defaults(struct tegra_clk_pll *pllp)
 		return;
 	}
 
+	pr_debug("%s:%d: Set defaults for %s\n", __func__, __LINE__, "PLL_P");
 	/* set IDDQ, enable lock detect */
 	writel_relaxed(PLLP_MISC0_DEFAULT_VALUE,
 			clk_base + pllp->params->ext_misc_reg[0]);
@@ -1056,12 +1093,12 @@ static void pllu_check_defaults(struct tegra_clk_pll *pll, bool hw_control)
 	/* Ignore lock enable (will be set) and IDDQ if under h/w control */
 	val = PLLU_MISC0_DEFAULT_VALUE & (~PLLU_MISC0_IDDQ);
 	mask = PLLU_MISC0_LOCK_ENABLE | (hw_control ? PLLU_MISC0_IDDQ : 0);
-	_pll_misc_chk_default(clk_base, pll->params, 0, val,
+	_pll_misc_chk_default(clk_base, "PLL_U", pll->params, 0, val,
 			~mask & PLLU_MISC0_WRITE_MASK);
 
 	val = PLLU_MISC1_DEFAULT_VALUE;
 	mask = PLLU_MISC1_LOCK_OVERRIDE;
-	_pll_misc_chk_default(clk_base, pll->params, 1, val,
+	_pll_misc_chk_default(clk_base, "PLL_U", pll->params, 1, val,
 			~mask & PLLU_MISC1_WRITE_MASK);
 }
 
@@ -1072,8 +1109,7 @@ static void tegra210_pllu_set_defaults(struct tegra_clk_pll *pllu)
 	pllu->params->defaults_set = true;
 
 	if (val & PLL_ENABLE) {
-		pr_warn("%s already enabled. Postponing set full defaults\n",
-			__clk_get_name(pllu->hw.clk));
+		pr_warn("PLL_U already enabled. Postponing set full defaults\n");
 
 		/*
 		 * PLL is ON: check if defaults already set, then set those
@@ -1096,6 +1132,7 @@ static void tegra210_pllu_set_defaults(struct tegra_clk_pll *pllu)
 		return;
 	}
 
+	pr_debug("%s:%d: Set defaults for %s\n", __func__, __LINE__, "PLL_U");
 	/* set IDDQ, enable lock detect */
 	writel_relaxed(PLLU_MISC0_DEFAULT_VALUE,
 			clk_base + pllu->params->ext_misc_reg[0]);
@@ -1448,7 +1485,7 @@ static struct tegra_clk_pll_params pll_c_params = {
 	.div_nmp = &pllc_nmp,
 	.freq_table = pll_cx_freq_table,
 	.flags = TEGRA_PLL_USE_LOCK,
-	.set_defaults = tegra210_pllcx_set_defaults,
+	.set_defaults = _pllc_set_defaults,
 	.calc_rate = tegra210_pll_fixed_mdiv_cfg,
 };
 
@@ -1487,7 +1524,7 @@ static struct tegra_clk_pll_params pll_c2_params = {
 	.ext_misc_reg[3] = PLLC2_MISC3,
 	.freq_table = pll_cx_freq_table,
 	.flags = TEGRA_PLL_USE_LOCK,
-	.set_defaults = tegra210_pllcx_set_defaults,
+	.set_defaults = _pllc2_set_defaults,
 	.calc_rate = tegra210_pll_fixed_mdiv_cfg,
 };
 
@@ -1517,7 +1554,7 @@ static struct tegra_clk_pll_params pll_c3_params = {
 	.ext_misc_reg[3] = PLLC3_MISC3,
 	.freq_table = pll_cx_freq_table,
 	.flags = TEGRA_PLL_USE_LOCK,
-	.set_defaults = tegra210_pllcx_set_defaults,
+	.set_defaults = _pllc3_set_defaults,
 	.calc_rate = tegra210_pll_fixed_mdiv_cfg,
 };
 
@@ -1805,7 +1842,7 @@ static struct tegra_clk_pll_params pll_a1_params = {
 	.ext_misc_reg[3] = PLLA1_MISC3,
 	.freq_table = pll_cx_freq_table,
 	.flags = TEGRA_PLL_USE_LOCK,
-	.set_defaults = tegra210_pllcx_set_defaults,
+	.set_defaults = _plla1_set_defaults,
 	.calc_rate = tegra210_pll_fixed_mdiv_cfg,
 };
 
@@ -2689,8 +2726,9 @@ static void __init tegra210_pll_init(void __iomem *clk_base,
 	clks[TEGRA210_CLK_PLL_D_OUT0] = clk;
 
 	/* PLLRE */
-	clk = tegra_clk_register_pllre("pll_re_vco", "pll_ref", clk_base, pmc,
-			     0, &pll_re_vco_params, &pll_re_lock, pll_ref_freq);
+	clk = tegra_clk_register_pllre_tegra210("pll_re_vco", "pll_ref",
+			     clk_base, pmc, 0, &pll_re_vco_params,
+			     &pll_re_lock, pll_ref_freq);
 	clk_register_clkdev(clk, "pll_re_vco", NULL);
 	clks[TEGRA210_CLK_PLL_RE_VCO] = clk;
 
@@ -2699,6 +2737,14 @@ static void __init tegra210_pll_init(void __iomem *clk_base,
 					 pll_vco_post_div_table, &pll_re_lock);
 	clk_register_clkdev(clk, "pll_re_out", NULL);
 	clks[TEGRA210_CLK_PLL_RE_OUT] = clk;
+
+	clk = tegra_clk_register_divider("pll_re_out1_div", "pll_re_vco",
+			clk_base + PLLRE_OUT1, 0, TEGRA_DIVIDER_ROUND_UP,
+			8, 8, 1, NULL);
+	clk = tegra_clk_register_pll_out("pll_re_out1", "pll_re_out1_div",
+			clk_base + PLLRE_OUT1, 1, 0,
+			CLK_SET_RATE_PARENT, 0, NULL);
+	clks[TEGRA210_CLK_PLL_RE_OUT1] = clk;
 
 	/* PLLE */
 	clk = tegra_clk_register_plle_tegra210("pll_e", "pll_ref",
@@ -2921,7 +2967,7 @@ static struct tegra_clk_init_table common_init_table[] __initdata = {
 	{TEGRA210_CLK_DFLL_SOC, TEGRA210_CLK_PLL_P, 51000000, 1},
 	{TEGRA210_CLK_DFLL_REF, TEGRA210_CLK_PLL_P, 51000000, 1},
 	{TEGRA210_CLK_SBC4, TEGRA210_CLK_PLL_P, 12000000, 0},
-	{TEGRA210_CLK_PLL_RE_VCO, TEGRA210_CLK_CLK_MAX, 672000000, 0},
+	{TEGRA210_CLK_PLL_RE_OUT1, TEGRA210_CLK_CLK_MAX, 0, 0},
 	{TEGRA210_CLK_PLL_U_OUT1, TEGRA210_CLK_CLK_MAX, 48000000, 1},
 	{TEGRA210_CLK_PLL_U_OUT2, TEGRA210_CLK_CLK_MAX, 60000000, 1},
 	{TEGRA210_CLK_XUSB_GATE, TEGRA210_CLK_CLK_MAX, 0, 1},
@@ -2966,6 +3012,8 @@ static struct tegra_clk_init_table common_init_table[] __initdata = {
 	{TEGRA210_CLK_MC_CBPA, TEGRA210_CLK_CLK_MAX, 0, 1},
 	{TEGRA210_CLK_MC_CCPA, TEGRA210_CLK_CLK_MAX, 0, 1},
 	{TEGRA210_CLK_MC_CDPA, TEGRA210_CLK_CLK_MAX, 0, 1},
+	{TEGRA210_CLK_PLL_P_OUT1, TEGRA210_CLK_CLK_MAX, 408000000, 0},
+	{TEGRA210_CLK_PLL_P_OUT3, TEGRA210_CLK_CLK_MAX, 102000000, 0},
 	/* This MUST be the last entry. */
 	{TEGRA210_CLK_CLK_MAX, TEGRA210_CLK_CLK_MAX, 0, 0},
 };
@@ -3462,6 +3510,44 @@ static void __init tegra210_ovr_clk_init(void __iomem *clk_base)
 	clks[TEGRA210_CLK_SATA_SLCG_OVR_FPCI] = clk;
 }
 
+static void __init tegra210_clock_prod_settings(struct device_node *np)
+{
+	u32 val;
+
+	/* Set AHB_RATE to 0 */
+	val = car_readl(SYSTEM_CLK_RATE, 0);
+	val &= ~SYSTEM_CLK_RATE_AHB_RATE_MASK;
+	car_writel(val, SYSTEM_CLK_RATE, 0);
+
+	/* Set XOFS to 1 */
+	val = car_readl(OSC_CTRL, 0);
+	val &= ~OSC_CTRL_XOFS_MASK;
+	val |= (1 << OSC_CTRL_XOFS_OFFSET);
+	car_writel(val, OSC_CTRL, 0);
+
+	/* Set PLLU_OUTA OUT1/2 OVRRIDE */
+	val = car_readl(PLLU_OUTA, 0);
+	val |= (PLLU_OUTA_OUT1_OVRRIDE | PLLU_OUTA_OUT2_OVRRIDE);
+	car_writel(val, PLLU_OUTA, 0);
+
+	/* setup LVL2_CLK_GATE_OVRD */
+	val = car_readl(LVL2_CLK_GATE_OVRD, 0);
+	val &= ~(1 << 24);
+	car_writel(val, LVL2_CLK_GATE_OVRD, 0);
+
+	/* plla1_misc0 */
+	val = car_readl(PLLA1_MISC0, 0);
+	val &= ~PLLA1_MISC0_EXT_FRU_MASK;
+	val |= (0x8000 << PLLA1_MISC0_EXT_FRU_OFFSET);
+	car_writel(val, PLLA1_MISC0, 0);
+
+	/* plla1_misc2 */
+	val = car_readl(PLLA1_MISC2, 0);
+	val &= ~PLLA1_MISC2_FLL_LD_MEM_MASK;
+	val |= (0xf << PLLA1_MISC2_FLL_LD_MEM_OFFSET);
+	car_writel(val, PLLA1_MISC2, 0);
+}
+
 /**
  * tegra210_clock_init - Tegra210-specific clock initialization
  * @np: struct device_node * of the DT node for the SoC CAR IP block
@@ -3535,6 +3621,8 @@ static void __init tegra210_clock_init(struct device_node *np)
 
 	tegra_add_of_provider(np);
 	tegra_register_devclks(devclks, ARRAY_SIZE(devclks));
+
+	tegra210_clock_prod_settings(np);
 
 	tegra_cpu_car_ops = &tegra210_cpu_car_ops;
 

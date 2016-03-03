@@ -26,6 +26,7 @@
 #include <linux/of.h>
 #include <linux/platform_device.h>
 #include <linux/reset.h>
+#include <linux/sched.h>
 #include <linux/thermal.h>
 #include <linux/delay.h>
 #include <linux/interrupt.h>

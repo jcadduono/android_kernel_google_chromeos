@@ -246,6 +246,16 @@ static int skl_resume(struct device *dev)
 	struct hdac_bus *bus = ebus_to_hbus(ebus);
 	int ret;
 
+	/* Turned OFF in HDMI codec driver after codec reconfiguration */
+	if (IS_ENABLED(CONFIG_SND_SOC_HDAC_HDMI)) {
+		ret = snd_hdac_display_power(bus, true);
+		if (ret < 0) {
+			dev_err(bus->dev,
+				"Cannot turn on display power on i915\n");
+			return ret;
+		}
+	}
+
 	/*
 	 * resume only when we are not in suspend active, otherwise need to
 	 * restore the device
@@ -488,7 +498,8 @@ static int skl_i915_init(struct hdac_bus *bus)
 {
 	int err;
 
-	/* the HDMI codec is in GPU so we need to ensure that it is powered
+	/*
+	 * The HDMI codec is in GPU so we need to ensure that it is powered
 	 * up and ready for probe
 	 */
 	err = snd_hdac_i915_init(bus);
@@ -500,7 +511,6 @@ static int skl_i915_init(struct hdac_bus *bus)
 		dev_err(bus->dev, "Cannot turn on display power on i915\n");
 		return err;
 	}
-	snd_hdac_set_codec_wakeup(bus, true);
 
 	return err;
 }
@@ -567,13 +577,13 @@ static int skl_first_init(struct hdac_ext_bus *ebus)
 	/* initialize chip */
 	skl_init_pci(skl);
 
-	err = skl_i915_init(bus);
-	if (err < 0)
-		return err;
+	if (IS_ENABLED(CONFIG_SND_SOC_HDAC_HDMI)) {
+		err = skl_i915_init(bus);
+		if (err < 0)
+			return err;
+	}
 
 	skl_init_chip(bus, true);
-
-	snd_hdac_set_codec_wakeup(bus, false);
 
 	/* codec detection */
 	if (!bus->codec_mask) {
@@ -603,10 +613,14 @@ static int skl_probe(struct pci_dev *pci,
 	if (err < 0)
 		goto out_free;
 
+	skl->pci_id = pci->device;
+
 	skl->nhlt = skl_nhlt_init(bus->dev);
 
 	if (skl->nhlt == NULL)
 		goto out_free;
+
+	skl_nhlt_update_topology_bin(skl);
 
 	pci_set_drvdata(skl->pci, ebus);
 
@@ -643,15 +657,15 @@ static int skl_probe(struct pci_dev *pci,
 	if (err < 0)
 		goto out_unregister;
 
-	err = snd_hdac_display_power(bus, false);
-	if (err < 0) {
-		dev_err(bus->dev, "Cannot turn off display power on i915\n");
-		return err;
+	if (IS_ENABLED(CONFIG_SND_SOC_HDAC_HDMI)) {
+		err = snd_hdac_display_power(bus, false);
+		if (err < 0) {
+			dev_err(bus->dev, "Cannot turn off display power on i915\n");
+			return err;
+		}
 	}
 
 	/*configure PM */
-	pm_runtime_set_autosuspend_delay(bus->dev, SKL_SUSPEND_DELAY);
-	pm_runtime_use_autosuspend(bus->dev);
 	pm_runtime_put_noidle(bus->dev);
 	pm_runtime_allow(bus->dev);
 
@@ -678,13 +692,21 @@ static void skl_shutdown(struct pci_dev *pci)
 	struct hdac_bus *bus = ebus_to_hbus(ebus);
 	struct hdac_stream *s;
 	struct hdac_ext_stream *stream;
+	struct skl *skl;
 
+	if (ebus == NULL)
+		return;
+
+	skl = ebus_to_skl(ebus);
+
+	if (skl->init_failed)
+		return;
 
 	snd_hdac_ext_stop_streams(ebus);
 	list_for_each_entry(s, &bus->stream_list, list) {
 		stream = stream_to_hdac_ext_stream(s);
 		snd_hdac_ext_stream_decouple(ebus, stream, false);
-        }
+	}
 
 	snd_hdac_bus_stop_chip(bus);
 }
@@ -694,10 +716,11 @@ static void skl_remove(struct pci_dev *pci)
 	struct hdac_ext_bus *ebus = pci_get_drvdata(pci);
 	struct skl *skl = ebus_to_skl(ebus);
 
-	snd_hdac_i915_exit(&ebus->bus);
-
 	if (skl->tplg)
 		release_firmware(skl->tplg);
+
+	if (IS_ENABLED(CONFIG_SND_SOC_HDAC_HDMI))
+		snd_hdac_i915_exit(&ebus->bus);
 
 	if (pci_dev_run_wake(pci))
 		pm_runtime_get_noresume(&pci->dev);

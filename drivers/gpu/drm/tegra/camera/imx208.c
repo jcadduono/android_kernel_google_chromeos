@@ -165,9 +165,10 @@ static inline int imx208_get_gain_reg(struct imx208_reg *regs, u16 gain)
 	return 1;
 }
 
-static inline int imx208_read_reg(struct imx208_info *info, u16 addr, u8 *val)
+static inline int imx208_read_reg(struct imx208_info *info, u16 addr,
+				  unsigned int *val)
 {
-	return regmap_read(info->regmap, addr, (unsigned int *) val);
+	return regmap_read(info->regmap, addr, val);
 }
 
 static int imx208_write_reg(struct imx208_info *info, u16 addr, u8 val)
@@ -636,7 +637,7 @@ static struct miscdevice imx208_device = {
 
 static int imx208_check_module(struct imx208_info *info)
 {
-	u8 module_id[2];
+	unsigned int module_id[2];
 	int err;
 	struct imx208_power_rail *pw = &info->power;
 
@@ -652,7 +653,7 @@ static int imx208_check_module(struct imx208_info *info)
 	if (err)
 		goto check_fail;
 
-	if (module_id[0] != 0x02 || module_id[1] != 0x08)
+	if ((module_id[0] & 0xff) != 0x02 || (module_id[1] & 0xff) != 0x08)
 		err = -ENODEV;
 
 check_fail:

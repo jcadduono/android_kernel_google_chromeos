@@ -138,6 +138,10 @@ config ISCSI_IBFT
 config HAVE_ARM_SMCCC
 	bool
 
+config QCOM_SCM
+	bool
+	depends on ARM || ARM64
+
 source "drivers/firmware/google/Kconfig"
 source "drivers/firmware/efi/Kconfig"
 

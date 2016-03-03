@@ -245,48 +245,49 @@ static int wm9713_voice_shutdown(struct snd_soc_dapm_widget *w,
 static int mixer_event(struct snd_soc_dapm_widget *w,
 	struct snd_kcontrol *kcontrol, int event)
 {
+	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
 	u16 l, r, beep, tone, phone, rec, pcm, aux;
 
-	l = ac97_read(w->codec, HPL_MIXER);
-	r = ac97_read(w->codec, HPR_MIXER);
-	beep = ac97_read(w->codec, AC97_PC_BEEP);
-	tone = ac97_read(w->codec, AC97_MASTER_TONE);
-	phone = ac97_read(w->codec, AC97_PHONE);
-	rec = ac97_read(w->codec, AC97_REC_SEL);
-	pcm = ac97_read(w->codec, AC97_PCM);
-	aux = ac97_read(w->codec, AC97_AUX);
+	l = ac97_read(codec, HPL_MIXER);
+	r = ac97_read(codec, HPR_MIXER);
+	beep = ac97_read(codec, AC97_PC_BEEP);
+	tone = ac97_read(codec, AC97_MASTER_TONE);
+	phone = ac97_read(codec, AC97_PHONE);
+	rec = ac97_read(codec, AC97_REC_SEL);
+	pcm = ac97_read(codec, AC97_PCM);
+	aux = ac97_read(codec, AC97_AUX);
 
 	if (event & SND_SOC_DAPM_PRE_REG)
 		return 0;
 	if ((l & 0x1) || (r & 0x1))
-		ac97_write(w->codec, AC97_PC_BEEP, beep & 0x7fff);
+		ac97_write(codec, AC97_PC_BEEP, beep & 0x7fff);
 	else
-		ac97_write(w->codec, AC97_PC_BEEP, beep | 0x8000);
+		ac97_write(codec, AC97_PC_BEEP, beep | 0x8000);
 
 	if ((l & 0x2) || (r & 0x2))
-		ac97_write(w->codec, AC97_MASTER_TONE, tone & 0x7fff);
+		ac97_write(codec, AC97_MASTER_TONE, tone & 0x7fff);
 	else
-		ac97_write(w->codec, AC97_MASTER_TONE, tone | 0x8000);
+		ac97_write(codec, AC97_MASTER_TONE, tone | 0x8000);
 
 	if ((l & 0x4) || (r & 0x4))
-		ac97_write(w->codec, AC97_PHONE, phone & 0x7fff);
+		ac97_write(codec, AC97_PHONE, phone & 0x7fff);
 	else
-		ac97_write(w->codec, AC97_PHONE, phone | 0x8000);
+		ac97_write(codec, AC97_PHONE, phone | 0x8000);
 
 	if ((l & 0x8) || (r & 0x8))
-		ac97_write(w->codec, AC97_REC_SEL, rec & 0x7fff);
+		ac97_write(codec, AC97_REC_SEL, rec & 0x7fff);
 	else
-		ac97_write(w->codec, AC97_REC_SEL, rec | 0x8000);
+		ac97_write(codec, AC97_REC_SEL, rec | 0x8000);
 
 	if ((l & 0x10) || (r & 0x10))
-		ac97_write(w->codec, AC97_PCM, pcm & 0x7fff);
+		ac97_write(codec, AC97_PCM, pcm & 0x7fff);
 	else
-		ac97_write(w->codec, AC97_PCM, pcm | 0x8000);
+		ac97_write(codec, AC97_PCM, pcm | 0x8000);
 
 	if ((l & 0x20) || (r & 0x20))
-		ac97_write(w->codec, AC97_AUX, aux & 0x7fff);
+		ac97_write(codec, AC97_AUX, aux & 0x7fff);
 	else
-		ac97_write(w->codec, AC97_AUX, aux | 0x8000);
+		ac97_write(codec, AC97_AUX, aux | 0x8000);
 
 	return 0;
 }
@@ -1052,7 +1053,6 @@ static const struct snd_soc_dai_ops wm9713_dai_ops_voice = {
 static struct snd_soc_dai_driver wm9713_dai[] = {
 {
 	.name = "wm9713-hifi",
-	.ac97_control = 1,
 	.playback = {
 		.stream_name = "HiFi Playback",
 		.channels_min = 1,
@@ -1112,6 +1112,7 @@ int wm9713_reset(struct snd_soc_codec *codec, int try_warm)
 	if (ac97_read(codec, 0) != wm9713_reg[0]) {
 		dev_err(codec->dev, "Failed to reset: AC97 link error\n");
 		return -EIO;
+	}
 	return 0;
 }
 EXPORT_SYMBOL_GPL(wm9713_reset);

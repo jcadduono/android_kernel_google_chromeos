@@ -139,6 +139,7 @@ struct cpu_defaults {
 
 static struct pstate_adjust_policy pid_params;
 static struct pstate_funcs pstate_funcs;
+static int hwp_active;
 
 struct perf_limits {
 	int no_turbo;
@@ -250,6 +251,41 @@ static inline void update_turbo_state(void)
 		 cpu->pstate.max_pstate == cpu->pstate.turbo_pstate);
 }
 
+static void intel_pstate_hwp_set(void)
+{
+	int min, hw_min, max, hw_max, cpu, range, adj_range;
+	u64 value, cap;
+
+	rdmsrl(MSR_HWP_CAPABILITIES, cap);
+	hw_min = HWP_LOWEST_PERF(cap);
+	hw_max = HWP_HIGHEST_PERF(cap);
+	range = hw_max - hw_min;
+
+	get_online_cpus();
+
+	for_each_online_cpu(cpu) {
+		rdmsrl_on_cpu(cpu, MSR_HWP_REQUEST, &value);
+		adj_range = limits.min_perf_pct * range / 100;
+		min = hw_min + adj_range;
+		value &= ~HWP_MIN_PERF(~0L);
+		value |= HWP_MIN_PERF(min);
+
+		adj_range = limits.max_perf_pct * range / 100;
+		max = hw_min + adj_range;
+		if (limits.no_turbo) {
+			hw_max = HWP_GUARANTEED_PERF(cap);
+			if (hw_max < max)
+				max = hw_max;
+		}
+
+		value &= ~HWP_MAX_PERF(~0L);
+		value |= HWP_MAX_PERF(max);
+		wrmsrl_on_cpu(cpu, MSR_HWP_REQUEST, value);
+	}
+
+	put_online_cpus();
+}
+
 /************************** debugfs begin ************************/
 static int pid_param_set(void *data, u64 val)
 {
@@ -285,6 +321,8 @@ static void __init intel_pstate_debug_expose_params(void)
 	struct dentry *debugfs_parent;
 	int i = 0;
 
+	if (hwp_active)
+		return;
 	debugfs_parent = debugfs_create_dir("pstate_snb", NULL);
 	if (IS_ERR_OR_NULL(debugfs_parent))
 		return;
@@ -362,7 +400,11 @@ static ssize_t store_no_turbo(struct kobject *a, struct attribute *b,
 		pr_warn("Turbo disabled by BIOS or unavailable on processor\n");
 		return -EPERM;
 	}
+
 	limits.no_turbo = clamp_t(int, input, 0, 1);
+
+	if (hwp_active)
+		intel_pstate_hwp_set();
 
 	return count;
 }
@@ -381,6 +423,8 @@ static ssize_t store_max_perf_pct(struct kobject *a, struct attribute *b,
 	limits.max_perf_pct = min(limits.max_policy_pct, limits.max_sysfs_pct);
 	limits.max_perf = div_fp(int_tofp(limits.max_perf_pct), int_tofp(100));
 
+	if (hwp_active)
+		intel_pstate_hwp_set();
 	return count;
 }
 
@@ -398,6 +442,8 @@ static ssize_t store_min_perf_pct(struct kobject *a, struct attribute *b,
 	limits.min_perf_pct = max(limits.min_policy_pct, limits.min_sysfs_pct);
 	limits.min_perf = div_fp(int_tofp(limits.min_perf_pct), int_tofp(100));
 
+	if (hwp_active)
+		intel_pstate_hwp_set();
 	return count;
 }
 
@@ -434,8 +480,13 @@ static void __init intel_pstate_sysfs_expose_params(void)
 	rc = sysfs_create_group(intel_pstate_kobject, &intel_pstate_attr_group);
 	BUG_ON(rc);
 }
-
 /************************** sysfs end ************************/
+
+static void intel_pstate_hwp_enable(struct cpudata *cpudata)
+{
+	wrmsrl_on_cpu(cpudata->cpu, MSR_PM_ENABLE, 0x1);
+}
+
 static int byt_get_min_pstate(void)
 {
 	u64 value;
@@ -692,6 +743,14 @@ static inline void intel_pstate_sample(struct cpudata *cpu)
 	cpu->prev_tsc = tsc;
 }
 
+static inline void intel_hwp_set_sample_time(struct cpudata *cpu)
+{
+	int delay;
+
+	delay = msecs_to_jiffies(50);
+	mod_timer_pinned(&cpu->timer, jiffies + delay);
+}
+
 static inline void intel_pstate_set_sample_time(struct cpudata *cpu)
 {
 	int delay;
@@ -752,6 +811,14 @@ static inline void intel_pstate_adjust_busy_pstate(struct cpudata *cpu)
 		sample->freq);
 }
 
+static void intel_hwp_timer_func(unsigned long __data)
+{
+	struct cpudata *cpu = (struct cpudata *) __data;
+
+	intel_pstate_sample(cpu);
+	intel_hwp_set_sample_time(cpu);
+}
+
 static void intel_pstate_timer_func(unsigned long __data)
 {
 	struct cpudata *cpu = (struct cpudata *) __data;
@@ -786,6 +853,11 @@ static const struct x86_cpu_id intel_pstate_cpu_ids[] = {
 };
 MODULE_DEVICE_TABLE(x86cpu, intel_pstate_cpu_ids);
 
+static const struct x86_cpu_id intel_pstate_cpu_oob_ids[] = {
+	ICPU(0x56, core_params),
+	{}
+};
+
 static int intel_pstate_init_cpu(unsigned int cpunum)
 {
 	struct cpudata *cpu;
@@ -799,12 +871,21 @@ static int intel_pstate_init_cpu(unsigned int cpunum)
 	cpu = all_cpu_data[cpunum];
 
 	cpu->cpu = cpunum;
+
+	if (hwp_active)
+		intel_pstate_hwp_enable(cpu);
+
 	intel_pstate_get_cpu_pstates(cpu);
 
 	init_timer_deferrable(&cpu->timer);
-	cpu->timer.function = intel_pstate_timer_func;
 	cpu->timer.data = (unsigned long)cpu;
 	cpu->timer.expires = jiffies + HZ/100;
+
+	if (!hwp_active)
+		cpu->timer.function = intel_pstate_timer_func;
+	else
+		cpu->timer.function = intel_hwp_timer_func;
+
 	intel_pstate_busy_pid_reset(cpu);
 	intel_pstate_sample(cpu);
 
@@ -841,6 +922,8 @@ static int intel_pstate_set_policy(struct cpufreq_policy *policy)
 		limits.max_perf_pct = 100;
 		limits.max_perf = int_tofp(1);
 		limits.no_turbo = 0;
+		if (hwp_active)
+			intel_pstate_hwp_set();
 		return 0;
 	}
 	limits.min_policy_pct = (policy->min * 100) / policy->cpuinfo.max_freq;
@@ -852,6 +935,9 @@ static int intel_pstate_set_policy(struct cpufreq_policy *policy)
 	limits.max_policy_pct = clamp_t(int, limits.max_policy_pct, 0 , 100);
 	limits.max_perf_pct = min(limits.max_policy_pct, limits.max_sysfs_pct);
 	limits.max_perf = div_fp(int_tofp(limits.max_perf_pct), int_tofp(100));
+
+	if (hwp_active)
+		intel_pstate_hwp_set();
 
 	return 0;
 }
@@ -875,6 +961,9 @@ static void intel_pstate_stop_cpu(struct cpufreq_policy *policy)
 	pr_info("intel_pstate CPU %d exiting\n", cpu_num);
 
 	del_timer_sync(&all_cpu_data[cpu_num]->timer);
+	if (hwp_active)
+		return;
+
 	intel_pstate_set_pstate(cpu, cpu->pstate.min_pstate);
 }
 
@@ -918,6 +1007,8 @@ static struct cpufreq_driver intel_pstate_driver = {
 };
 
 static int __initdata no_load;
+static int __initdata no_hwp;
+static int __initdata hwp_only;
 
 static int intel_pstate_msrs_not_valid(void)
 {
@@ -997,6 +1088,15 @@ static bool intel_pstate_platform_pwr_mgmt_exists(void)
 {
 	struct acpi_table_header hdr;
 	struct hw_vendor_info *v_info;
+	const struct x86_cpu_id *id;
+	u64 misc_pwr;
+
+	id = x86_match_cpu(intel_pstate_cpu_oob_ids);
+	if (id) {
+		rdmsrl(MSR_MISC_PWR_MGMT, misc_pwr);
+		if ( misc_pwr & (1 << 8))
+			return true;
+	}
 
 	if (acpi_disabled ||
 	    ACPI_FAILURE(acpi_get_table_header(ACPI_SIG_FADT, 0, &hdr)))
@@ -1020,6 +1120,7 @@ static int __init intel_pstate_init(void)
 	int cpu, rc = 0;
 	const struct x86_cpu_id *id;
 	struct cpu_defaults *cpu_info;
+	struct cpuinfo_x86 *c = &boot_cpu_data;
 
 	if (no_load)
 		return -ENODEV;
@@ -1048,6 +1149,14 @@ static int __init intel_pstate_init(void)
 	all_cpu_data = vzalloc(sizeof(void *) * num_possible_cpus());
 	if (!all_cpu_data)
 		return -ENOMEM;
+
+	if (cpu_has(c,X86_FEATURE_HWP) && !no_hwp) {
+		pr_info("intel_pstate: HWP enabled\n");
+		hwp_active++;
+	}
+
+	if (!hwp_active && hwp_only)
+		goto out;
 
 	rc = cpufreq_register_driver(&intel_pstate_driver);
 	if (rc)
@@ -1079,6 +1188,13 @@ static int __init intel_pstate_setup(char *str)
 
 	if (!strcmp(str, "disable"))
 		no_load = 1;
+	if (!strcmp(str, "no_hwp")) {
+		pr_info("intel_pstate: HWP disabled\n");
+		no_hwp = 1;
+	}
+	if (!strcmp(str, "hwp_only"))
+		hwp_only = 1;
+
 	return 0;
 }
 early_param("intel_pstate", intel_pstate_setup);

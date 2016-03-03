@@ -11683,9 +11683,14 @@ int intel_plane_atomic_calc_changes(struct drm_crtc_state *crtc_state,
 
 	bool turn_off, turn_on, visible, was_visible;
 	struct drm_framebuffer *fb = plane_state->fb;
+	enum drm_plane_type plane_type = plane->type;
+
+	if (plane_type == DRM_PLANE_TYPE_CURSOR &&
+	    !pipe_has_cursor_plane(to_i915(dev), intel_crtc->pipe))
+		plane_type = DRM_PLANE_TYPE_OVERLAY;
 
 	if (crtc_state && INTEL_INFO(dev)->gen >= 9 &&
-	    plane->type != DRM_PLANE_TYPE_CURSOR) {
+	    plane_type != DRM_PLANE_TYPE_CURSOR) {
 		ret = skl_update_scaler_plane(
 			to_intel_crtc_state(crtc_state),
 			to_intel_plane_state(plane_state));
@@ -13954,7 +13959,7 @@ static void intel_crtc_init(struct drm_device *dev, int pipe)
 	struct intel_crtc_state *crtc_state = NULL;
 	struct drm_plane *primary = NULL;
 	struct drm_plane *cursor = NULL;
-	int i, ret;
+	int i, ret, sprite;
 
 	intel_crtc = kzalloc(sizeof(*intel_crtc), GFP_KERNEL);
 	if (intel_crtc == NULL)
@@ -13981,9 +13986,32 @@ static void intel_crtc_init(struct drm_device *dev, int pipe)
 	if (!primary)
 		goto fail;
 
-	cursor = intel_cursor_plane_create(dev, pipe);
-	if (!cursor)
-		goto fail;
+	if (pipe_has_cursor_plane(dev_priv, pipe)) {
+		cursor = intel_cursor_plane_create(dev, pipe);
+		if (!cursor)
+			goto fail;
+	}
+
+	for_each_sprite(dev_priv, pipe, sprite) {
+		enum drm_plane_type plane_type;
+		struct drm_plane *plane;
+
+		if (sprite + 1 < INTEL_INFO(dev_priv)->num_sprites[pipe] ||
+		    pipe_has_cursor_plane(dev_priv, pipe))
+			plane_type = DRM_PLANE_TYPE_OVERLAY;
+		else
+			plane_type = DRM_PLANE_TYPE_CURSOR;
+
+		plane = intel_plane_init(dev, pipe, sprite, plane_type);
+		if (IS_ERR(plane)) {
+			DRM_DEBUG_KMS("pipe %c sprite %c init failed: %ld\n",
+					pipe_name(pipe), sprite_name(pipe, sprite), PTR_ERR(plane));
+			goto fail;
+		}
+
+		if (plane_type == DRM_PLANE_TYPE_CURSOR)
+			cursor = plane;
+	}
 
 	ret = drm_crtc_init_with_planes(dev, &intel_crtc->base, primary,
 					cursor, &intel_crtc_funcs, NULL);
@@ -14910,7 +14938,6 @@ void intel_modeset_init_hw(struct drm_device *dev)
 void intel_modeset_init(struct drm_device *dev)
 {
 	struct drm_i915_private *dev_priv = dev->dev_private;
-	int sprite, ret;
 	enum pipe pipe;
 	struct intel_crtc *crtc;
 
@@ -14964,15 +14991,8 @@ void intel_modeset_init(struct drm_device *dev)
 		      INTEL_INFO(dev)->num_pipes,
 		      INTEL_INFO(dev)->num_pipes > 1 ? "s" : "");
 
-	for_each_pipe(dev_priv, pipe) {
+	for_each_pipe(dev_priv, pipe)
 		intel_crtc_init(dev, pipe);
-		for_each_sprite(dev_priv, pipe, sprite) {
-			ret = intel_plane_init(dev, pipe, sprite);
-			if (ret)
-				DRM_DEBUG_KMS("pipe %c sprite %c init failed: %d\n",
-					      pipe_name(pipe), sprite_name(pipe, sprite), ret);
-		}
-	}
 
 	intel_shared_dpll_init(dev);
 

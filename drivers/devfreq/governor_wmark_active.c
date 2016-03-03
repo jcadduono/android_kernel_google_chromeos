@@ -104,7 +104,7 @@ static void update_watermarks(struct devfreq *df,
 {
 	struct wmark_gov_info *wmarkinfo = df->data;
 	u64 relation = 0, next_freq = 0;
-	u64 current_frequency_khz = current_frequency / 1000;
+	unsigned long current_frequency_khz = current_frequency / 1000;
 
 	if (ideal_frequency == wmarkinfo->freqlist[0]) {
 		/* Disable the low watermark if we are at lowest clock. */
@@ -116,8 +116,8 @@ static void update_watermarks(struct devfreq *df,
 		 * that we are running at the new frequency?
 		 */
 		next_freq = freqlist_down(wmarkinfo, ideal_frequency);
-		relation = ((next_freq / current_frequency_khz) *
-			    wmarkinfo->p_load_target) / 1000;
+		relation = div_u64(div_u64(next_freq, current_frequency_khz) *
+				   wmarkinfo->p_load_target, 1000U);
 		df->profile->set_low_wmark(df->dev.parent, relation);
 	}
 
@@ -132,8 +132,8 @@ static void update_watermarks(struct devfreq *df,
 		 * that we are running at the new frequency?
 		 */
 		next_freq = freqlist_up(wmarkinfo, ideal_frequency);
-		relation = ((next_freq / current_frequency_khz) *
-			    wmarkinfo->p_load_target) / 1000;
+		relation = div_u64(div_u64(next_freq, current_frequency_khz) *
+				   wmarkinfo->p_load_target, 1000U);
 		relation = min_t(u64, wmarkinfo->p_load_max,
 				 relation);
 		df->profile->set_high_wmark(df->dev.parent, relation);
@@ -179,7 +179,7 @@ static int devfreq_watermark_target_freq(struct devfreq *df,
 		 * load target we calculate the "ideal" frequency
 		 * where we would be just at the target.
 		 */
-		relation = (load * 1000) / wmarkinfo->p_load_target;
+		relation = div_u64(load * 1000, wmarkinfo->p_load_target);
 		ideal_freq = relation * (dev_stat.current_frequency / 1000);
 
 		/* Round this frequency. */
@@ -188,8 +188,8 @@ static int devfreq_watermark_target_freq(struct devfreq *df,
 
 	/* Update average target frequency. */
 	wmarkinfo->average_target_freq =
-		(wmarkinfo->p_smooth * wmarkinfo->average_target_freq +
-		 ideal_freq) / (wmarkinfo->p_smooth + 1);
+		div_u64(wmarkinfo->p_smooth * wmarkinfo->average_target_freq +
+			ideal_freq, wmarkinfo->p_smooth + 1);
 
 	/* Update watermarks to match the ideal frequency. */
 	update_watermarks(df, dev_stat.current_frequency, ideal_freq);

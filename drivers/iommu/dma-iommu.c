@@ -27,6 +27,7 @@
 #include <linux/iova.h>
 #include <linux/mm.h>
 #include <linux/scatterlist.h>
+#include <linux/slab.h>
 #include <linux/vmalloc.h>
 
 int iommu_dma_init(void)
@@ -446,6 +447,7 @@ int iommu_dma_map_sg(struct device *dev, struct scatterlist *sg,
 	struct scatterlist *s, *prev = NULL;
 	dma_addr_t dma_addr;
 	size_t iova_len = 0;
+	unsigned long mask = dma_get_seg_boundary(dev);
 	int i;
 
 	/*
@@ -457,6 +459,7 @@ int iommu_dma_map_sg(struct device *dev, struct scatterlist *sg,
 	for_each_sg(sg, s, nents, i) {
 		size_t s_offset = iova_offset(iovad, s->offset);
 		size_t s_length = s->length;
+		size_t pad_len = (mask - iova_len + 1) & mask;
 
 		sg_dma_address(s) = s_offset;
 		sg_dma_len(s) = s_length;
@@ -465,15 +468,13 @@ int iommu_dma_map_sg(struct device *dev, struct scatterlist *sg,
 		s->length = s_length;
 
 		/*
-		 * The simple way to avoid the rare case of a segment
-		 * crossing the boundary mask is to pad the previous one
-		 * to end at a naturally-aligned IOVA for this one's size,
-		 * at the cost of potentially over-allocating a little.
+		 * With a single size-aligned IOVA allocation, no segment risks
+		 * crossing the boundary mask unless the total size exceeds
+		 * the mask itself. The simple way to maintain alignment when
+		 * that does happen is to pad the previous segment to end at the
+		 * next boundary, at the cost of over-allocating a little.
 		 */
-		if (prev) {
-			size_t pad_len = roundup_pow_of_two(s_length);
-
-			pad_len = (pad_len - iova_len) & (pad_len - 1);
+		if (pad_len && pad_len < s_length - 1) {
 			prev->length += pad_len;
 			iova_len += pad_len;
 		}

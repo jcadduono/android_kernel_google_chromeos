@@ -545,7 +545,6 @@ static void platform_drv_shutdown(struct device *_dev)
 	struct platform_device *dev = to_platform_device(_dev);
 
 	drv->shutdown(dev);
-	dev_pm_domain_detach(_dev, true);
 }
 
 /**

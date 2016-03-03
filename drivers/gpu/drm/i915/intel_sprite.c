@@ -1040,8 +1040,8 @@ static uint32_t skl_plane_formats[] = {
 	DRM_FORMAT_VYUY,
 };
 
-int
-intel_plane_init(struct drm_device *dev, enum pipe pipe, int plane)
+struct drm_plane *intel_plane_init(struct drm_device *dev, enum pipe pipe,
+		int plane, enum drm_plane_type plane_type)
 {
 	struct intel_plane *intel_plane;
 	struct intel_plane_state *state;
@@ -1051,16 +1051,16 @@ intel_plane_init(struct drm_device *dev, enum pipe pipe, int plane)
 	int ret;
 
 	if (INTEL_INFO(dev)->gen < 5)
-		return -ENODEV;
+		return ERR_PTR(-ENODEV);
 
 	intel_plane = kzalloc(sizeof(*intel_plane), GFP_KERNEL);
 	if (!intel_plane)
-		return -ENOMEM;
+		return ERR_PTR(-ENOMEM);
 
 	state = intel_create_plane_state(&intel_plane->base);
 	if (!state) {
 		kfree(intel_plane);
-		return -ENOMEM;
+		return ERR_PTR(-ENOMEM);
 	}
 	intel_plane->base.state = &state->base;
 
@@ -1115,8 +1115,8 @@ intel_plane_init(struct drm_device *dev, enum pipe pipe, int plane)
 		num_plane_formats = ARRAY_SIZE(skl_plane_formats);
 		break;
 	default:
-		kfree(intel_plane);
-		return -ENODEV;
+		ret = -ENODEV;
+		goto out;
 	}
 
 	intel_plane->pipe = pipe;
@@ -1128,16 +1128,17 @@ intel_plane_init(struct drm_device *dev, enum pipe pipe, int plane)
 	ret = drm_universal_plane_init(dev, &intel_plane->base, possible_crtcs,
 				       &intel_plane_funcs,
 				       plane_formats, num_plane_formats,
-				       DRM_PLANE_TYPE_OVERLAY, NULL);
-	if (ret) {
-		kfree(intel_plane);
+				       plane_type, NULL);
+	if (ret)
 		goto out;
-	}
 
 	intel_create_rotation_property(dev, intel_plane);
 
 	drm_plane_helper_add(&intel_plane->base, &intel_plane_helper_funcs);
+	return &intel_plane->base;
 
 out:
-	return ret;
+	kfree(intel_plane);
+	kfree(state);
+	return ERR_PTR(ret);
 }

@@ -1279,7 +1279,8 @@ static int soc_link_dai_widgets(struct snd_soc_card *card,
 
 	/* link the DAI widgets */
 	sink = codec_dai->playback_widget;
-	source = cpu_dai->capture_widget;
+	source = dai_link->cpu_loopback ?
+		cpu_dai->playback_widget : cpu_dai->capture_widget;
 	if (sink && source) {
 		ret = snd_soc_dapm_new_pcm(card, dai_link->params,
 					   dai_link->num_params,
@@ -1291,7 +1292,8 @@ static int soc_link_dai_widgets(struct snd_soc_card *card,
 		}
 	}
 
-	sink = cpu_dai->playback_widget;
+	sink = dai_link->cpu_loopback ?
+		cpu_dai->capture_widget : cpu_dai->playback_widget;
 	source = codec_dai->capture_widget;
 	if (sink && source) {
 		ret = snd_soc_dapm_new_pcm(card, dai_link->params,

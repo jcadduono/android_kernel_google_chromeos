@@ -25,6 +25,7 @@
  */
 
 #include <linux/dma-buf.h>
+#include <linux/freezer.h>
 #include <linux/kthread.h>
 #include <linux/wait.h>
 #include <sync.h>
@@ -1166,10 +1167,12 @@ nouveau_gem_pushbuf_queue_kthread_fn(void *data)
 	NV_DEBUG(chan->drm, "PB thread started on channel %s\n",
 		nvxx_client(chan)->name);
 
+	set_freezable();
+
 	while (1) {
-		ret = wait_event_interruptible(chan->pushbuf_waitqueue,
-			(pb_data = nouveau_gem_pushbuf_queue_head(chan)) ||
-			kthread_should_park() || kthread_should_stop());
+		ret = wait_event_freezable(chan->pushbuf_waitqueue,
+			(pb_data = nouveau_gem_pushbuf_queue_head(chan))
+			|| kthread_should_stop());
 		if (ret) {
 			NV_ERROR(chan->drm,
 				 "PB thread interrupted on channel %s\n",
@@ -1177,18 +1180,10 @@ nouveau_gem_pushbuf_queue_kthread_fn(void *data)
 			break;
 		}
 
-		if (unlikely(kthread_should_park())) {
-			kthread_parkme();
-			continue;
-		}
-
 		/*
-		 * When !pb_data is true and kthread is not going to
-		 * park, the only left possibility is kthread is
-		 * going to stop.
-		 * So checking !pb_data while not kthread_should_stop here
-		 * is able to make sure all pushbuffer in queue will
-		 * be processed before this kthread is terminated.
+		 * We can break out of the wait_event() above with !pb_data
+		 * only if kthread_should_stop() is true. Otherwise we need
+		 * to loop until there are no more pushbuffers in the queue.
 		 */
 		if (unlikely(!pb_data))
 			break;

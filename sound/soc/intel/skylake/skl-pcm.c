@@ -470,8 +470,7 @@ static int skl_link_hw_params(struct snd_pcm_substream *substream,
 	snd_soc_dai_set_dma_data(dai, substream, (void *)link_dev);
 
 	/* set the stream tag in the codec dai dma params  */
-	dma_params = (struct hdac_ext_dma_params *)
-			snd_soc_dai_get_dma_data(codec_dai, substream);
+	dma_params = snd_soc_dai_get_dma_data(codec_dai, substream);
 	if (dma_params)
 		dma_params->stream_tag =  hdac_stream(link_dev)->stream_tag;
 
@@ -559,9 +558,6 @@ static int skl_link_hw_free(struct snd_pcm_substream *substream,
 				snd_soc_dai_get_dma_data(dai, substream);
 	struct hdac_ext_link *link;
 
-	if (!link_dev)
-		return 0;
-
 	dev_dbg(dai->dev, "%s: %s\n", __func__, dai->name);
 
 	link_dev->link_prepared = 0;
@@ -570,7 +566,6 @@ static int skl_link_hw_free(struct snd_pcm_substream *substream,
 	if (!link)
 		return -EINVAL;
 
-	snd_soc_dai_set_dma_data(dai, substream, NULL);
 	snd_hdac_ext_link_clear_stream_id(link, hdac_stream(link_dev)->stream_tag);
 	snd_hdac_ext_stream_release(link_dev, HDAC_EXT_STREAM_TYPE_LINK);
 	return 0;
@@ -765,7 +760,8 @@ static struct snd_soc_dai_driver skl_platform_dai[] = {
 		.stream_name = "iDisp2 Tx",
 		.channels_min = HDA_STEREO,
 		.channels_max = HDA_STEREO,
-		.rates = SNDRV_PCM_RATE_8000|SNDRV_PCM_RATE_16000|SNDRV_PCM_RATE_48000,
+		.rates = SNDRV_PCM_RATE_8000|SNDRV_PCM_RATE_16000|
+			SNDRV_PCM_RATE_48000,
 		.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S32_LE |
 			SNDRV_PCM_FMTBIT_S24_LE,
 	},
@@ -777,7 +773,8 @@ static struct snd_soc_dai_driver skl_platform_dai[] = {
 		.stream_name = "iDisp3 Tx",
 		.channels_min = HDA_STEREO,
 		.channels_max = HDA_STEREO,
-		.rates = SNDRV_PCM_RATE_8000|SNDRV_PCM_RATE_16000|SNDRV_PCM_RATE_48000,
+		.rates = SNDRV_PCM_RATE_8000|SNDRV_PCM_RATE_16000|
+			SNDRV_PCM_RATE_48000,
 		.formats = SNDRV_PCM_FMTBIT_S16_LE | SNDRV_PCM_FMTBIT_S32_LE |
 			SNDRV_PCM_FMTBIT_S24_LE,
 	},
@@ -936,6 +933,9 @@ static int skl_get_delay_from_lpib(struct hdac_ext_bus *ebus,
 		else
 			delay += hstream->bufsize;
 	}
+
+	if (hstream->bufsize == delay)
+		delay = 0;
 
 	if (delay >= hstream->period_bytes) {
 		dev_info(bus->dev,

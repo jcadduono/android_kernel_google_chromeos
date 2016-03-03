@@ -970,6 +970,9 @@ struct snd_soc_dai_link {
 	const struct snd_soc_pcm_stream *params;
 	unsigned int num_params;
 
+	/* flag to create cpu based loopback link */
+	unsigned int cpu_loopback:1;
+
 	unsigned int dai_fmt;           /* format to set on init */
 
 	enum snd_soc_dpcm_trigger trigger[2]; /* trigger type for DPCM */
@@ -1594,6 +1597,26 @@ static inline struct snd_soc_platform *snd_soc_kcontrol_platform(
 	struct snd_kcontrol *kcontrol)
 {
 	return snd_soc_component_to_platform(snd_soc_kcontrol_component(kcontrol));
+}
+
+/**
+ * snd_soc_jack_new - Create a new jack
+ * @codec: ASoC CODEC
+ * @id:    an identifying string for this jack
+ * @type:  a bitmask of enum snd_jack_type values that can be detected by
+ *         this jack
+ * @jack:  structure to use for the jack
+ *
+ * Creates a new jack object.
+ *
+ * Returns zero if successful, or a negative error code on failure.
+ * On success jack will be initialised.
+ */
+static inline int snd_soc_jack_new(struct snd_soc_codec *codec, const char *id,
+	int type, struct snd_soc_jack *jack)
+{
+	return snd_soc_card_jack_new(codec->component.card, id, type, jack,
+		NULL, 0);
 }
 
 int snd_soc_util_init(void);

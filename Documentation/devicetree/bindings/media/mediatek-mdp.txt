@@ -1,0 +1,49 @@
+* Mediatek Media Data Path
+
+Media Data Path is used for scaling and color space conversion.
+
+Required properties:
+  - compatible : "mediatek,mt8173-mdp"
+  - clocks : clock name from clock manager
+  - clock-names: the clocks of the MDP H/W
+  - power-domains : a phandle to the power domain.
+  - mediatek,larb : must contain the larbes of current platform
+  - iommus : Mediatek IOMMU H/W has designed the fixed associations with
+        the multimedia H/W. and there is only one multimedia iommu domain.
+        "iommus = <&iommu portid>" the "portid" is from
+        dt-bindings\iommu\mt8173-iommu-port.h, it means that this portid will
+        enable iommu. The portid default is disable iommu if "<&iommu portid>"
+        don't be added.
+  - mediatek,vpu : the node of video processor unit
+
+Example:
+		mdp: mediatek-mdp@14001000 {
+			compatible = "mediatek,mt8173-mdp";
+			clocks = <&mmsys CLK_MM_MDP_RDMA0>,
+				 <&mmsys CLK_MM_MDP_RDMA1>,
+				 <&mmsys CLK_MM_MDP_RSZ0>,
+				 <&mmsys CLK_MM_MDP_RSZ1>,
+				 <&mmsys CLK_MM_MDP_RSZ2>,
+				 <&mmsys CLK_MM_MDP_WDMA>,
+				 <&mmsys CLK_MM_MDP_WROT0>,
+				 <&mmsys CLK_MM_MDP_WROT1>,
+				 <&mmsys CLK_MM_MUTEX_32K>;
+			clock-names = "mdp_rdma0_clk",
+				      "mdp_rdma1_clk",
+				      "mdp_rsz0_clk",
+				      "mdp_rsz1_clk",
+				      "mdp_rsz2_clk",
+				      "mdp_wdma_clk",
+				      "mdp_wrot0_clk",
+				      "mdp_wrot1_clk",
+				      "mdp_mutex_clk";
+			power-domains = <&scpsys MT8173_POWER_DOMAIN_MM>;
+			mediatek,larb = <&larb0 &larb4>;
+			iommus = <&iommu M4U_PORT_MDP_RDMA0>,
+				 <&iommu M4U_PORT_MDP_WDMA>,
+				 <&iommu M4U_PORT_MDP_WROT0>,
+				 <&iommu M4U_PORT_MDP_RDMA1>,
+				 <&iommu M4U_PORT_MDP_WROT1>;
+			mediatek,vpu = <&vpu>;
+		};
+

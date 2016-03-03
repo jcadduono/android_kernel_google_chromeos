@@ -466,6 +466,9 @@ static inline void thermal_cooling_device_unregister(
 static inline struct thermal_zone_device *thermal_zone_get_zone_by_name(
 		const char *name)
 { return ERR_PTR(-ENODEV); }
+static inline struct thermal_zone_device *
+thermal_zone_get_zone_by_node(struct device_node *node)
+{ return ERR_PTR(-ENODEV); }
 static inline int thermal_zone_get_temp(
 		struct thermal_zone_device *tz, int *temp)
 { return -ENODEV; }

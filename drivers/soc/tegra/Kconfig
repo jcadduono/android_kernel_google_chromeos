@@ -17,7 +17,7 @@ config TEGRA_PROC_POWER_MODEL
 config TEGRA_CPU_EDP
 	bool "Enforce electrical design limits on CPU rail (CPU EDP)"
 	depends on ARCH_TEGRA
-	depends on CPU_FREQ && THERMAL
+	depends on CPU_FREQ && THERMAL=y
 	default n
 	select TEGRA_PROC_POWER_MODEL
 	help

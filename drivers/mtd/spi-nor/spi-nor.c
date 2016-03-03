@@ -410,16 +410,12 @@ static int spi_nor_erase(struct mtd_info *mtd, struct erase_info *instr)
 
 	write_disable(nor);
 
-	spi_nor_unlock_and_unprep(nor, SPI_NOR_OPS_ERASE);
-
-	instr->state = MTD_ERASE_DONE;
-	mtd_erase_callback(instr);
-
-	return ret;
-
 erase_err:
 	spi_nor_unlock_and_unprep(nor, SPI_NOR_OPS_ERASE);
-	instr->state = MTD_ERASE_FAILED;
+
+	instr->state = ret ? MTD_ERASE_FAILED : MTD_ERASE_DONE;
+	mtd_erase_callback(instr);
+
 	return ret;
 }
 
@@ -482,11 +478,14 @@ static int stm_is_locked_sr(struct spi_nor *nor, loff_t ofs, uint64_t len,
 static int stm_lock(struct spi_nor *nor, loff_t ofs, uint64_t len)
 {
 	struct mtd_info *mtd = &nor->mtd;
-	u8 status_old, status_new;
+	int status_old, status_new;
 	u8 mask = SR_BP2 | SR_BP1 | SR_BP0;
 	u8 shift = ffs(mask) - 1, pow, val;
+	int ret;
 
 	status_old = read_sr(nor);
+	if (status_old < 0)
+		return status_old;
 
 	/* SPI NOR always locks to the end */
 	if (ofs + len != mtd->size) {
@@ -521,7 +520,10 @@ static int stm_lock(struct spi_nor *nor, loff_t ofs, uint64_t len)
 		return -EINVAL;
 
 	write_enable(nor);
-	return write_sr(nor, status_new);
+	ret = write_sr(nor, status_new);
+	if (ret)
+		return ret;
+	return spi_nor_wait_till_ready(nor);
 }
 
 /*
@@ -532,15 +534,18 @@ static int stm_lock(struct spi_nor *nor, loff_t ofs, uint64_t len)
 static int stm_unlock(struct spi_nor *nor, loff_t ofs, uint64_t len)
 {
 	struct mtd_info *mtd = &nor->mtd;
-	uint8_t status_old, status_new;
+	int status_old, status_new;
 	u8 mask = SR_BP2 | SR_BP1 | SR_BP0;
 	u8 shift = ffs(mask) - 1, pow, val;
+	int ret;
 
 	status_old = read_sr(nor);
+	if (status_old < 0)
+		return status_old;
 
 	/* Cannot unlock; would unlock larger region than requested */
-	if (stm_is_locked_sr(nor, status_old, ofs - mtd->erasesize,
-			     mtd->erasesize))
+	if (stm_is_locked_sr(nor, ofs - mtd->erasesize, mtd->erasesize,
+			     status_old))
 		return -EINVAL;
 
 	/*
@@ -569,7 +574,10 @@ static int stm_unlock(struct spi_nor *nor, loff_t ofs, uint64_t len)
 		return -EINVAL;
 
 	write_enable(nor);
-	return write_sr(nor, status_new);
+	ret = write_sr(nor, status_new);
+	if (ret)
+		return ret;
+	return spi_nor_wait_till_ready(nor);
 }
 
 /*
@@ -888,7 +896,7 @@ static const struct flash_info *spi_nor_read_id(struct spi_nor *nor)
 				return &spi_nor_ids[tmp];
 		}
 	}
-	dev_err(nor->dev, "unrecognized JEDEC id bytes: %02x, %2x, %2x\n",
+	dev_err(nor->dev, "unrecognized JEDEC id bytes: %02x, %02x, %02x\n",
 		id[0], id[1], id[2]);
 	return ERR_PTR(-ENODEV);
 }
@@ -1034,6 +1042,8 @@ static int macronix_quad_enable(struct spi_nor *nor)
 	int ret, val;
 
 	val = read_sr(nor);
+	if (val < 0)
+		return val;
 	write_enable(nor);
 
 	write_sr(nor, val | SR_QUAD_EN_MX);
@@ -1221,8 +1231,7 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 
 	if (JEDEC_MFR(info) == SNOR_MFR_ATMEL ||
 	    JEDEC_MFR(info) == SNOR_MFR_INTEL ||
-	    JEDEC_MFR(info) == SNOR_MFR_SST ||
-	    JEDEC_MFR(info) == SNOR_MFR_WINBOND) {
+	    JEDEC_MFR(info) == SNOR_MFR_SST) {
 		write_enable(nor);
 		write_sr(nor, 0);
 	}
@@ -1238,8 +1247,7 @@ int spi_nor_scan(struct spi_nor *nor, const char *name, enum read_mode mode)
 	mtd->_read = spi_nor_read;
 
 	/* NOR protection support for STmicro/Micron chips and similar */
-	if (JEDEC_MFR(info) == SNOR_MFR_MICRON ||
-	    JEDEC_MFR(info) == SNOR_MFR_WINBOND) {
+	if (JEDEC_MFR(info) == SNOR_MFR_MICRON) {
 		nor->flash_lock = stm_lock;
 		nor->flash_unlock = stm_unlock;
 		nor->flash_is_locked = stm_is_locked;

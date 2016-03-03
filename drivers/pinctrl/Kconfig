@@ -159,11 +159,13 @@ config PINCTRL_TEGRA_XUSB
 
 config PINCTRL_TEGRA124_XUSB
 	def_bool y if ARCH_TEGRA_124_SOC || ARCH_TEGRA_132_SOC
+	depends on USB_COMMON!=m
 	select PINCTRL_TEGRA_XUSB
 	select MAILBOX
 
 config PINCTRL_TEGRA210_XUSB
 	def_bool y if ARCH_TEGRA_210_SOC
+	depends on USB_COMMON!=m
 	select PINCTRL_TEGRA_XUSB
 	select MAILBOX
 

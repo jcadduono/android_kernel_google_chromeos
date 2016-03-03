@@ -168,9 +168,9 @@ static int acpi_als_read_raw(struct iio_dev *iio,
 			u64 ulux = (u64) raw * 1000000;
 			mutex_lock(&als->lock);
 			ulux = ulux * als->als_scale +
-			       ulux * als->als_uscale / 1000000;
+			       div_u64(ulux * als->als_uscale, 1000000U);
 			mutex_unlock(&als->lock);
-			*val = ulux / 1000000;
+			*val = div_u64(ulux, 1000000U);
 		} else {
 			*val = raw;
 		}

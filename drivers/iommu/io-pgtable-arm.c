@@ -658,8 +658,12 @@ static struct io_pgtable *
 arm_64_lpae_alloc_pgtable_s1(struct io_pgtable_cfg *cfg, void *cookie)
 {
 	u64 reg;
-	struct arm_lpae_io_pgtable *data = arm_lpae_alloc_pgtable(cfg);
+	struct arm_lpae_io_pgtable *data;
 
+	if (cfg->quirks & ~IO_PGTABLE_QUIRK_ARM_NS)
+		return NULL;
+
+	data = arm_lpae_alloc_pgtable(cfg);
 	if (!data)
 		return NULL;
 
@@ -742,8 +746,13 @@ static struct io_pgtable *
 arm_64_lpae_alloc_pgtable_s2(struct io_pgtable_cfg *cfg, void *cookie)
 {
 	u64 reg, sl;
-	struct arm_lpae_io_pgtable *data = arm_lpae_alloc_pgtable(cfg);
+	struct arm_lpae_io_pgtable *data;
 
+	/* The NS quirk doesn't apply at stage 2 */
+	if (cfg->quirks)
+		return NULL;
+
+	data = arm_lpae_alloc_pgtable(cfg);
 	if (!data)
 		return NULL;
 

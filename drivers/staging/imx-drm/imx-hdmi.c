@@ -1551,7 +1551,7 @@ static int imx_hdmi_register(struct drm_device *drm, struct imx_hdmi *hdmi)
 
 	drm_encoder_helper_add(&hdmi->encoder, &imx_hdmi_encoder_helper_funcs);
 	drm_encoder_init(drm, &hdmi->encoder, &imx_hdmi_encoder_funcs,
-			 DRM_MODE_ENCODER_TMDS);
+			 DRM_MODE_ENCODER_TMDS, NULL);
 
 	drm_connector_helper_add(&hdmi->connector,
 			&imx_hdmi_connector_helper_funcs);

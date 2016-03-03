@@ -57,7 +57,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #include "mt8173_mfgsys.h"
 
-#define SYS_RGX_ACTIVE_POWER_LATENCY_MS 100
+#define SYS_RGX_ACTIVE_POWER_LATENCY_MS 10
 #define RGX_HW_SYSTEM_NAME "RGX HW"
 #define RGX_HW_CORE_CLOCK_SPEED 395000000
 
@@ -378,7 +378,7 @@ PVRSRV_ERROR SysDevInit(void *pvOSDevice, PVRSRV_DEVICE_CONFIG **ppsDevConfig)
 	gsDevice.ui32RegsSize = mfg->rgx_size;
 
 #ifdef PVR_DVFS
-	gsDevice.sDVFS.sDVFSDeviceCfg.bIdleReq = IMG_FALSE;
+	gsDevice.sDVFS.sDVFSDeviceCfg.bIdleReq = IMG_TRUE;
 	gsDevice.sDVFS.sDVFSDeviceCfg.pfnSetFrequency = SetFrequency;
 	gsDevice.sDVFS.sDVFSDeviceCfg.pfnSetVoltage = SetVoltage;
 	gsDevice.sDVFS.sDVFSDeviceCfg.ui32PollMs = MTK_DVFS_SWITCH_INTERVAL;
