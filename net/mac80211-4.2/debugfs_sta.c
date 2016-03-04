@@ -303,7 +303,7 @@ static ssize_t sta_rx_stats_read(struct file *file, char __user *userbuf,
 {
 	int retval = 0, len = 0;
 	char *buf;
-	const int size = 2816;  /* adjust the size for all items */
+	const int size = 3072;
 	struct sta_info *sta = file->private_data;
 	struct ieee80211_local *local = sta->local;
 	int i;
