@@ -370,6 +370,7 @@ config ACPI_THERMAL_REL
 config MTK_THERMAL
 	tristate "Temperature sensor driver for mediatek SoCs"
 	depends on ARCH_MEDIATEK || COMPILE_TEST
+	depends on HAS_IOMEM
 	default y
 	help
 	  Enable this option if you want to have support for thermal management
