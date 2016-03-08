@@ -2691,8 +2691,8 @@ static int tegra_dc_show_regs(struct seq_file *s, void *data)
 	u32 state_access_save;
 	int i;
 
-	if (!tegra_powergate_is_powered(dc->powergate)) {
-		DRM_INFO("Can't dump registers as dc is powergated\n");
+	if (dc->dpms == DRM_MODE_DPMS_OFF) {
+		DRM_INFO("Can't dump registers if dc is disabled\n");
 		return -EPERM;
 	}
 
