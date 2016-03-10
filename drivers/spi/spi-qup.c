@@ -157,14 +157,14 @@ struct spi_qup {
 	struct dma_slave_config	tx_conf;
 };
 
-static inline bool spi_qup_is_flag_set(struct spi_qup *controller, u32 flag)
+static bool spi_qup_is_flag_set(struct spi_qup *controller, u32 flag)
 {
 	u32 opflag = readl_relaxed(controller->base + QUP_OPERATIONAL);
 
-	return opflag & flag;
+	return (opflag & flag) != 0;
 }
 
-static inline bool spi_qup_is_dma_xfer(int mode)
+static bool spi_qup_is_dma_xfer(int mode)
 {
 	if (mode == QUP_IO_M_MODE_DMOV || mode == QUP_IO_M_MODE_BAM)
 		return true;
@@ -172,7 +172,7 @@ static inline bool spi_qup_is_dma_xfer(int mode)
 	return false;
 }
 
-static inline bool spi_qup_is_valid_state(struct spi_qup *controller)
+static bool spi_qup_is_valid_state(struct spi_qup *controller)
 {
 	u32 opstate = readl_relaxed(controller->base + QUP_STATE);
 
@@ -433,6 +433,9 @@ unsigned long timeout)
 	}
 
 	if (!qup->qup_v1) {
+		/*
+		 * v1 uses ADM, v2 uses BAM and the behavior is different
+		 */
 		if (xfer->rx_buf)
 			rx_done = spi_qup_dma_done;
 
@@ -505,14 +508,13 @@ static irqreturn_t spi_qup_qup_irq(int irq, void *dev_id)
 	struct spi_qup *controller = dev_id;
 	struct spi_transfer *xfer;
 	u32 opflags, qup_err, spi_err;
-	unsigned long flags;
 	int error = 0;
 	bool done = 0;
 
-	spin_lock_irqsave(&controller->lock, flags);
+	spin_lock(&controller->lock);
 	xfer = controller->xfer;
 	controller->xfer = NULL;
-	spin_unlock_irqrestore(&controller->lock, flags);
+	spin_unlock(&controller->lock);
 
 	qup_err = readl_relaxed(controller->base + QUP_ERROR_FLAGS);
 	spi_err = readl_relaxed(controller->base + SPI_ERROR_FLAGS);
@@ -574,10 +576,10 @@ static irqreturn_t spi_qup_qup_irq(int irq, void *dev_id)
 		(opflags & QUP_OP_MAX_INPUT_DONE_FLAG)) ||  error)
 		done = true;
 
-	spin_lock_irqsave(&controller->lock, flags);
+	spin_lock(&controller->lock);
 	controller->error = error;
 	controller->xfer = done ? NULL : xfer;
-	spin_unlock_irqrestore(&controller->lock, flags);
+	spin_unlock(&controller->lock);
 
 	if (done)
 		complete(&controller->done);
