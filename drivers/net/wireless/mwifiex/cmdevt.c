@@ -999,6 +999,23 @@ mwifiex_cmd_timeout_func(unsigned long function_context)
 		adapter->if_ops.card_reset(adapter);
 }
 
+void
+mwifiex_cancel_pending_scan_cmd(struct mwifiex_adapter *adapter)
+{
+	struct cmd_ctrl_node *cmd_node = NULL, *tmp_node;
+	unsigned long flags;
+
+	/* Cancel all pending scan command */
+	spin_lock_irqsave(&adapter->scan_pending_q_lock, flags);
+	list_for_each_entry_safe(cmd_node, tmp_node,
+				 &adapter->scan_pending_q, list) {
+		list_del(&cmd_node->list);
+		cmd_node->wait_q_enabled = false;
+		mwifiex_insert_cmd_to_free_q(adapter, cmd_node);
+	}
+	spin_unlock_irqrestore(&adapter->scan_pending_q_lock, flags);
+}
+
 /*
  * This function cancels all the pending commands.
  *
@@ -1039,16 +1056,7 @@ mwifiex_cancel_all_pending_cmd(struct mwifiex_adapter *adapter)
 	spin_unlock_irqrestore(&adapter->cmd_pending_q_lock, flags);
 	spin_unlock_irqrestore(&adapter->mwifiex_cmd_lock, cmd_flags);
 
-	/* Cancel all pending scan command */
-	spin_lock_irqsave(&adapter->scan_pending_q_lock, flags);
-	list_for_each_entry_safe(cmd_node, tmp_node,
-				 &adapter->scan_pending_q, list) {
-		list_del(&cmd_node->list);
-
-		cmd_node->wait_q_enabled = false;
-		mwifiex_insert_cmd_to_free_q(adapter, cmd_node);
-	}
-	spin_unlock_irqrestore(&adapter->scan_pending_q_lock, flags);
+	mwifiex_cancel_pending_scan_cmd(adapter);
 
 	if (adapter->scan_processing) {
 		spin_lock_irqsave(&adapter->mwifiex_cmd_lock, cmd_flags);
@@ -1081,9 +1089,8 @@ mwifiex_cancel_all_pending_cmd(struct mwifiex_adapter *adapter)
 void
 mwifiex_cancel_pending_ioctl(struct mwifiex_adapter *adapter)
 {
-	struct cmd_ctrl_node *cmd_node = NULL, *tmp_node = NULL;
+	struct cmd_ctrl_node *cmd_node = NULL;
 	unsigned long cmd_flags;
-	unsigned long scan_pending_q_flags;
 	struct mwifiex_private *priv;
 	int i;
 
@@ -1099,17 +1106,7 @@ mwifiex_cancel_pending_ioctl(struct mwifiex_adapter *adapter)
 		spin_unlock_irqrestore(&adapter->mwifiex_cmd_lock, cmd_flags);
 	}
 
-	/* Cancel all pending scan command */
-	spin_lock_irqsave(&adapter->scan_pending_q_lock,
-			  scan_pending_q_flags);
-	list_for_each_entry_safe(cmd_node, tmp_node,
-				 &adapter->scan_pending_q, list) {
-		list_del(&cmd_node->list);
-		cmd_node->wait_q_enabled = false;
-		mwifiex_insert_cmd_to_free_q(adapter, cmd_node);
-	}
-	spin_unlock_irqrestore(&adapter->scan_pending_q_lock,
-			       scan_pending_q_flags);
+	mwifiex_cancel_pending_scan_cmd(adapter);
 
 	if (adapter->scan_processing) {
 		spin_lock_irqsave(&adapter->mwifiex_cmd_lock, cmd_flags);
