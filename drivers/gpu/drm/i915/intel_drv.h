@@ -702,6 +702,7 @@ struct intel_dp {
 	uint32_t aux_ch_ctl_reg;
 	uint32_t DP;
 	uint8_t lane_count;
+	uint8_t sink_count;
 	bool has_audio;
 	bool detect_done;
 	enum hdmi_force_audio force_audio;
