@@ -2324,7 +2324,7 @@ static PVRSRV_ERROR RGXDevInitCompatCheck_BuildOptions_FWAgainstClient(PVRSRV_RG
 																			RGXFWIF_INIT *psRGXFWInit,
 																			IMG_UINT32 ui32ClientBuildOptions)
 {
-#if !defined(NO_HARDWARE)
+#if !defined(NO_HARDWARE) && !defined(SUPPORT_KERNEL_SRVINIT)
 	IMG_UINT32			ui32BuildOptionsMismatch;
 	IMG_UINT32			ui32BuildOptionsFW;
 #endif
@@ -2348,7 +2348,7 @@ static PVRSRV_ERROR RGXDevInitCompatCheck_BuildOptions_FWAgainstClient(PVRSRV_RG
 	}
 #endif
 
-#if !defined(NO_HARDWARE)
+#if !defined(NO_HARDWARE) && !defined(SUPPORT_KERNEL_SRVINIT)
 	if (psRGXFWInit == NULL)
 		return PVRSRV_ERROR_INVALID_PARAMS;
 	
