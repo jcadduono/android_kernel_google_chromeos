@@ -2636,6 +2636,7 @@ struct i915_params {
 	int mmio_debug;
 	bool verbose_state_checks;
 	int edp_vswing;
+	bool enable_dp_mst;
 };
 extern struct i915_params i915 __read_mostly;
 
