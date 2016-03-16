@@ -527,14 +527,6 @@ int cros_ec_register(struct cros_ec_device *ec_dev)
 	static int ec_dev_id;
 	struct device *dev = ec_dev->dev;
 	int err = 0;
-#ifdef CONFIG_OF
-	struct device_node *node;
-	char name[128];
-	struct mfd_cell cell = {
-		.name = name,
-		.id = 0,
-	};
-#endif
 
 	BLOCKING_INIT_NOTIFIER_HEAD(&ec_dev->event_notifier);
 
@@ -587,25 +579,6 @@ int cros_ec_register(struct cros_ec_device *ec_dev)
 		}
 	}
 
-#ifdef CONFIG_OF
-	/*
-	 * Add sub-devices declared in the device tree.  NOTE they should NOT be
-	 * declared in cros_devs
-	 */
-	for_each_child_of_node(dev->of_node, node) {
-		if (of_modalias_node(node, name, sizeof(name)) < 0) {
-			dev_err(dev, "modalias failure on %s\n",
-				node->full_name);
-			continue;
-		}
-		dev_dbg(dev, "adding MFD sub-device %s\n", node->name);
-		cell.of_compatible = of_get_property(node, "compatible", NULL);
-		err = mfd_add_devices(dev, ec_dev_id++, &cell, 1, NULL,
-				ec_dev->irq, NULL);
-		if (err)
-			dev_err(dev, "fail to add %s\n", node->full_name);
-	}
-#endif
 	dev_info(dev, "Chrome EC device registered\n");
 
 	return 0;
