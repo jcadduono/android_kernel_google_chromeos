@@ -1243,7 +1243,6 @@ void mesh_path_update_stats(struct ieee80211_sub_if_data *sdata)
 	struct mesh_path *mpath;
 	struct mpath_node *node;
 	int i;
-	int expired_deleted=0;
 
 	rcu_read_lock();
 	tbl = rcu_dereference(mesh_paths);
