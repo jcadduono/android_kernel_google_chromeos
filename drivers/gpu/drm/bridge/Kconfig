@@ -17,6 +17,15 @@ config DRM_PTN3460
 	---help---
 	  Parade eDP-LVDS bridge chip driver.
 
+config DRM_ANALOGIX_ANX7688
+	tristate "Analogix ANX7688 bridge"
+	depends on DRM
+	select DRM_KMS_HELPER
+	---help---
+	  ANX7688 is a transmitter to support DisplayPort over USB-C for
+	  smartphone and tablets.
+	  This driver only supports the HDMI to DP component of the chip.
+
 config DRM_ANX78XX
 	tristate "Analogix ANX78XX bridge"
 	select DRM_KMS_HELPER
