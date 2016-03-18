@@ -252,7 +252,7 @@ void debugfs_hw_add(struct ieee80211_local *local)
 	DEBUGFS_ADD(user_power);
 	DEBUGFS_ADD(power);
 	/* enable rx stats by default */
-	local->rx_stats_enabled = 0;
+	local->rx_stats_enabled = 1;
 	debugfs_create_bool("rx_stats_enabled", S_IWUSR | S_IRUSR, phyd,
 			    &local->rx_stats_enabled);
 
