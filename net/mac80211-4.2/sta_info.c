@@ -111,10 +111,9 @@ static void __cleanup_single_sta(struct sta_info *sta)
 	if (sta->sta.txq[0]) {
 		for (i = 0; i < ARRAY_SIZE(sta->sta.txq); i++) {
 			struct txq_info *txqi = to_txq_info(sta->sta.txq[i]);
-			int n = skb_queue_len(&txqi->queue);
 
 			ieee80211_purge_tx_queue(&local->hw, &txqi->queue);
-			atomic_sub(n, &sdata->txqs_len[txqi->txq.ac]);
+			atomic_set(&sta->txqs_len[txqi->txq.ac], 0);
 			txqi->byte_cnt = 0;
 		}
 	}
@@ -229,6 +228,79 @@ struct sta_info *sta_info_get_by_idx(struct ieee80211_sub_if_data *sdata,
 	return NULL;
 }
 
+void sta_info_ndev_init(struct ieee80211_sub_if_data *sdata,
+			struct sta_info *sta)
+{
+	struct ieee80211_local *local = sdata->local;
+	int i;
+	int q;
+
+	spin_lock_bh(&sdata->ndev_lock);
+	i = idr_alloc(&sdata->ndev_sta_idr, sta, 0,
+		      BIT(sizeof(sta->sta_id) * 8) - 1,
+		      GFP_ATOMIC);
+	spin_unlock_bh(&sdata->ndev_lock);
+
+	if (i < 0) {
+		sta_dbg(sta->sdata, "failed to allocate STA %pM id: %d\n",
+			sta->sta.addr, i);
+		return;
+	}
+
+	sta->sta_id_set = true;
+	sta->sta_id = i;
+	sta->sta_id_off = (sta->sta_id % IEEE80211_NUM_NDEV_STA) *
+			  IEEE80211_NUM_ACS;
+
+	for (i = 0; i < IEEE80211_NUM_ACS; i++) {
+		q = sta->sta_id_off + IEEE80211_NUM_ACS + i;
+
+		atomic_set(&sta->txqs_len[i], 0);
+
+		if ((atomic_read(&sdata->txqs_len[i]) >=
+		     local->hw.txq_ac_max_pending) ||
+		    (sdata->vif.cab_queue != IEEE80211_INVAL_HW_QUEUE &&
+		     local->queue_stop_reasons[sdata->vif.cab_queue]) ||
+		    (sdata->vif.hw_queue[i] != IEEE80211_INVAL_HW_QUEUE &&
+		     local->queue_stop_reasons[sdata->vif.hw_queue[i]]))
+			netif_stop_subqueue(sdata->dev, q);
+		else
+			netif_wake_subqueue(sdata->dev, q);
+	}
+}
+
+void sta_info_ndev_free(struct ieee80211_sub_if_data *sdata,
+		        struct sta_info *sta)
+{
+	struct ieee80211_local *local = sdata->local;
+	int ac;
+	int nq;
+	int sq;
+	int q;
+
+	if (!sta->sta_id_set)
+		return;
+
+	for (ac = 0; ac < IEEE80211_NUM_ACS; ac++) {
+		q = sdata->vif.hw_queue[ac];
+		sq = ac + sta->sta_id_off;
+		nq = sq + IEEE80211_NUM_ACS;
+
+		if (test_and_clear_bit(ac, sta->txqs_stopped) &&
+		    atomic_dec_return(&sdata->ndev_sta_q_refs[sq]) == 0)
+			clear_bit(sq, sdata->ndev_sta_q_stopped);
+
+		if (__netif_subqueue_stopped(sdata->dev, nq))
+			ieee80211_propagate_queue_wake(local, q);
+	}
+
+	spin_lock_bh(&sdata->ndev_lock);
+	idr_remove(&sdata->ndev_sta_idr, sta->sta_id);
+	spin_unlock_bh(&sdata->ndev_lock);
+
+	sta->sta_id_set = false;
+}
+
 /**
  * sta_info_free - free STA
  *
@@ -242,6 +314,8 @@ struct sta_info *sta_info_get_by_idx(struct ieee80211_sub_if_data *sdata,
  */
 void sta_info_free(struct ieee80211_local *local, struct sta_info *sta)
 {
+	struct ieee80211_sub_if_data *sdata = sta->sdata;
+
 	if (sta->rate_ctrl)
 		rate_control_free_sta(sta);
 
@@ -250,6 +324,10 @@ void sta_info_free(struct ieee80211_local *local, struct sta_info *sta)
 	if (sta->sta.txq[0])
 		kfree(to_txq_info(sta->sta.txq[0]));
 	kfree(rcu_dereference_raw(sta->sta.rates));
+
+	if (local->ops->wake_tx_queue)
+		sta_info_ndev_free(sdata, sta);
+
 #ifdef CONFIG_MAC80211_MESH
 	kfree(sta->mesh);
 #endif
@@ -360,6 +438,8 @@ struct sta_info *sta_info_alloc(struct ieee80211_sub_if_data *sdata,
 
 			ieee80211_init_tx_queue(sdata, sta, txq, i);
 		}
+
+		sta_info_ndev_init(sdata, sta);
 	}
 
 	if (sta_prepare_rate_control(local, sta, gfp))
@@ -414,6 +494,8 @@ struct sta_info *sta_info_alloc(struct ieee80211_sub_if_data *sdata,
 free_txq:
 	if (sta->sta.txq[0])
 		kfree(to_txq_info(sta->sta.txq[0]));
+	if (local->ops->wake_tx_queue)
+		sta_info_ndev_free(sdata, sta);
 free:
 #ifdef CONFIG_MAC80211_MESH
 	kfree(sta->mesh);

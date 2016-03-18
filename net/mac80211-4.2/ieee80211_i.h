@@ -45,6 +45,17 @@ struct ieee80211_local;
  * frame can be up to about 2 kB long. */
 #define TOTAL_MAX_TX_BUFFER 512
 
+/* The number of stations exposed via netdev queues. First 4 netdev queues are
+ * mapped to vif's ACs. Subsequent ones, in groups of 4, are ACs for stations.
+ * NUM_NDEV_STA + 1 station is wrapped around to 1st station. f.e. netdev queue
+ * 5 corresponds to AC1 of STA0, STA63, STA126, ... and queue 8 corresponds
+ * to AC0 of STA1, STA64, STA127, ...
+ *
+ * This is used only when driver implements wake_tx_queues() op.
+ */
+#define IEEE80211_NUM_NDEV_STA 63
+#define IEEE80211_NUM_NDEV_STA_Q (IEEE80211_NUM_NDEV_STA * IEEE80211_NUM_ACS)
+
 /* Required encryption head and tailroom */
 #define IEEE80211_ENCRYPT_HEADROOM 8
 #define IEEE80211_ENCRYPT_TAILROOM 18
@@ -859,7 +870,12 @@ struct ieee80211_sub_if_data {
 	bool control_port_no_encrypt;
 	int encrypt_headroom;
 
+	spinlock_t ndev_lock; /* protects access to ndev_sta_idr */
+	DECLARE_BITMAP(ndev_sta_q_stopped, IEEE80211_NUM_NDEV_STA_Q);
+	atomic_t ndev_sta_q_refs[IEEE80211_NUM_NDEV_STA_Q];
+	struct idr ndev_sta_idr;
 	atomic_t txqs_len[IEEE80211_NUM_ACS];
+
 	struct ieee80211_tx_queue_params tx_conf[IEEE80211_NUM_ACS];
 	struct mac80211_qos_map __rcu *qos_map;
 

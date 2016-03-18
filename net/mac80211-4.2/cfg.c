@@ -1374,6 +1374,11 @@ static int ieee80211_change_station(struct wiphy *wiphy,
 			prev_4addr = true;
 		}
 
+		if (local->ops->wake_tx_queue) {
+			sta_info_ndev_free(sta->sdata, sta);
+			sta_info_ndev_init(vlansdata, sta);
+		}
+
 		sta->sdata = vlansdata;
 		ieee80211_check_fast_xmit(sta);
 

@@ -427,6 +427,12 @@ struct sta_info {
 
 	struct ieee80211_fast_tx __rcu *fast_tx;
 
+	DECLARE_BITMAP(txqs_stopped, IEEE80211_NUM_ACS);
+	atomic_t txqs_len[IEEE80211_NUM_ACS];
+	u16 sta_id;
+	u16 sta_id_off;
+	bool sta_id_set;
+
 #ifdef CONFIG_MAC80211_MESH
 	struct mesh_sta *mesh;
 #endif
@@ -639,6 +645,11 @@ struct sta_info *sta_info_alloc(struct ieee80211_sub_if_data *sdata,
 				const u8 *addr, gfp_t gfp);
 
 void sta_info_free(struct ieee80211_local *local, struct sta_info *sta);
+
+void sta_info_ndev_init(struct ieee80211_sub_if_data *sdata,
+			struct sta_info *sta);
+void sta_info_ndev_free(struct ieee80211_sub_if_data *sdata,
+		        struct sta_info *sta);
 
 /*
  * Insert STA info into hash table/list, returns zero or a

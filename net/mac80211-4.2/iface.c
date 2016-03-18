@@ -1091,6 +1091,8 @@ static void ieee80211_teardown_sdata(struct ieee80211_sub_if_data *sdata)
 
 	if (ieee80211_vif_is_mesh(&sdata->vif))
 		mesh_rmc_free(sdata);
+
+	idr_destroy(&sdata->ndev_sta_idr);
 }
 
 static void ieee80211_uninit(struct net_device *dev)
@@ -1362,6 +1364,7 @@ static void ieee80211_setup_sdata(struct ieee80211_sub_if_data *sdata,
 {
 	static const u8 bssid_wildcard[ETH_ALEN] = {0xff, 0xff, 0xff,
 						    0xff, 0xff, 0xff};
+	int i;
 
 	/* clear type-dependent union */
 	memset(&sdata->u, 0, sizeof(sdata->u));
@@ -1390,6 +1393,15 @@ static void ieee80211_setup_sdata(struct ieee80211_sub_if_data *sdata,
 	INIT_WORK(&sdata->csa_finalize_work, ieee80211_csa_finalize_work);
 	INIT_LIST_HEAD(&sdata->assigned_chanctx_list);
 	INIT_LIST_HEAD(&sdata->reserved_chanctx_list);
+	idr_init(&sdata->ndev_sta_idr);
+	memset(sdata->ndev_sta_q_stopped, 0,
+	       sizeof(sdata->ndev_sta_q_stopped));
+
+	for (i = 0; i < IEEE80211_NUM_NDEV_STA_Q; i++)
+		atomic_set(&sdata->ndev_sta_q_refs[i], 0);
+
+	for (i = 0; i < IEEE80211_NUM_ACS; i++)
+		atomic_set(&sdata->txqs_len[i], 0);
 
 	switch (type) {
 	case NL80211_IFTYPE_P2P_GO:
@@ -1723,8 +1735,13 @@ int ieee80211_if_add(struct ieee80211_local *local, const char *name,
 			txq_size += sizeof(struct txq_info) +
 				    local->hw.txq_data_size;
 
-		if (local->hw.queues >= IEEE80211_NUM_ACS)
+		if (local->hw.queues >= IEEE80211_NUM_ACS) {
 			txqs = IEEE80211_NUM_ACS;
+
+			if (local->ops->wake_tx_queue)
+				txqs += IEEE80211_NUM_NDEV_STA *
+					IEEE80211_NUM_ACS;
+		}
 
 		ndev = alloc_netdev_mqs(size + txq_size,
 					name, name_assign_type,
@@ -1809,6 +1826,8 @@ int ieee80211_if_add(struct ieee80211_local *local, const char *name,
 	sdata->user_power_level = local->user_power_level;
 
 	sdata->encrypt_headroom = IEEE80211_ENCRYPT_HEADROOM;
+
+	spin_lock_init(&sdata->ndev_lock);
 
 	/* setup type-dependent data */
 	ieee80211_setup_sdata(sdata, type);

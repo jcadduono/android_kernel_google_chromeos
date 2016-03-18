@@ -1237,8 +1237,14 @@ static void ieee80211_drv_tx(struct ieee80211_local *local,
 	struct ieee80211_tx_control control = {
 		.sta = pubsta,
 	};
+	struct sta_info *sta = container_of(pubsta, struct sta_info, sta);
 	struct ieee80211_txq *txq = NULL;
 	struct txq_info *txqi;
+	int pending;
+	int q_max;
+	int q;
+	int sq;
+	int nq;
 	u8 ac;
 
 	if (info->control.flags & IEEE80211_TX_CTRL_PS_RESPONSE)
@@ -1260,12 +1266,33 @@ static void ieee80211_drv_tx(struct ieee80211_local *local,
 
 	ac = txq->ac;
 	txqi = to_txq_info(txq);
-	atomic_inc(&sdata->txqs_len[ac]);
-	if (atomic_read(&sdata->txqs_len[ac]) >= local->hw.txq_ac_max_pending)
-		netif_stop_subqueue(sdata->dev, ac);
 
 	spin_lock_bh(&txqi->queue.lock);
 	txqi->byte_cnt += skb->len;
+
+	if (pubsta)
+		pending = atomic_add_return(1, &sta->txqs_len[ac]);
+	else
+		pending = atomic_add_return(1, &sdata->txqs_len[ac]);
+
+	if (pending >= local->hw.txq_ac_max_pending) {
+		if (pubsta) {
+			sq = ac + sta->sta_id_off;
+			nq = sq + IEEE80211_NUM_ACS;
+
+			set_bit(sq, sdata->ndev_sta_q_stopped);
+			if (!test_and_set_bit(ac, sta->txqs_stopped))
+				atomic_inc(&sdata->ndev_sta_q_refs[sq]);
+			netif_stop_subqueue(sdata->dev, nq);
+		} else {
+			q_max = (1 + IEEE80211_NUM_NDEV_STA) *
+				IEEE80211_NUM_ACS;
+
+			for (q = ac; q < q_max; q += IEEE80211_NUM_ACS)
+				netif_stop_subqueue(sdata->dev, q);
+		}
+	}
+
 	__skb_queue_tail(&txqi->queue, skb);
 	spin_unlock_bh(&txqi->queue.lock);
 
@@ -1283,9 +1310,14 @@ struct sk_buff *ieee80211_tx_dequeue(struct ieee80211_hw *hw,
 	struct ieee80211_local *local = hw_to_local(hw);
 	struct ieee80211_sub_if_data *sdata = vif_to_sdata(txq->vif);
 	struct txq_info *txqi = container_of(txq, struct txq_info, txq);
+	struct sta_info *sta = container_of(txq->sta, struct sta_info, sta);
 	struct ieee80211_hdr *hdr;
 	struct sk_buff *skb = NULL;
 	u8 ac = txq->ac;
+	int q = sdata->vif.hw_queue[ac];
+	int pending;
+	int nq;
+	int sq;
 
 	spin_lock_bh(&txqi->queue.lock);
 
@@ -1298,14 +1330,25 @@ struct sk_buff *ieee80211_tx_dequeue(struct ieee80211_hw *hw,
 
 	txqi->byte_cnt -= skb->len;
 
-	atomic_dec(&sdata->txqs_len[ac]);
-	if (__netif_subqueue_stopped(sdata->dev, ac))
-		ieee80211_propagate_queue_wake(local, sdata->vif.hw_queue[ac]);
+	if (txq->sta) {
+		pending = atomic_sub_return(1, &sta->txqs_len[ac]);
+		sq = ac + sta->sta_id_off;
+		nq = sq + IEEE80211_NUM_ACS;
+
+		if (pending < local->hw.txq_ac_max_pending &&
+		    test_and_clear_bit(ac, sta->txqs_stopped) &&
+		    atomic_dec_return(&sdata->ndev_sta_q_refs[sq]) == 0)
+			clear_bit(sq, sdata->ndev_sta_q_stopped);
+	} else {
+		pending = atomic_sub_return(1, &sdata->txqs_len[ac]);
+		nq = ac;
+	}
+
+	if (__netif_subqueue_stopped(sdata->dev, nq))
+		ieee80211_propagate_queue_wake(local, q);
 
 	hdr = (struct ieee80211_hdr *)skb->data;
 	if (txq->sta && ieee80211_is_data_qos(hdr->frame_control)) {
-		struct sta_info *sta = container_of(txq->sta, struct sta_info,
-						    sta);
 		struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
 
 		hdr->seq_ctrl = ieee80211_tx_next_seq(sta, txq->tid);
@@ -2933,7 +2976,21 @@ void __ieee80211_subif_start_xmit(struct sk_buff *skb,
 netdev_tx_t ieee80211_subif_start_xmit(struct sk_buff *skb,
 				       struct net_device *dev)
 {
+	struct ieee80211_sub_if_data *sdata = IEEE80211_DEV_TO_SUB_IF(dev);
+	struct ieee80211_local *local = sdata->local;
+	u16 ac;
+
+	if (local->ops->wake_tx_queue) {
+		/* ndo_select_queue() can alter the queue mapping for per-station
+		 * stop/wake queue control purposes. Undo it to prevent confusing
+		 * underlying mac80211 drivers.
+		 */
+		ac = skb_get_queue_mapping(skb) % IEEE80211_NUM_ACS;
+		skb_set_queue_mapping(skb, ac);
+	}
+
 	__ieee80211_subif_start_xmit(skb, dev, 0);
+
 	return NETDEV_TX_OK;
 }
 

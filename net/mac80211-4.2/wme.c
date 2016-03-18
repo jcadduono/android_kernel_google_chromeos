@@ -221,6 +221,11 @@ u16 ieee80211_select_queue(struct ieee80211_sub_if_data *sdata,
  downgrade:
 	ret = ieee80211_downgrade_queue(sdata, sta, skb);
  out:
+	if (local->ops->wake_tx_queue && sta) {
+		ret += IEEE80211_NUM_ACS;
+		ret += sta->sta_id_off;
+	}
+
 	rcu_read_unlock();
 	return ret;
 }
