@@ -108,5 +108,29 @@
 		watchdog@b017000 {
 			status = "ok";
 		};
+
+                usb3_ss_phy: ssphy@0 {
+                        status = "ok";
+                };
+
+                dummy_ss_phy: ssphy@1 {
+                        status = "ok";
+                };
+
+                usb3_hs_phy: hsphy@a6000 {
+                        status = "ok";
+                };
+
+                usb2_hs_phy: hsphy@a8000 {
+                        status = "ok";
+                };
+
+                usb3: usb3@8a00000 {
+                        status = "ok";
+                };
+
+                usb2: usb2@6000000 {
+                        status = "ok";
+                };
 	};
 };
