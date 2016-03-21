@@ -706,6 +706,8 @@ struct ath10k {
 		u32 max_spatial_stream;
 		u32 cal_data_len;
 
+		enum wmi_host_platform_type platform_type;
+
 		struct ath10k_hw_params_fw {
 			const char *dir;
 			const char *fw;

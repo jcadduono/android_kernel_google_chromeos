@@ -164,6 +164,7 @@ static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 		.rx_chain_mask = 0xf,
 		.max_spatial_stream = 4,
 		.cal_data_len = 12064,
+		.platform_type = WMI_HOST_PLATFORM_LOW_PERF,
 		.fw = {
 			.dir = QCA99X0_HW_2_0_FW_DIR,
 			.fw = QCA99X0_HW_2_0_FW_FILE,
@@ -1795,7 +1796,7 @@ int ath10k_core_start(struct ath10k *ar, enum ath10k_firmware_mode mode)
 			val = WMI_10_4_PEER_STATS;
 
 		status = ath10k_wmi_ext_resource_config(ar,
-							WMI_HOST_PLATFORM_HIGH_PERF, val);
+							ar->hw_params.platform_type, val);
 		if (status) {
 			ath10k_err(ar,
 				   "failed to send ext resource cfg command : %d\n",
