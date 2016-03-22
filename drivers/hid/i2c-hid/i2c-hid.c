@@ -1100,10 +1100,11 @@ static int i2c_hid_suspend(struct device *dev)
 		/* Save some power */
 		i2c_hid_set_power(client, I2C_HID_PWR_SLEEP);
 
-		if (hid->driver && hid->driver->suspend)
+		if (hid->driver && hid->driver->suspend) {
 			ret = hid->driver->suspend(hid, PMSG_SUSPEND);
-		if (ret)
-			return ret;
+			if (ret)
+				return ret;
+		}
 
 		disable_irq(client->irq);
 	}
