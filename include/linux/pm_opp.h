@@ -113,18 +113,9 @@ static inline struct srcu_notifier_head *dev_pm_opp_get_notifier(
 #endif		/* CONFIG_PM_OPP */
 
 #if defined(CONFIG_PM_OPP) && defined(CONFIG_OF)
-int of_init_opp_table_named(struct device *dev, const char *name);
-
-static inline int of_init_opp_table(struct device *dev)
-{
-	return of_init_opp_table_named(dev, "operating-points");
-}
+int of_init_opp_table(struct device *dev);
 void of_free_opp_table(struct device *dev);
 #else
-static inline int of_init_opp_table_named(struct device *dev, const char *name)
-{
-	return -EINVAL;
-}
 static inline int of_init_opp_table(struct device *dev)
 {
 	return -EINVAL;

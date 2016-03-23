@@ -827,9 +827,8 @@ EXPORT_SYMBOL_GPL(dev_pm_opp_get_notifier);
 
 #ifdef CONFIG_OF
 /**
- * of_init_opp_table_named() - Initialize opp table from device tree
+ * of_init_opp_table() - Initialize opp table from device tree
  * @dev:	device pointer used to lookup device OPPs.
- * @name:	name of operating points table
  *
  * Register the initial OPP table with the OPP library for given device.
  *
@@ -849,13 +848,13 @@ EXPORT_SYMBOL_GPL(dev_pm_opp_get_notifier);
  *		in device node.
  * -ENODATA	when empty 'operating-points' property is found
  */
-int of_init_opp_table_named(struct device *dev, const char *name)
+int of_init_opp_table(struct device *dev)
 {
 	const struct property *prop;
 	const __be32 *val;
 	int nr;
 
-	prop = of_find_property(dev->of_node, name, NULL);
+	prop = of_find_property(dev->of_node, "operating-points", NULL);
 	if (!prop)
 		return -ENODEV;
 	if (!prop->value)
