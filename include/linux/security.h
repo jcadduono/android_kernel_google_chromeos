@@ -3233,10 +3233,10 @@ static inline int yama_task_prctl(int option, unsigned long arg2,
 int chromiumos_security_sb_mount(const char *dev_name, struct path *path,
 				 const char *type, unsigned long flags,
 				 void *data);
-int chromiumos_security_sb_umount(struct vfsmount *mnt, int flags);
 int chromiumos_security_load_module(struct file *file);
 int chromiumos_security_load_firmware(struct file *file, char *buf,
 				      size_t size);
+void chromiumos_security_sb_free(struct super_block *sb);
 #else
 static inline
 int chromiumos_security_sb_mount(const char *dev_name, struct path *path,
@@ -3252,16 +3252,14 @@ int chromiumos_security_load_firmware(struct file *file, char *buf,
 	return 0;
 }
 static inline
-int chromiumos_security_sb_umount(struct vfsmount *mnt, int flags)
-{
-	return 0;
-}
-static inline
 int chromiumos_security_load_module(struct file *file)
 {
 	return 0;
 }
+static inline
+void chromiumos_security_sb_free(struct super_block *sb)
+{
+}
 #endif /* CONFIG_SECURITY_CHROMIUMOS */
 
 #endif /* ! __LINUX_SECURITY_H */
-

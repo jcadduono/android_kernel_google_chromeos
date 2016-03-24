@@ -83,7 +83,7 @@ static void report_load(const char *origin, struct path *path, char *operation)
 }
 
 static int module_locking = 1;
-static struct vfsmount *locked_root;
+static struct super_block *locked_root;
 static DEFINE_SPINLOCK(locked_root_spinlock);
 
 #ifdef CONFIG_SYSCTL
@@ -113,7 +113,7 @@ static struct ctl_table chromiumos_sysctl_table[] = {
  * This must be called after early kernel init, since then the rootdev
  * is available.
  */
-static void check_locking_enforcement(struct vfsmount *mnt)
+static void check_locking_enforcement(struct super_block *mnt_sb)
 {
 	bool ro;
 
@@ -121,11 +121,11 @@ static void check_locking_enforcement(struct vfsmount *mnt)
 	 * If module locking is not enforced via a read-only block
 	 * device, allow sysctl to change modes for testing.
 	 */
-	if (mnt->mnt_sb->s_bdev) {
-		ro = bdev_read_only(mnt->mnt_sb->s_bdev);
+	if (mnt_sb->s_bdev) {
+		ro = bdev_read_only(mnt_sb->s_bdev);
 		pr_info("dev(%u,%u): %s\n",
-			MAJOR(mnt->mnt_sb->s_bdev->bd_dev),
-			MINOR(mnt->mnt_sb->s_bdev->bd_dev),
+			MAJOR(mnt_sb->s_bdev->bd_dev),
+			MINOR(mnt_sb->s_bdev->bd_dev),
 			ro ? "read-only" : "writable");
 	} else {
 		/*
@@ -149,20 +149,17 @@ static void check_locking_enforcement(struct vfsmount *mnt)
 static void check_locking_enforcement(void) { }
 #endif
 
-int chromiumos_security_sb_umount(struct vfsmount *mnt, int flags)
+void chromiumos_security_sb_free(struct super_block *sb)
 {
 	/*
 	 * When unmounting the filesystem we were using for module
 	 * pinning, we must release our reservation, but make sure
 	 * no other modules can be loaded.
 	 */
-	if (!IS_ERR_OR_NULL(locked_root) && mnt == locked_root) {
-		mntput(locked_root);
+	if (!IS_ERR_OR_NULL(locked_root) && sb == locked_root) {
 		locked_root = ERR_PTR(-EIO);
 		pr_info("umount pinned fs: refusing further module loads\n");
 	}
-
-	return 0;
 }
 
 static int check_pinning(const char *origin, struct file *file)
@@ -188,7 +185,7 @@ static int check_pinning(const char *origin, struct file *file)
 	 * a valid reference, or an ERR_PTR.
 	 */
 	if (!locked_root) {
-		locked_root = mntget(module_root);
+		locked_root = module_root->mnt_sb;
 		/*
 		 * Unlock now since it's only locked_root we care about.
 		 * In the worst case, we will (correctly) report locking
@@ -202,7 +199,7 @@ static int check_pinning(const char *origin, struct file *file)
 		spin_unlock(&locked_root_spinlock);
 	}
 
-	if (IS_ERR_OR_NULL(locked_root) || module_root != locked_root) {
+	if (IS_ERR_OR_NULL(locked_root) || module_root->mnt_sb != locked_root) {
 		if (unlikely(!module_locking)) {
 			report_load(origin, &file->f_path,
 				    "locking-ignored");

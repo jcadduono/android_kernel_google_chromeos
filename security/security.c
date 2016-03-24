@@ -268,6 +268,7 @@ int security_sb_alloc(struct super_block *sb)
 
 void security_sb_free(struct super_block *sb)
 {
+	chromiumos_security_sb_free(sb);
 	security_ops->sb_free_security(sb);
 }
 
@@ -311,12 +312,6 @@ int security_sb_mount(const char *dev_name, struct path *path,
 
 int security_sb_umount(struct vfsmount *mnt, int flags)
 {
-	int ret;
-
-	ret = chromiumos_security_sb_umount(mnt, flags);
-	if (ret)
-		return ret;
-
 	return security_ops->sb_umount(mnt, flags);
 }
 
