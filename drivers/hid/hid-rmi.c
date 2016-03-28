@@ -94,7 +94,10 @@ struct rmi_function {
  */
 struct rmi_data {
 	struct mutex page_mutex;
+	struct mutex inhibit_mutex;
 	int page;
+
+	bool inhibited;
 
 	wait_queue_head_t wait;
 
@@ -550,11 +553,11 @@ static int rmi_suspend(struct hid_device *hdev, pm_message_t message)
 	int ret = 0;
 	struct rmi_data *data = hid_get_drvdata(hdev);
 
-	mutex_lock(&data->input->mutex);
-	if (!device_may_wakeup(hdev->dev.parent) && !data->input->inhibited)
+	mutex_lock(&data->inhibit_mutex);
+	if (!device_may_wakeup(hdev->dev.parent) && !data->inhibited)
 		ret = rmi_set_sleep_mode(hdev, RMI_SLEEP_DEEP_SLEEP);
 
-	mutex_unlock(&data->input->mutex);
+	mutex_unlock(&data->inhibit_mutex);
 	return ret;
 }
 
@@ -569,14 +572,14 @@ static int rmi_post_reset(struct hid_device *hdev)
 		return ret;
 	}
 
-	mutex_lock(&data->input->mutex);
-	if (!device_may_wakeup(hdev->dev.parent) && !data->input->inhibited) {
+	mutex_lock(&data->inhibit_mutex);
+	if (!device_may_wakeup(hdev->dev.parent) && !data->inhibited) {
 		ret = rmi_set_sleep_mode(hdev, RMI_SLEEP_NORMAL);
 		if (ret)
 			hid_err(hdev, "can not write sleep mode\n");
 	}
 
-	mutex_unlock(&data->input->mutex);
+	mutex_unlock(&data->inhibit_mutex);
 	return ret;
 }
 
@@ -1060,15 +1063,31 @@ static int rmi_populate(struct hid_device *hdev)
 static int rmi_inhibit(struct input_dev *input)
 {
 	struct hid_device *hdev = input_get_drvdata(input);
+	struct rmi_data *data = hid_get_drvdata(hdev);
+	int ret;
 
-	return rmi_set_sleep_mode(hdev, RMI_SLEEP_DEEP_SLEEP);
+	mutex_lock(&data->inhibit_mutex);
+	ret = rmi_set_sleep_mode(hdev, RMI_SLEEP_DEEP_SLEEP);
+	if (!ret)
+		data->inhibited = true;
+	mutex_unlock(&data->inhibit_mutex);
+
+	return ret;
 }
 
 static int rmi_uninhibit(struct input_dev *input)
 {
 	struct hid_device *hdev = input_get_drvdata(input);
+	struct rmi_data *data = hid_get_drvdata(hdev);
+	int ret;
 
-	return rmi_set_sleep_mode(hdev, RMI_SLEEP_NORMAL);
+	mutex_lock(&data->inhibit_mutex);
+	ret = rmi_set_sleep_mode(hdev, RMI_SLEEP_NORMAL);
+	if (!ret)
+		data->inhibited = false;
+	mutex_unlock(&data->inhibit_mutex);
+
+	return ret;
 }
 
 static int rmi_input_configured(struct hid_device *hdev, struct hid_input *hi)
@@ -1251,6 +1270,7 @@ static int rmi_probe(struct hid_device *hdev, const struct hid_device_id *id)
 	init_waitqueue_head(&data->wait);
 
 	mutex_init(&data->page_mutex);
+	mutex_init(&data->inhibit_mutex);
 
 start:
 	ret = hid_hw_start(hdev, HID_CONNECT_DEFAULT);
