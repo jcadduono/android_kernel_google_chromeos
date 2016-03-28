@@ -1006,7 +1006,7 @@
 		interrupts = <0 IRQ_TYPE_LEVEL_LOW>;
 		google,cros-ec-spi-msg-delay = <500>;
 
-		i2c_tunnel: i2c-tunnel {
+		i2c_tunnel: i2c-tunnel@0 {
 			compatible = "google,cros-ec-i2c-tunnel";
 			google,remote-bus = <0>;
 			#address-cells = <1>;

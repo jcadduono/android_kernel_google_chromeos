@@ -42,6 +42,15 @@
 	};
 };
 
+&cros_ec {
+	i2c_tunnel_b: i2c-tunnel@1 {
+		compatible = "google,cros-ec-i2c-tunnel";
+		google,remote-bus = <1>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+	};
+};
+
 &hdmi0 {
 	ports {
 		port@1 {
