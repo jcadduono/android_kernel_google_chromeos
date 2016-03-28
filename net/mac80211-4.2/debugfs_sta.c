@@ -563,7 +563,7 @@ static int legacy_rate_to_index(u16 rate)
 			     180, 240, 360, 480, 540};
 	int i;
 
-	for (i = 0; i < IEEE80211_LEGACY_RATE_NUM - 1; i++)
+	for (i = 0; i < IEEE80211_LEGACY_RATE_NUM; i++)
 		if (rate == legacy_rate[i])
 			return i;
 	return -1;
