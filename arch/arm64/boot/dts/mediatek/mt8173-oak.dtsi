@@ -194,6 +194,10 @@
 	sram-supply = <&mt6397_vsramca7_reg>;
 };
 
+&cpu_thermal {
+	sustainable-power = <5000>; /* milliwatts */
+};
+
 &dsi0 {
 	status = "okay";
 	ports {
