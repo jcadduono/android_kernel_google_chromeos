@@ -270,28 +270,6 @@ static int nau8825_output_dac_event(struct snd_soc_dapm_widget *w,
 	return 0;
 }
 
-static int nau8825_dacr_event(struct snd_soc_dapm_widget *w,
-		struct snd_kcontrol *kcontrol, int event)
-{
-	struct snd_soc_codec *codec = snd_soc_dapm_to_codec(w->dapm);
-	struct nau8825 *nau8825 = snd_soc_codec_get_drvdata(codec);
-
-	switch (event) {
-	case SND_SOC_DAPM_POST_PMU:
-		regmap_update_bits(nau8825->regmap, NAU8825_REG_ENA_CTRL,
-			NAU8825_ENABLE_DACR, NAU8825_ENABLE_DACR);
-		break;
-	case SND_SOC_DAPM_POST_PMD:
-		if (!nau8825->irq)
-			regmap_update_bits(nau8825->regmap,
-				NAU8825_REG_ENA_CTRL, NAU8825_ENABLE_DACR, 0);
-		break;
-	default:
-		return -EINVAL;
-	}
-
-	return 0;
-}
 
 static const char * const nau8825_adc_decimation[] = {
 	"32", "64", "128", "256"
@@ -367,17 +345,16 @@ static const struct snd_soc_dapm_widget nau8825_dapm_widgets[] = {
 		0),
 
 	/* ADC for button press detection */
-	SND_SOC_DAPM_SUPPLY("SAR", NAU8825_REG_SAR_CTRL,
-		NAU8825_SAR_ADC_EN_SFT, 0, NULL, 0),
+	SND_SOC_DAPM_ADC("SAR", NULL, NAU8825_REG_SAR_CTRL,
+		NAU8825_SAR_ADC_EN_SFT, 0),
 
 	SND_SOC_DAPM_PGA_S("ADACL", 2, NAU8825_REG_RDAC, 12, 0, NULL, 0),
 	SND_SOC_DAPM_PGA_S("ADACR", 2, NAU8825_REG_RDAC, 13, 0, NULL, 0),
 	SND_SOC_DAPM_PGA_S("ADACL Clock", 3, NAU8825_REG_RDAC, 8, 0, NULL, 0),
 	SND_SOC_DAPM_PGA_S("ADACR Clock", 3, NAU8825_REG_RDAC, 9, 0, NULL, 0),
 
-	SND_SOC_DAPM_DAC_E("DDACR", NULL, SND_SOC_NOPM, 0, 0,
-		nau8825_dacr_event, SND_SOC_DAPM_POST_PMU |
-		SND_SOC_DAPM_POST_PMD),
+	SND_SOC_DAPM_DAC("DDACR", NULL, NAU8825_REG_ENA_CTRL,
+		NAU8825_ENABLE_DACR_SFT, 0),
 	SND_SOC_DAPM_DAC("DDACL", NULL, NAU8825_REG_ENA_CTRL,
 		NAU8825_ENABLE_DACL_SFT, 0),
 	SND_SOC_DAPM_SUPPLY("DDAC Clock", NAU8825_REG_ENA_CTRL, 6, 0, NULL, 0),
@@ -960,6 +937,13 @@ static int nau8825_codec_probe(struct snd_soc_codec *codec)
 
 	nau8825->dapm = dapm;
 
+	/* The interrupt clock is gated by x1[10:8],
+	 * one of them needs to be enabled all the time for
+	 * interrupts to happen.
+	 */
+	snd_soc_dapm_force_enable_pin(dapm, "DDACR");
+	snd_soc_dapm_sync(dapm);
+
 	/* Unmask interruptions. Handler uses dapm object so we can enable
 	 * interruptions only after dapm is fully initialized.
 	 */
@@ -1140,8 +1124,6 @@ static int nau8825_configure_sysclk(struct nau8825 *nau8825, int clk_id,
 		regmap_update_bits(regmap, NAU8825_REG_CLK_DIVIDER,
 			NAU8825_CLK_SRC_MASK, NAU8825_CLK_SRC_MCLK);
 		regmap_update_bits(regmap, NAU8825_REG_FLL6, NAU8825_DCO_EN, 0);
-		regmap_update_bits(regmap, NAU8825_REG_CLK_DIVIDER,
-			NAU8825_CLK_MCLK_SRC_MASK, 0);
 
 		ret = nau8825_mclk_prepare(nau8825, freq);
 		if (ret)
@@ -1152,13 +1134,6 @@ static int nau8825_configure_sysclk(struct nau8825 *nau8825, int clk_id,
 			NAU8825_DCO_EN);
 		regmap_update_bits(regmap, NAU8825_REG_CLK_DIVIDER,
 			NAU8825_CLK_SRC_MASK, NAU8825_CLK_SRC_VCO);
-
-		regmap_update_bits(regmap, NAU8825_REG_CLK_DIVIDER,
-			NAU8825_CLK_MCLK_SRC_MASK, 0xf);
-		regmap_update_bits(regmap, NAU8825_REG_FLL1,
-			NAU8825_FLL_RATIO_MASK, 0x10);
-		regmap_update_bits(regmap, NAU8825_REG_FLL6,
-			NAU8825_SDM_EN, NAU8825_SDM_EN);
 		if (nau8825->mclk_freq) {
 			clk_disable_unprepare(nau8825->mclk);
 			nau8825->mclk_freq = 0;
