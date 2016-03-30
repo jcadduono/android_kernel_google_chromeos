@@ -635,11 +635,24 @@ static int vidioc_venc_g_selection(struct file *file, void *priv,
 	struct mtk_vcodec_ctx *ctx = fh_to_ctx(priv);
 	struct mtk_q_data *q_data;
 
-	if (!V4L2_TYPE_IS_OUTPUT(s->type))
+	/* crop means compose for output devices */
+	switch (s->target) {
+	case V4L2_SEL_TGT_CROP_DEFAULT:
+	case V4L2_SEL_TGT_CROP_BOUNDS:
+	case V4L2_SEL_TGT_CROP:
+	case V4L2_SEL_TGT_COMPOSE_DEFAULT:
+	case V4L2_SEL_TGT_COMPOSE_BOUNDS:
+	case V4L2_SEL_TGT_COMPOSE:
+		if (s->type != V4L2_BUF_TYPE_VIDEO_OUTPUT &&
+			s->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+			mtk_v4l2_err("Invalid s->type = %d", s->type);
+			return -EINVAL;
+		}
+		break;
+	default:
+		mtk_v4l2_err("Invalid s->target = %d",s->target );
 		return -EINVAL;
-
-	if (s->target != V4L2_SEL_TGT_COMPOSE)
-		return -EINVAL;
+	}
 
 	q_data = mtk_venc_get_q_data(ctx, s->type);
 	if (!q_data)
@@ -659,12 +672,23 @@ static int vidioc_venc_s_selection(struct file *file, void *priv,
 	struct mtk_vcodec_ctx *ctx = fh_to_ctx(priv);
 	struct mtk_q_data *q_data;
 
-
-	if (!V4L2_TYPE_IS_OUTPUT(s->type))
+	switch (s->target) {
+	case V4L2_SEL_TGT_CROP_DEFAULT:
+	case V4L2_SEL_TGT_CROP_BOUNDS:
+	case V4L2_SEL_TGT_CROP:
+	case V4L2_SEL_TGT_COMPOSE_DEFAULT:
+	case V4L2_SEL_TGT_COMPOSE_BOUNDS:
+	case V4L2_SEL_TGT_COMPOSE:
+		if (s->type != V4L2_BUF_TYPE_VIDEO_OUTPUT &&
+			s->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+			mtk_v4l2_err("Invalid s->type = %d", s->type);
+			return -EINVAL;
+		}
+		break;
+	default:
+		mtk_v4l2_err("Invalid s->target = %d", s->target);
 		return -EINVAL;
-
-	if (s->target != V4L2_SEL_TGT_COMPOSE)
-		return -EINVAL;
+	}
 
 	q_data = mtk_venc_get_q_data(ctx, s->type);
 	if (!q_data)
