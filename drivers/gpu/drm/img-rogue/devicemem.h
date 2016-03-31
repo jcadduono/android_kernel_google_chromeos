@@ -300,7 +300,7 @@ IMG_INTERNAL void
 DevmemExportalignAdjustSizeAndAlign(DEVMEM_HEAP *psHeap, IMG_DEVMEM_SIZE_T *puiSize, IMG_DEVMEM_ALIGN_T *puiAlign);
 
 /*
- * DevmemAllocate()
+ * DevmemSubAllocate()
  *
  * Makes an allocation (possibly a "suballocation", as described
  * below) of device virtual memory from this heap.
@@ -326,12 +326,17 @@ DevmemExportalignAdjustSizeAndAlign(DEVMEM_HEAP *psHeap, IMG_DEVMEM_SIZE_T *puiS
  *
  */
 
-PVRSRV_ERROR DevmemAllocate(DEVMEM_HEAP *psHeap,
-                            IMG_DEVMEM_SIZE_T uiSize,
-                            IMG_DEVMEM_ALIGN_T uiAlign,
-                            DEVMEM_FLAGS_T uiFlags,
-                            const IMG_PCHAR pszText,
-                            DEVMEM_MEMDESC **ppsMemDescPtr);
+PVRSRV_ERROR
+DevmemSubAllocate(IMG_UINT8 uiPreAllocMultiplier,
+                  DEVMEM_HEAP *psHeap,
+                  IMG_DEVMEM_SIZE_T uiSize,
+                  IMG_DEVMEM_ALIGN_T uiAlign,
+                  DEVMEM_FLAGS_T uiFlags,
+                  const IMG_PCHAR pszText,
+                  DEVMEM_MEMDESC **ppsMemDescPtr);
+
+#define DevmemAllocate(...) \
+    DevmemSubAllocate(DEVMEM_NO_PRE_ALLOCATE_MULTIPLIER, __VA_ARGS__)
 
 PVRSRV_ERROR
 DevmemAllocateExportable(SHARED_DEV_CONNECTION hDevConnection,
@@ -365,7 +370,7 @@ DevmemAllocateSparse(SHARED_DEV_CONNECTION hDevConnection,
 /*
  * DevmemFree()
  *
- * Reverses that done by DevmemAllocate() N.B.  The underlying
+ * Reverses that done by DevmemSubAllocate() N.B.  The underlying
  * mapping and server side allocation _may_ not be torn down, for
  * example, if the allocation has been exported, or if multiple
  * allocations were suballocated from the same mapping, but this is

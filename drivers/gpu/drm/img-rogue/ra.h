@@ -78,6 +78,8 @@ typedef IMG_UINT64 RA_LENGTH_T;
 #define RA_LOCKCLASS_1 1
 #define RA_LOCKCLASS_2 2
 
+#define RA_NO_IMPORT_MULTIPLIER 1
+
 /*
  * Flags in an "import" must much the flags for an allocation
  */
@@ -160,6 +162,40 @@ RA_Add (RA_ARENA *pArena,
 		RA_PERISPAN_HANDLE hPriv);
 
 /**
+ *  @Function   RA_PreAlloc
+ *
+ *  @Description
+ *
+ *  Preallocate a set of resources from an arena.  Subsequent requests for
+ *  similar resources can then be served from this preallocated pool.
+ *  Set ImportMultiplier to 1 if you don't want to do any preallocation.
+ *
+ *  @Input  pArena - the arena
+ *  @Input  uRequestSize - the size of resource segment requested.
+ *  @Input  uImportMultiplier - Import x-times of the uRequestSize
+ *          for future RA_Alloc calls.
+ *          Use RA_NO_IMPORT_MULTIPLIER to import the exact size.
+ *  @Output pActualSize - the actual_size of resource segment allocated,
+ *          typcially rounded up by quantum.
+ *  @Input  uFlags - flags influencing allocation policy.
+ *  @Input  uAlignment - the alignment constraint required for the
+ *          allocated segment, use 0 if alignment not required.
+ *  @Output pBase - allocated base resource
+ *  @Output phPriv - the user reference associated with allocated
+ *          resource span.
+ *  @Return IMG_TRUE - success, IMG_FALSE - failure
+ */
+IMG_BOOL
+RA_PreAlloc (RA_ARENA *pArena,
+             RA_LENGTH_T uSize,
+             IMG_UINT8 uImportMultiplier,
+             RA_FLAGS_T uFlags,
+             RA_LENGTH_T uAlignment,
+             RA_BASE_T *pBase,
+             RA_LENGTH_T *pActualSize,
+             RA_PERISPAN_HANDLE *phPriv);
+
+/**
  *  @Function   RA_Alloc
  *
  *  @Description
@@ -178,14 +214,20 @@ RA_Add (RA_ARENA *pArena,
  *          resource span.
  *  @Return IMG_TRUE - success, IMG_FALSE - failure
  */
-IMG_BOOL
+static inline IMG_BOOL
 RA_Alloc (RA_ARENA *pArena, 
           RA_LENGTH_T uSize,
           RA_FLAGS_T uFlags,
           RA_LENGTH_T uAlignment,
           RA_BASE_T *pBase,
           RA_LENGTH_T *pActualSize,
-          RA_PERISPAN_HANDLE *phPriv);
+          RA_PERISPAN_HANDLE *phPriv)
+{
+	return RA_PreAlloc(pArena, uSize, RA_NO_IMPORT_MULTIPLIER,
+	                   uFlags, uAlignment, pBase, pActualSize,
+	                   phPriv);
+
+}
 
 /**
  *  @Function   RA_Free

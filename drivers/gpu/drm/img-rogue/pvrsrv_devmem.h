@@ -72,6 +72,10 @@ typedef DEVMEM_FLAGS_T PVRSRV_MEMMAP_FLAGS_T;               /*!< Device-Mem Clie
 typedef IMG_HANDLE PVRSRV_REMOTE_DEVMEMCTX;                 /*!< Type to use with context export import */
 typedef struct _PVRSRV_EXPORT_DEVMEMCTX_ *PVRSRV_EXPORT_DEVMEMCTX;
 
+/* To use with PVRSRVSubAllocDeviceMem() as the default factor if no
+ * overallocation is desired. */
+#define PVRSRV_DEVMEM_PRE_ALLOC_MULTIPLIER_NONE     DEVMEM_NO_PRE_ALLOCATE_MULTIPLIER
+
 /* N.B.  Flags are now defined in pvrsrv_memallocflags.h as they need
          to be omnipresent. */
 
@@ -174,7 +178,7 @@ PVRSRVDevmemGetHeapBaseDevVAddr(PVRSRV_HEAP hHeap,
 			        IMG_DEV_VIRTADDR *pDevVAddr);
 
 /**************************************************************************/ /*!
-@Function       PVRSRVAllocDeviceMem
+@Function       PVRSRVSubAllocDeviceMem
 @Description    Allocate memory from the specified heap, acquiring physical
                 memory from OS as we go and mapping this into
                 the GPU (mandatorily) and CPU (optionally)
@@ -191,26 +195,38 @@ PVRSRVDevmemGetHeapBaseDevVAddr(PVRSRV_HEAP hHeap,
                 This is a general rule when suballocations are to
                 be avoided.
 
-@Input          hHeap               Handle to the heap from which memory will be
-                                    allocated
-@Input          uiSize              Amount of memory to be allocated.
-@Input          uiLog2Align         LOG2 of the required alignment
-@Input          uiMemAllocFlags     Allocation Flags
-@Input          pszText     		Text to describe the allocation
-@Output         phMemDescOut        On success, the resulting memory descriptor
+@Input          uiPreAllocMultiplier  Size factor for internal pre-allocation of
+                                      memory to make subsequent calls with the
+                                      same flags faster. Independently if a value
+                                      is set, the function will try to allocate
+                                      from any pre-allocated memory first and -if
+                                      successful- not pre-allocate anything more.
+                                      That means the flag can always be set and
+                                      the correct thing will be done internally.
+@Input          hHeap                 Handle to the heap from which memory will be
+                                      allocated
+@Input          uiSize                Amount of memory to be allocated.
+@Input          uiLog2Align           LOG2 of the required alignment
+@Input          uiMemAllocFlags       Allocation Flags
+@Input          pszText     		  Text to describe the allocation
+@Output         phMemDescOut          On success, the resulting memory descriptor
 @Return         PVRSRV_OK on success. Otherwise, a PVRSRV_ error code
 */ /***************************************************************************/
 extern IMG_IMPORT PVRSRV_ERROR
-PVRSRVAllocDeviceMem(PVRSRV_HEAP hHeap,
-                     IMG_DEVMEM_SIZE_T uiSize,
-                     IMG_DEVMEM_LOG2ALIGN_T uiLog2Align,
-                     PVRSRV_MEMALLOCFLAGS_T uiMemAllocFlags,
-                     IMG_PCHAR pszText,
-                     PVRSRV_MEMDESC *phMemDescOut);
+PVRSRVSubAllocDeviceMem(IMG_UINT8 uiPreAllocMultiplier,
+                        PVRSRV_HEAP hHeap,
+                        IMG_DEVMEM_SIZE_T uiSize,
+                        IMG_DEVMEM_LOG2ALIGN_T uiLog2Align,
+                        PVRSRV_MEMALLOCFLAGS_T uiMemAllocFlags,
+                        IMG_PCHAR pszText,
+                        PVRSRV_MEMDESC *phMemDescOut);
+
+#define PVRSRVAllocDeviceMem(...) \
+    PVRSRVSubAllocDeviceMem(PVRSRV_DEVMEM_PRE_ALLOC_MULTIPLIER_NONE, __VA_ARGS__)
 
 /**************************************************************************/ /*!
 @Function       PVRSRVFreeDeviceMem
-@Description    Free that allocated by PVRSRVAllocDeviceMem (Memory descriptor 
+@Description    Free that allocated by PVRSRVSubAllocDeviceMem (Memory descriptor
                 will be destroyed)
 @Input          hMemDesc            Handle to the descriptor of the memory to be
                                     freed

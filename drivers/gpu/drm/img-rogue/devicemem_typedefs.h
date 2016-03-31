@@ -114,5 +114,9 @@ typedef enum Resize {
 	SPARSE_MAP_CPU_ADDR=8 /*should be set to get the sparse changes appear in cpu virtual map */
 }SPARSE_MEM_RESIZE_FLAGS;
 
+/* To use with DevmemSubAllocate() as the default factor if no
+ * overallocation is desired. */
+#define DEVMEM_NO_PRE_ALLOCATE_MULTIPLIER 1
+
 #endif /* #ifndef SRVCLIENT_NEW_DEVMEM_ALLOCATION_TYPEDEFS_H */
 

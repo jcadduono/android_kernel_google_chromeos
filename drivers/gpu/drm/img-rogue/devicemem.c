@@ -1044,12 +1044,13 @@ DevmemDestroyHeap(DEVMEM_HEAP *psHeap)
  *****************************************************************************/
 
 IMG_INTERNAL PVRSRV_ERROR
-DevmemAllocate(DEVMEM_HEAP *psHeap,
-               IMG_DEVMEM_SIZE_T uiSize,
-               IMG_DEVMEM_ALIGN_T uiAlign,
-               DEVMEM_FLAGS_T uiFlags,
-               const IMG_PCHAR pszText,
-			   DEVMEM_MEMDESC **ppsMemDescPtr)
+DevmemSubAllocate(IMG_UINT8 uiPreAllocMultiplier,
+                  DEVMEM_HEAP *psHeap,
+                  IMG_DEVMEM_SIZE_T uiSize,
+                  IMG_DEVMEM_ALIGN_T uiAlign,
+                  DEVMEM_FLAGS_T uiFlags,
+                  const IMG_PCHAR pszText,
+                  DEVMEM_MEMDESC **ppsMemDescPtr)
 {
     IMG_BOOL bStatus; /* eError for RA */
     RA_BASE_T uiAllocatedAddr;
@@ -1108,8 +1109,9 @@ DevmemAllocate(DEVMEM_HEAP *psHeap,
 	*/
 	uiFlagsForRA &= ~PVRSRV_MEMALLOCFLAG_ZERO_ON_ALLOC;
 	
-	bStatus = RA_Alloc(psHeap->psSubAllocRA,
+	bStatus = RA_PreAlloc(psHeap->psSubAllocRA,
 					   uiSize,
+					   uiPreAllocMultiplier,
 					   uiFlagsForRA,
 					   uiAlign,
 					   &uiAllocatedAddr,

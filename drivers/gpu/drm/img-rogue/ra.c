@@ -1173,39 +1173,44 @@ RA_Add (RA_ARENA *pArena,
 }
 
 /*************************************************************************/ /*!
-@Function       RA_Alloc
-@Description    To allocate resource from an arena.
-@Input          pArena         The arena
-@Input          uRequestSize   The size of resource segment requested.
-@Output         pActualSize    The actual size of resource segment
-                               allocated, typcially rounded up by quantum.
-@Output         phPriv         The user reference associated with allocated resource span.
-@Input          uFlags         Flags influencing allocation policy.
-@Input          uAlignment     The uAlignment constraint required for the
-                               allocated segment, use 0 if uAlignment not required, otherwise
-                               must be a power of 2.
-@Output         base           Allocated base resource
+@Function       RA_PreAlloc
+@Description
+ Preallocate a set of resources from an arena.  Subsequent requests for
+ similar resources can then be served from this preallocated pool.
+ Set ImportMultiplier to 1 if you don't want to do any preallocation.
+
+@Input          pArena            The arena
+@Input          uRequestSize      The size of resource segment requested.
+@Input          uImportMultiplier Import x-times more for future requests if
+                                  we have to import new memory.
+@Output         pActualSize       The actual size of resource segment
+                                  allocated, typcially rounded up by quantum.
+@Output         phPriv            The user reference associated with allocated resource span.
+@Input          uFlags            Flags influencing allocation policy.
+@Input          uAlignment        The uAlignment constraint required for the
+                                  allocated segment, use 0 if uAlignment not required, otherwise
+                                  must be a power of 2.
+@Output         base              Allocated base resource
 @Return         IMG_TRUE - success
                 IMG_FALSE - failure
 */ /**************************************************************************/
 IMG_INTERNAL IMG_BOOL
-RA_Alloc (RA_ARENA *pArena,
+RA_PreAlloc (RA_ARENA *pArena,
 		  RA_LENGTH_T uRequestSize,
+		  IMG_UINT8 uImportMultiplier,
 		  RA_FLAGS_T uFlags,
 		  RA_LENGTH_T uAlignment,
 		  RA_BASE_T *base,
 		  RA_LENGTH_T *pActualSize,
-          RA_PERISPAN_HANDLE *phPriv)
+		  RA_PERISPAN_HANDLE *phPriv)
 {
 	IMG_BOOL bResult;
 	RA_LENGTH_T uSize = uRequestSize;
 
-	PVR_ASSERT (pArena!=NULL);
-	PVR_ASSERT (uSize > 0);
-
-	if (pArena == NULL)
+	if (pArena == NULL || uImportMultiplier == 0 || uSize == 0)
 	{
-		PVR_DPF ((PVR_DBG_ERROR,"RA_Alloc: invalid parameter - pArena"));
+		PVR_DPF ((PVR_DBG_ERROR,
+				"RA_Alloc: One of the necessary parameters is 0"));
 		return IMG_FALSE;
 	}
 
@@ -1244,6 +1249,8 @@ RA_Alloc (RA_ARENA *pArena,
 		{
 			uImportSize += (uAlignment - pArena->uQuantum);
 		}
+		/* apply over-allocation multiplier after all alignment adjustments */
+		uImportSize *= uImportMultiplier;
 
 		/* ensure that we import according to the quanta of this arena */
 		uImportSize = (uImportSize + pArena->uQuantum - 1) & ~(pArena->uQuantum - 1);
