@@ -29,7 +29,7 @@
 #define MTK_VCODEC_DEC_NAME	"mtk-vcodec-dec" 
 #define MTK_VCODEC_ENC_NAME	"mtk-vcodec-enc"
 #define MTK_PLATFORM_STR	"platform:mt8173"
-#define MTK_VPU_FW_VERSION	"0.2.13"
+#define MTK_VPU_FW_VERSION	"0.2.14"
 
 #define MTK_VCODEC_MAX_PLANES	3
 #define MTK_V4L2_BENCHMARK	0

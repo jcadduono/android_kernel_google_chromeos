@@ -16,7 +16,7 @@
 #ifndef __MTK_MDP_IPI_H__
 #define __MTK_MDP_IPI_H__
 
-#define MTK_MDP_VPU_VERSION	"0.2.13"
+#define MTK_MDP_VPU_VERSION	"0.2.14"
 #define MTK_MDP_MAX_CTX		14
 
 enum mdp_ipi_msgid {
