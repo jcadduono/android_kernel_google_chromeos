@@ -71,6 +71,7 @@ int snd_pcm_create_iec958_consumer(struct snd_pcm_runtime *runtime, u8 *cs,
 			     IEC958_AES4_CON_MAX_WORDLEN_24;
 			break;
 		case 24:
+		case 32: /* Assume 24-bit width for 32-bit samples. */
 			ws = IEC958_AES4_CON_WORDLEN_24_20 |
 			     IEC958_AES4_CON_MAX_WORDLEN_24;
 			break;
