@@ -616,6 +616,11 @@ static int mmc_blk_ioctl_cmd(struct block_device *bdev,
 		goto cmd_done;
 	}
 
+	if (idata->ic.opcode == MMC_FFU_INVOKE_OP) {
+		err = mmc_ffu_invoke(card, (struct mmc_ffu_args *)idata->buf);
+		goto cmd_done;
+	}
+
 	mmc_get_card(card);
 
 	ioc_err = __mmc_blk_ioctl_cmd(card, md, idata);
@@ -626,49 +631,6 @@ static int mmc_blk_ioctl_cmd(struct block_device *bdev,
 
 cmd_done:
 	mmc_blk_put(md);
-cmd_err:
-	kfree(idata->buf);
-	kfree(idata);
-	return ioc_err ? ioc_err : err;
-}
-
-static int mmc_blk_ffu_cmd(struct block_device *bdev,
-				struct mmc_ioc_cmd __user *ic_ptr)
-{
-	struct mmc_blk_ioc_data *idata;
-	struct mmc_blk_data *md;
-	struct mmc_card *card;
-	int err, ioc_err = 0;
-
-	/*
-	 * The caller must have CAP_SYS_RAWIO, and must be calling this on the
-	 * whole block device, not on a partition.  This prevents overspray
-	 * between sibling partitions.
-	 */
-	if ((!capable(CAP_SYS_RAWIO)) || (bdev != bdev->bd_contains))
-		return -EPERM;
-
-	idata = mmc_blk_ioctl_copy_from_user(ic_ptr);
-	if (IS_ERR(idata))
-		return PTR_ERR(idata);
-
-	md = mmc_blk_get(bdev->bd_disk);
-	if (!md) {
-		err = -EINVAL;
-		goto cmd_err;
-	}
-
-	card = md->queue.card;
-	if (IS_ERR(card)) {
-		err = PTR_ERR(card);
-		goto cmd_done;
-	}
-
-	ioc_err = mmc_ffu_invoke(card, (struct mmc_ffu_args *)idata->buf);
-
-cmd_done:
-	mmc_blk_put(md);
-
 cmd_err:
 	kfree(idata->buf);
 	kfree(idata);
@@ -749,8 +711,6 @@ static int mmc_blk_ioctl(struct block_device *bdev, fmode_t mode,
 	unsigned int cmd, unsigned long arg)
 {
 	switch (cmd) {
-	case MMC_FFU_CMD:
-		return mmc_blk_ffu_cmd(bdev, (struct mmc_ioc_cmd __user *)arg);
 	case MMC_IOC_CMD:
 		return mmc_blk_ioctl_cmd(bdev,
 				(struct mmc_ioc_cmd __user *)arg);
