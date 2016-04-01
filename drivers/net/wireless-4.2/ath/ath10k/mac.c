@@ -6922,7 +6922,8 @@ ath10k_mac_update_rx_channel(struct ath10k *ar,
 			def = &vifs[0].new_ctx->def;
 
 		ar->rx_channel = def->chan;
-	} else if (ctx && ath10k_mac_num_chanctxs(ar) == 0) {
+	} else if ((ctx && ath10k_mac_num_chanctxs(ar) == 0) ||
+		   (ctx && (ar->state == ATH10K_STATE_RESTARTED))) {
 		ar->rx_channel = ctx->def.chan;
 	} else {
 		ar->rx_channel = NULL;
