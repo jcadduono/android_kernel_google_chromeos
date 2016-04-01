@@ -266,27 +266,6 @@ exit:
 	return rc;
 }
 
-/* Flush all scheduled work from the MMC work queue.
- * and initialize the MMC device */
-static int mmc_ffu_restart(struct mmc_card *card)
-{
-	struct mmc_host *host = card->host;
-	int err = 0;
-
-	err = mmc_power_save_host(host);
-	if (err) {
-		pr_warn("%s: going to sleep failed (%d)!!!\n",
-			__func__ , err);
-		goto exit;
-	}
-
-	err = mmc_power_restore_host(host);
-
-exit:
-
-	return err;
-}
-
 static int mmc_ffu_switch_mode(struct mmc_card *card , int mode)
 {
 	int err = 0;
@@ -331,7 +310,7 @@ static int mmc_ffu_install(struct mmc_card *card, u8 **ext_csd)
 		}
 
 		/* restart the eMMC */
-		err = mmc_ffu_restart(card);
+		err = mmc_hw_reset(card->host);
 		if (err) {
 			pr_err("FFU: %s: install error %d:\n",
 			       mmc_hostname(card->host), err);
