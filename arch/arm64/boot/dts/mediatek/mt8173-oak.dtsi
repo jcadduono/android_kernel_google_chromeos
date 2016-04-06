@@ -83,7 +83,6 @@
 			gpios = <&pio 12 GPIO_ACTIVE_LOW>;
 			linux,code = <0>; /* SW_LID */
 			linux,input-type = <5>; /* EV_SW */
-			debounce-interval = <1>;
 			gpio-key,wakeup;
 		};
 
@@ -91,7 +90,7 @@
 			label = "Power";
 			gpios = <&pio 14 GPIO_ACTIVE_HIGH>;
 			linux,code = <KEY_POWER>;
-			debounce-interval = <1>;
+			debounce-interval = <30>;
 			gpio-key,wakeup;
 		};
 
@@ -100,7 +99,6 @@
 			gpios = <&pio 121 GPIO_ACTIVE_HIGH>;
 			linux,code = <1>; /* SW_TABLET_MODE */
 			linux,input-type = <5>; /* EV_SW */
-			debounce-interval = <1>;
 			gpio-key,wakeup;
 		};
 
@@ -108,14 +106,12 @@
 			label = "Volume_down";
 			gpios = <&pio 124 GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_VOLUMEDOWN>;
-			debounce-interval = <100>;
 		};
 
 		volume_up {
 			label = "Volume_up";
 			gpios = <&pio 123 GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_VOLUMEUP>;
-			debounce-interval = <100>;
 		};
 	};
 
