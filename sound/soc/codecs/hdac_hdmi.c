@@ -1506,21 +1506,6 @@ static int hdmi_codec_resume(struct snd_soc_codec *codec)
 	return 0;
 }
 
-static int hdac_hdmi_prepare(struct device *dev)
-{
-	/* codec suspend requires audio controller to be runtime resumed. */
-	if (dev->parent)
-		return pm_runtime_get_sync(dev->parent);
-
-	return 0;
-}
-
-static void hdac_hdmi_complete(struct device *dev)
-{
-	if (dev->parent)
-		pm_runtime_put(dev->parent);
-}
-
 static int hdac_hdmi_runtime_suspend(struct device *dev)
 {
 	struct hdac_ext_device *edev = to_hda_ext_device(dev);
@@ -1567,8 +1552,6 @@ static int hdac_hdmi_runtime_resume(struct device *dev)
 #else
 #define hdmi_codec_suspend NULL
 #define hdmi_codec_resume NULL
-#define hdac_hdmi_prepare NULL
-#define hdac_hdmi_complete NULL
 #define hdac_hdmi_runtime_suspend NULL
 #define hdac_hdmi_runtime_resume NULL
 #endif
@@ -1657,10 +1640,7 @@ static int hdac_hdmi_dev_remove(struct hdac_ext_device *edev)
 }
 
 static const struct dev_pm_ops hdac_hdmi_pm = {
-	.prepare		= hdac_hdmi_prepare,
-	.complete		= hdac_hdmi_complete,
-	.runtime_suspend	= hdac_hdmi_runtime_suspend,
-	.runtime_resume		= hdac_hdmi_runtime_resume,
+	SET_RUNTIME_PM_OPS(hdac_hdmi_runtime_suspend, hdac_hdmi_runtime_resume, NULL)
 };
 
 static const struct hda_device_id hdmi_list[] = {
