@@ -1423,55 +1423,14 @@ static int hdmi_codec_remove(struct snd_soc_codec *codec)
 }
 
 #ifdef CONFIG_PM
-static int hdac_hdmi_suspend(struct hdac_ext_device *edev)
-{
-	struct hdac_device *hdac = &edev->hdac;
-	struct hdac_bus *bus = hdac->bus;
-	unsigned long timeout;
-	int err;
-
-	/* Power down afg */
-	if (!snd_hdac_check_power_state(hdac, hdac->afg, AC_PWRST_D3)) {
-		snd_hdac_codec_write(hdac, hdac->afg, 0,
-			AC_VERB_SET_POWER_STATE, AC_PWRST_D3);
-
-		/* Wait till power state is set to D3 */
-		timeout = jiffies + msecs_to_jiffies(1000);
-		while (!snd_hdac_check_power_state(hdac, hdac->afg, AC_PWRST_D3)
-				&& time_before(jiffies, timeout)) {
-
-			msleep(50);
-		}
-	}
-
-	err = snd_hdac_display_power(bus, false);
-	if (err < 0) {
-		dev_err(bus->dev, "Cannot turn on display power on i915\n");
-		return err;
-	}
-
-	return 0;
-}
-
-static int hdmi_codec_suspend(struct snd_soc_codec *codec)
-{
-	struct device *dev = codec->dev;
-
-	if (!pm_runtime_status_suspended(dev)) {
-		dev_info(dev,
-			 "Device not runtime suspended for system suspend.");
-		return hdac_hdmi_suspend(snd_soc_codec_get_drvdata(codec));
-	}
-
-	return 0;
-}
-
 static int hdmi_codec_resume(struct snd_soc_codec *codec)
 {
 	struct hdac_ext_device *edev = snd_soc_codec_get_drvdata(codec);
 	struct hdac_hdmi_priv *hdmi = edev->private_data;
 	struct hdac_hdmi_pin *pin;
 	struct hdac_device *hdac = &edev->hdac;
+	struct hdac_bus *bus = hdac->bus;
+	int err;
 	unsigned long timeout;
 
 	hdac_hdmi_skl_enable_all_pins(&edev->hdac);
@@ -1499,67 +1458,27 @@ static int hdmi_codec_resume(struct snd_soc_codec *codec)
 	list_for_each_entry(pin, &hdmi->pin_list, head)
 		hdac_hdmi_present_sense(pin, 1);
 
-	/* Put codec into whatever suspend state it had. */
-	if (pm_runtime_status_suspended(codec->dev))
-		hdac_hdmi_suspend(edev);
-
-	return 0;
-}
-
-static int hdac_hdmi_runtime_suspend(struct device *dev)
-{
-	struct hdac_ext_device *edev = to_hda_ext_device(dev);
-	struct hdac_bus *bus = edev->hdac.bus;
-
-	dev_dbg(dev, "Enter: %s\n", __func__);
-
-	/* controller may not have been initialized for the first time */
-	if (!bus)
-		return 0;
-
-	return hdac_hdmi_suspend(edev);
-}
-
-static int hdac_hdmi_runtime_resume(struct device *dev)
-{
-	struct hdac_ext_device *edev = to_hda_ext_device(dev);
-	struct hdac_device *hdac = &edev->hdac;
-	struct hdac_bus *bus = hdac->bus;
-	int err;
-
-	dev_dbg(dev, "Enter: %s\n", __func__);
-
-	/* controller may not have been initialized for the first time */
-	if (!bus)
-		return 0;
-
-	err = snd_hdac_display_power(bus, true);
+	/*
+	 * Codec power is turned ON during controller resume.
+	 * Turn it OFF here
+	 */
+	err = snd_hdac_display_power(bus, false);
 	if (err < 0) {
-		dev_err(bus->dev, "Cannot turn on display power on i915\n");
+		dev_err(bus->dev,
+			"Cannot turn OFF display power on i915, err: %d\n",
+			err);
 		return err;
 	}
-
-	hdac_hdmi_skl_enable_all_pins(&edev->hdac);
-	hdac_hdmi_skl_enable_dp12(&edev->hdac);
-
-	/* Power up afg */
-	if (!snd_hdac_check_power_state(hdac, hdac->afg, AC_PWRST_D0))
-		snd_hdac_codec_write(hdac, hdac->afg, 0,
-			AC_VERB_SET_POWER_STATE, AC_PWRST_D0);
 
 	return 0;
 }
 #else
-#define hdmi_codec_suspend NULL
 #define hdmi_codec_resume NULL
-#define hdac_hdmi_runtime_suspend NULL
-#define hdac_hdmi_runtime_resume NULL
 #endif
 
 static struct snd_soc_codec_driver hdmi_hda_codec = {
 	.probe		= hdmi_codec_probe,
 	.remove		= hdmi_codec_remove,
-	.suspend	= hdmi_codec_suspend,
 	.resume		= hdmi_codec_resume,
 	.idle_bias_off	= true,
 };
@@ -1638,6 +1557,78 @@ static int hdac_hdmi_dev_remove(struct hdac_ext_device *edev)
 
 	return 0;
 }
+
+#ifdef CONFIG_PM
+static int hdac_hdmi_runtime_suspend(struct device *dev)
+{
+	struct hdac_ext_device *edev = to_hda_ext_device(dev);
+	struct hdac_device *hdac = &edev->hdac;
+	struct hdac_bus *bus = hdac->bus;
+	unsigned long timeout;
+	int err;
+
+	dev_dbg(dev, "Enter: %s\n", __func__);
+
+	/* controller may not have been initialized for the first time */
+	if (!bus)
+		return 0;
+
+	/* Power down afg */
+	if (!snd_hdac_check_power_state(hdac, hdac->afg, AC_PWRST_D3)) {
+		snd_hdac_codec_write(hdac, hdac->afg, 0,
+			AC_VERB_SET_POWER_STATE, AC_PWRST_D3);
+
+		/* Wait till power state is set to D3 */
+		timeout = jiffies + msecs_to_jiffies(1000);
+		while (!snd_hdac_check_power_state(hdac, hdac->afg, AC_PWRST_D3)
+				&& time_before(jiffies, timeout)) {
+
+			msleep(50);
+		}
+	}
+
+	err = snd_hdac_display_power(bus, false);
+	if (err < 0) {
+		dev_err(bus->dev, "Cannot turn on display power on i915\n");
+		return err;
+	}
+
+	return 0;
+}
+
+static int hdac_hdmi_runtime_resume(struct device *dev)
+{
+	struct hdac_ext_device *edev = to_hda_ext_device(dev);
+	struct hdac_device *hdac = &edev->hdac;
+	struct hdac_bus *bus = hdac->bus;
+	int err;
+
+	dev_dbg(dev, "Enter: %s\n", __func__);
+
+	/* controller may not have been initialized for the first time */
+	if (!bus)
+		return 0;
+
+	err = snd_hdac_display_power(bus, true);
+	if (err < 0) {
+		dev_err(bus->dev, "Cannot turn on display power on i915\n");
+		return err;
+	}
+
+	hdac_hdmi_skl_enable_all_pins(&edev->hdac);
+	hdac_hdmi_skl_enable_dp12(&edev->hdac);
+
+	/* Power up afg */
+	if (!snd_hdac_check_power_state(hdac, hdac->afg, AC_PWRST_D0))
+		snd_hdac_codec_write(hdac, hdac->afg, 0,
+			AC_VERB_SET_POWER_STATE, AC_PWRST_D0);
+
+	return 0;
+}
+#else
+#define hdac_hdmi_runtime_suspend NULL
+#define hdac_hdmi_runtime_resume NULL
+#endif
 
 static const struct dev_pm_ops hdac_hdmi_pm = {
 	SET_RUNTIME_PM_OPS(hdac_hdmi_runtime_suspend, hdac_hdmi_runtime_resume, NULL)
