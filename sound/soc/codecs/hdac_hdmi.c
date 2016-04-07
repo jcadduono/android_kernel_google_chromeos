@@ -1457,7 +1457,6 @@ static int hdmi_codec_suspend(struct snd_soc_codec *codec)
 {
 	struct device *dev = codec->dev;
 
-	pm_runtime_disable(dev);
 	if (!pm_runtime_status_suspended(dev)) {
 		dev_info(dev,
 			 "Device not runtime suspended for system suspend.");
@@ -1469,7 +1468,6 @@ static int hdmi_codec_suspend(struct snd_soc_codec *codec)
 
 static int hdmi_codec_resume(struct snd_soc_codec *codec)
 {
-	struct device *dev = codec->dev;
 	struct hdac_ext_device *edev = snd_soc_codec_get_drvdata(codec);
 	struct hdac_hdmi_priv *hdmi = edev->private_data;
 	struct hdac_hdmi_pin *pin;
@@ -1504,8 +1502,6 @@ static int hdmi_codec_resume(struct snd_soc_codec *codec)
 	/* Put codec into whatever suspend state it had. */
 	if (pm_runtime_status_suspended(codec->dev))
 		hdac_hdmi_suspend(edev);
-
-	pm_runtime_enable(dev);
 
 	return 0;
 }
