@@ -100,8 +100,6 @@ struct hdac_hdmi_priv {
 	int num_pin;
 	int num_cvt;
 	struct mutex pin_mutex;
-	struct mutex pm_mutex;
-	bool suspended;
 };
 
 static inline struct hdac_ext_device *to_hda_ext_device(struct device *dev)
@@ -1425,28 +1423,12 @@ static int hdmi_codec_remove(struct snd_soc_codec *codec)
 }
 
 #ifdef CONFIG_PM
-static int hdac_hdmi_set_power(struct hdac_ext_device *edev, bool on)
-{
-	struct hdac_bus *bus = edev->hdac.bus;
-	int err;
-
-	err = snd_hdac_display_power(bus, on);
-	if (err < 0)
-		dev_err(bus->dev, "Cannot set i915 display power to %d\n", on);
-
-	return err;
-}
-
-static int hdac_hdmi_suspend_common(struct hdac_ext_device *edev)
+static int hdac_hdmi_suspend(struct hdac_ext_device *edev)
 {
 	struct hdac_device *hdac = &edev->hdac;
-	struct hdac_hdmi_priv *hdmi = edev->private_data;
+	struct hdac_bus *bus = hdac->bus;
 	unsigned long timeout;
-	int err = 0;
-
-	mutex_lock(&hdmi->pm_mutex);
-	if (hdmi->suspended)
-		goto out;
+	int err;
 
 	/* Power down afg */
 	if (!snd_hdac_check_power_state(hdac, hdac->afg, AC_PWRST_D3)) {
@@ -1462,33 +1444,44 @@ static int hdac_hdmi_suspend_common(struct hdac_ext_device *edev)
 		}
 	}
 
-	hdmi->suspended = true;
-	err = hdac_hdmi_set_power(edev, false);
-out:
-	mutex_unlock(&hdmi->pm_mutex);
-	return err;
+	err = snd_hdac_display_power(bus, false);
+	if (err < 0) {
+		dev_err(bus->dev, "Cannot turn on display power on i915\n");
+		return err;
+	}
+
+	return 0;
 }
 
-static int hdac_hdmi_resume_common(struct hdac_ext_device *edev)
+static int hdmi_codec_suspend(struct snd_soc_codec *codec)
 {
-	struct hdac_device *hdac = &edev->hdac;
+	struct device *dev = codec->dev;
+
+	pm_runtime_disable(dev);
+	if (!pm_runtime_status_suspended(dev)) {
+		dev_info(dev,
+			 "Device not runtime suspended for system suspend.");
+		return hdac_hdmi_suspend(snd_soc_codec_get_drvdata(codec));
+	}
+
+	return 0;
+}
+
+static int hdmi_codec_resume(struct snd_soc_codec *codec)
+{
+	struct device *dev = codec->dev;
+	struct hdac_ext_device *edev = snd_soc_codec_get_drvdata(codec);
 	struct hdac_hdmi_priv *hdmi = edev->private_data;
+	struct hdac_hdmi_pin *pin;
+	struct hdac_device *hdac = &edev->hdac;
 	unsigned long timeout;
-	int err = 0;
-
-	mutex_lock(&hdmi->pm_mutex);
-	if (!hdmi->suspended)
-		goto out;
-
-	err = hdac_hdmi_set_power(edev, true);
-	if (err < 0)
-		goto out;
 
 	hdac_hdmi_skl_enable_all_pins(&edev->hdac);
 	hdac_hdmi_skl_enable_dp12(&edev->hdac);
 
 	/* Power up afg */
 	if (!snd_hdac_check_power_state(hdac, hdac->afg, AC_PWRST_D0)) {
+
 		snd_hdac_codec_write(hdac, hdac->afg, 0,
 			AC_VERB_SET_POWER_STATE, AC_PWRST_D0);
 
@@ -1500,10 +1493,36 @@ static int hdac_hdmi_resume_common(struct hdac_ext_device *edev)
 		}
 	}
 
-	hdmi->suspended = false;
-out:
-	mutex_unlock(&hdmi->pm_mutex);
-	return err;
+	/*
+	 * As the ELD notify callback request is not entertained while the
+	 * device is in suspend state. Need to manually check detection of
+	 * all pins here.
+	 */
+	list_for_each_entry(pin, &hdmi->pin_list, head)
+		hdac_hdmi_present_sense(pin, 1);
+
+	/* Put codec into whatever suspend state it had. */
+	if (pm_runtime_status_suspended(codec->dev))
+		hdac_hdmi_suspend(edev);
+
+	pm_runtime_enable(dev);
+
+	return 0;
+}
+
+static int hdac_hdmi_prepare(struct device *dev)
+{
+	/* codec suspend requires audio controller to be runtime resumed. */
+	if (dev->parent)
+		return pm_runtime_get_sync(dev->parent);
+
+	return 0;
+}
+
+static void hdac_hdmi_complete(struct device *dev)
+{
+	if (dev->parent)
+		pm_runtime_put(dev->parent);
 }
 
 static int hdac_hdmi_runtime_suspend(struct device *dev)
@@ -1517,7 +1536,7 @@ static int hdac_hdmi_runtime_suspend(struct device *dev)
 	if (!bus)
 		return 0;
 
-	return hdac_hdmi_suspend_common(edev);
+	return hdac_hdmi_suspend(edev);
 }
 
 static int hdac_hdmi_runtime_resume(struct device *dev)
@@ -1525,6 +1544,7 @@ static int hdac_hdmi_runtime_resume(struct device *dev)
 	struct hdac_ext_device *edev = to_hda_ext_device(dev);
 	struct hdac_device *hdac = &edev->hdac;
 	struct hdac_bus *bus = hdac->bus;
+	int err;
 
 	dev_dbg(dev, "Enter: %s\n", __func__);
 
@@ -1532,93 +1552,29 @@ static int hdac_hdmi_runtime_resume(struct device *dev)
 	if (!bus)
 		return 0;
 
-	return hdac_hdmi_resume_common(edev);
-}
-
-static int hdmi_codec_suspend(struct snd_soc_codec *codec)
-{
-	struct device *dev = codec->dev;
-	struct hdac_ext_device *edev = to_hda_ext_device(dev);
-	int err;
-
-	/*
-	 * Increment the power ref count since the audio controller decrements
-	 * it on suspend.
-	 */
-	err = hdac_hdmi_set_power(edev, true);
-	if (err < 0)
+	err = snd_hdac_display_power(bus, true);
+	if (err < 0) {
+		dev_err(bus->dev, "Cannot turn on display power on i915\n");
 		return err;
-
-	return hdac_hdmi_suspend_common(edev);
-}
-
-static int hdmi_codec_resume(struct snd_soc_codec *codec)
-{
-	struct device *dev = codec->dev;
-	struct hdac_ext_device *edev = to_hda_ext_device(dev);
-	struct hdac_hdmi_priv *hdmi = edev->private_data;
-	struct hdac_hdmi_pin *pin;
-	int err;
-
-	err = hdac_hdmi_resume_common(edev);
-	if (err < 0)
-		return err;
-
-	/*
-	 * As the ELD notify callback request is not entertained while the
-	 * device is in suspend state. Need to manually check detection of
-	 * all pins here.
-	 */
-	list_for_each_entry(pin, &hdmi->pin_list, head)
-		hdac_hdmi_present_sense(pin, 1);
-
-	/*
-	 * Restore pm runtime status since we just resumed the device. Disable
-	 * pm runtime to prevent races with the device runtime suspending.
-	 */
-	pm_runtime_disable(dev);
-	if (pm_runtime_status_suspended(dev)) {
-		err = hdac_hdmi_suspend_common(edev);
-		if (err < 0) {
-			pm_runtime_enable(dev);
-			return err;
-		}
 	}
-	pm_runtime_enable(dev);
 
-	/*
-	 * Decrement the power ref count since the audio controller increments
-	 * it on resume.
-	 */
-	return hdac_hdmi_set_power(edev, false);
-}
+	hdac_hdmi_skl_enable_all_pins(&edev->hdac);
+	hdac_hdmi_skl_enable_dp12(&edev->hdac);
 
-static int hdac_hdmi_prepare(struct device *dev)
-{
-	int err;
-
-	/* codec suspend requires audio controller to be runtime resumed. */
-	if (dev->parent) {
-		err = pm_runtime_get_sync(dev->parent);
-		if (err < 0)
-			return err;
-	}
+	/* Power up afg */
+	if (!snd_hdac_check_power_state(hdac, hdac->afg, AC_PWRST_D0))
+		snd_hdac_codec_write(hdac, hdac->afg, 0,
+			AC_VERB_SET_POWER_STATE, AC_PWRST_D0);
 
 	return 0;
 }
-
-static void hdac_hdmi_complete(struct device *dev)
-{
-	if (dev->parent)
-		pm_runtime_put(dev->parent);
-}
 #else
-#define hdac_hdmi_runtime_suspend NULL
-#define hdac_hdmi_runtime_resume NULL
 #define hdmi_codec_suspend NULL
 #define hdmi_codec_resume NULL
 #define hdac_hdmi_prepare NULL
 #define hdac_hdmi_complete NULL
+#define hdac_hdmi_runtime_suspend NULL
+#define hdac_hdmi_runtime_resume NULL
 #endif
 
 static struct snd_soc_codec_driver hdmi_hda_codec = {
@@ -1649,16 +1605,18 @@ static int hdac_hdmi_dev_probe(struct hdac_ext_device *edev)
 	INIT_LIST_HEAD(&hdmi_priv->cvt_list);
 	INIT_LIST_HEAD(&hdmi_priv->pcm_list);
 	mutex_init(&hdmi_priv->pin_mutex);
-	mutex_init(&hdmi_priv->pm_mutex);
-	hdmi_priv->suspended = false;
 
 	/*
 	 * Turned off in the runtime_suspend during the first explicit
 	 * pm_runtime_suspend call.
 	 */
-	ret = hdac_hdmi_set_power(edev, true);
-	if (ret < 0)
+	ret = snd_hdac_display_power(edev->hdac.bus, true);
+	if (ret < 0) {
+		dev_err(&edev->hdac.dev,
+			"Cannot turn on display power on i915 err: %d\n",
+			ret);
 		return ret;
+	}
 
 	ret = hdac_hdmi_parse_and_map_nid(edev, &hdmi_dais, &num_dais);
 	if (ret < 0) {

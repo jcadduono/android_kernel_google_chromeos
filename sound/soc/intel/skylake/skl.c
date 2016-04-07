@@ -222,17 +222,6 @@ static int skl_suspend(struct device *dev)
 	struct hdac_ext_bus *ebus = pci_get_drvdata(pci);
 	struct skl *skl  = ebus_to_skl(ebus);
 	struct hdac_bus *bus = ebus_to_hbus(ebus);
-	int ret = 0;
-
-	/* Turned ON at the end of HDMI codec driver suspend. */
-	if (IS_ENABLED(CONFIG_SND_SOC_HDAC_HDMI)) {
-		ret = snd_hdac_display_power(bus, false);
-		if (ret < 0) {
-			dev_err(bus->dev,
-				"Cannot turn off display power on i915\n");
-			return ret;
-		}
-	}
 
 	/*
 	 * Do not suspend if streams which are marked ignore suspend are
@@ -243,11 +232,10 @@ static int skl_suspend(struct device *dev)
 		enable_irq_wake(bus->irq);
 		pci_save_state(pci);
 		pci_disable_device(pci);
+		return 0;
 	} else {
-		ret = _skl_suspend(ebus);
+		return _skl_suspend(ebus);
 	}
-
-	return ret;
 }
 
 static int skl_resume(struct device *dev)
