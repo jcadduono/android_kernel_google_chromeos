@@ -734,6 +734,19 @@ config INTEL_IPS
 	  along with the CPU frequency and i915 drivers, provides that
 	  functionality.  If in doubt, say Y here; it will only load on
 	  supported platforms.
+
+config INTEL_PMC_CORE
+	bool "Intel PMC Core driver"
+	depends on X86 && PCI
+	---help---
+	  The Intel Platform Controller Hub for Intel Core SoCs provides access
+	  to Power Management Controller registers via a PCI interface. This
+	  driver can utilize debugging capabilities and supported features as
+	  exposed by the Power Management Controller.
+
+	  Supported features:
+		- SLP_S0_RESIDENCY counter.
+
 config ACPI_CHROMEOS
 	bool "ChromeOS specific ACPI extensions"
 	depends on ACPI

@@ -59,3 +59,4 @@ obj-$(CONFIG_ACPI_CHROMEOS)	+= chromeos_acpi.o
 
 obj-$(CONFIG_PVPANIC)           += pvpanic.o
 obj-$(CONFIG_ALIENWARE_WMI)	+= alienware-wmi.o
+obj-$(CONFIG_INTEL_PMC_CORE)	+= intel_pmc_core.o
