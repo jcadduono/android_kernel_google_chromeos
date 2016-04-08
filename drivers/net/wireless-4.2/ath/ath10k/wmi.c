@@ -4866,13 +4866,6 @@ void ath10k_wmi_event_chan_survey_update(struct ath10k *ar,
 	rx_clear_count = __le64_to_cpu(arg.rx_clear_count);
 	cycle_count = __le64_to_cpu(arg.cycle_count);
 
-	/* B27787219: ath10k_dbg(ar, ATH10K_DBG_WMI,...) --> ath10k_info */
-	ath10k_info(ar, "wmi channel survey info freq %d noise_floor %d rx_clear_count 0x%lx cycle_count 0x%lx tx_cycle_count 0x%lx rx_cycle_count 0x%lx bss_rx_cycle_count 0x%lx\n",
-		    freq, noise_floor, (unsigned long)rx_clear_count,
-		    (unsigned long)cycle_count, (unsigned long)tx_cycle_count,
-		    (unsigned long)rx_cycle_count,
-		    (unsigned long)bss_rx_cycle_count);
-
 	spin_lock_bh(&ar->data_lock);
 
 	if (ar->scan.state != ATH10K_SCAN_IDLE) {
@@ -4888,8 +4881,7 @@ void ath10k_wmi_event_chan_survey_update(struct ath10k *ar,
 	}
 
 	if (WARN_ON(!ar->rx_channel)) {
-		/* B27787219: extra logging */
-		ath10k_info(ar, "B27787219 Invalid rx_channel\n");
+		ath10k_warn(ar, "Invalid rx_channel NULL\n");
 		goto exit;
 	}
 
@@ -4923,10 +4915,6 @@ void ath10k_wmi_event_chan_survey_update(struct ath10k *ar,
 
 			    freq, tx_delta, rx_delta, busy_delta, dwell_delta);
 		} else {
-			/* B27787219: log to indicate survey data is valid */
-			ath10k_info(ar, "B27787219: survey data is valid - freq %d tx_delta %lld rx_delta %lld busy_delta %lld dwell_delta %lld\n",
-				    freq, tx_delta, rx_delta, busy_delta,
-				    dwell_delta);
 			if ((rx_delta + tx_delta) > busy_delta ) {
 				busy_delta = rx_delta + tx_delta;
 			}

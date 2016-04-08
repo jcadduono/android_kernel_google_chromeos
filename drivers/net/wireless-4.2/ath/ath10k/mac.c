@@ -6404,8 +6404,6 @@ int ath10k_mac_update_chan_survey(struct ath10k *ar)
 	reinit_completion(&ar->chan_survey_completed);
 	spin_unlock_bh(&ar->data_lock);
 
-	/* B27787219: add logging */
-	ath10k_warn(ar, "B27787219: (mac) submitting chan survey wmi\n");
 	ret = ath10k_wmi_send_chan_survey_req(ar, WMI_READ_CHAN_SURVEY);
 	if (ret) {
 		ath10k_warn(ar, "failed to transmit wmi command (channel survey): %d\n",
@@ -6418,8 +6416,6 @@ int ath10k_mac_update_chan_survey(struct ath10k *ar)
 		ath10k_warn(ar, "timed out waiting for channel survey update\n");
 		ret = -ETIMEDOUT;
 	}
-	/* B27787219: add logging */
-	ath10k_warn(ar, "B27787219: (mac) chan survey wmi completed\n");
 out:
 	return ret;
 }
@@ -6929,6 +6925,13 @@ ath10k_mac_update_rx_channel(struct ath10k *ar,
 		ar->rx_channel = NULL;
 	}
 	rcu_read_unlock();
+
+	if (ar->rx_channel == NULL) {
+		ath10k_info(ar, "rx_channel set to NULL\n");
+	} else {
+		ath10k_info(ar, "rx_channel set to freq %d\n",
+			    ar->rx_channel->center_freq);
+	}
 
 	if (prev_rx_channel != ar->rx_channel)
 		ath10k_mac_reset_chan_survey_count(ar);
