@@ -1231,9 +1231,12 @@ static int bam_dma_remove(struct platform_device *pdev)
 		bam_dma_terminate_all(&bdev->channels[i].vc.chan);
 		tasklet_kill(&bdev->channels[i].vc.task);
 
-		dma_free_writecombine(bdev->dev, BAM_DESC_FIFO_SIZE,
-			bdev->channels[i].fifo_virt,
-			bdev->channels[i].fifo_phys);
+		if (!bdev->channels[i].fifo_virt)
+			continue;
+
+		dma_free_wc(bdev->dev, BAM_DESC_FIFO_SIZE,
+			    bdev->channels[i].fifo_virt,
+			    bdev->channels[i].fifo_phys);
 	}
 
 	tasklet_kill(&bdev->task);
