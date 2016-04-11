@@ -2249,7 +2249,6 @@ static int cmdq_core_submit_task(struct cmdq_command *cmd_desc)
 static void cmdq_core_deinitialize(struct platform_device *pdev)
 {
 	struct cmdq *cqctx = platform_get_drvdata(pdev);
-	struct list_head *p;
 	int i;
 	struct list_head *lists[] = {
 		&cqctx->task_free_list,
@@ -2269,19 +2268,12 @@ static void cmdq_core_deinitialize(struct platform_device *pdev)
 
 	/* release all tasks in both list */
 	for (i = 0; i < ARRAY_SIZE(lists); i++) {
-		list_for_each(p, lists[i]) {
-			struct cmdq_task *task;
+		struct cmdq_task *task, *tmp;
 
-			mutex_lock(&cqctx->task_mutex);
-
-			task = list_entry(p, struct cmdq_task, list_entry);
-
-			/* free allocated DMA buffer */
+		list_for_each_entry_safe(task, tmp, lists[i], list_entry) {
 			cmdq_task_free_command_buffer(task);
 			kmem_cache_free(cqctx->task_cache, task);
-			list_del(p);
-
-			mutex_unlock(&cqctx->task_mutex);
+			list_del(&task->list_entry);
 		}
 	}
 
@@ -2749,8 +2741,6 @@ static int cmdq_suspend(struct device *dev)
 	unsigned long flags;
 	u32 exec_threads;
 	int ref_count;
-	struct cmdq_task *task;
-	struct list_head *p;
 	int i;
 
 	cqctx = dev_get_drvdata(dev);
@@ -2758,9 +2748,12 @@ static int cmdq_suspend(struct device *dev)
 	ref_count = cqctx->thread_usage;
 
 	if ((ref_count > 0) || (exec_threads & CMDQ_THR_EXECUTING)) {
-		dev_err(dev,
-			"[SUSPEND] other running, kill tasks. threads:0x%08x, ref:%d\n",
-			exec_threads, ref_count);
+		struct cmdq_task *task, *tmp;
+
+		dev_err(dev, "suspend: tasks running, kill tasks.\n");
+		dev_err(dev, "threads:0x%08x, ref:%d, AL empty:%d, base:0x%p\n",
+			exec_threads, ref_count,
+			list_empty(&cqctx->task_active_list), cqctx->base);
 
 		/*
 		 * We need to ensure the system is ready to suspend,
@@ -2768,10 +2761,12 @@ static int cmdq_suspend(struct device *dev)
 		 */
 
 		/* remove all active task from thread */
-		dev_err(dev, "[SUSPEND] remove all active tasks\n");
-		list_for_each(p, &cqctx->task_active_list) {
-			task = list_entry(p, struct cmdq_task, list_entry);
+		list_for_each_entry_safe(task, tmp, &cqctx->task_active_list,
+					 list_entry) {
 			if (task->thread != CMDQ_INVALID_THREAD) {
+				dev_err(dev, "suspend: thread=%d\n",
+					task->thread);
+
 				spin_lock_irqsave(&cqctx->exec_lock, flags);
 				cmdq_thread_force_remove_task(
 						task, task->thread);
@@ -2779,22 +2774,16 @@ static int cmdq_suspend(struct device *dev)
 				spin_unlock_irqrestore(
 						&cqctx->exec_lock, flags);
 
-				/*
-				 * release all thread and
-				 * mark all active tasks as "KILLED"
-				 * (so that thread won't release again)
-				 */
-				dev_err(dev,
-					"[SUSPEND] release all threads and HW clocks\n");
 				cmdq_task_remove_thread(task);
-
-				/* release cmdq_task resources */
 				cmdq_task_release_internal(task);
 			}
 		}
+		dev_err(dev, "suspend: ref:%d AL empty:%d\n",
+			cqctx->thread_usage,
+			list_empty(&cqctx->task_active_list));
 
 		/* disable all HW thread */
-		dev_err(dev, "[SUSPEND] disable all HW threads\n");
+		dev_err(dev, "suspend: disable all HW threads\n");
 		for (i = 0; i < CMDQ_MAX_THREAD_COUNT; i++)
 			cmdq_thread_disable(cqctx, i);
 
