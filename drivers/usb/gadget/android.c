@@ -34,6 +34,9 @@
 #include "f_audio_source.c"
 #include "f_mass_storage.c"
 #include "f_mtp.c"
+#include "f_hid.h"
+#include "f_hid_android_keyboard.c"
+#include "f_hid_android_mouse.c"
 #include "f_accessory.c"
 #define USB_ETH_RNDIS y
 #include "f_rndis.c"
@@ -556,6 +559,40 @@ static struct android_usb_function ptp_function = {
 	.bind_config	= ptp_function_bind_config,
 };
 
+static int hid_function_init(struct android_usb_function *f, struct usb_composite_dev *cdev)
+{
+	return ghid_setup(cdev->gadget, 2);
+}
+
+static void hid_function_cleanup(struct android_usb_function *f)
+{
+	ghid_cleanup();
+}
+
+static int hid_function_bind_config(struct android_usb_function *f, struct usb_configuration *c)
+{
+	int ret;
+	pr_info("hid keyboard\n");
+	ret = hidg_bind_config(c, &ghid_device_android_keyboard, 0);
+	if (ret) {
+		pr_info("%s: hid_function_bind_config keyboard failed: %d\n", __func__, ret);
+		return ret;
+	}
+	pr_info("hid mouse\n");
+	ret = hidg_bind_config(c, &ghid_device_android_mouse, 1);
+	if (ret) {
+		pr_info("%s: hid_function_bind_config mouse failed: %d\n", __func__, ret);
+		return ret;
+	}
+	return 0;
+}
+
+static struct android_usb_function hid_function = {
+	.name		= "hid",
+	.init		= hid_function_init,
+	.cleanup	= hid_function_cleanup,
+	.bind_config	= hid_function_bind_config,
+};
 
 struct rndis_function_config {
 	u8      ethaddr[ETH_ALEN];
@@ -1136,6 +1173,12 @@ functions_store(struct device *pdev, struct device_attribute *attr,
 			pr_err("android_usb: Cannot enable '%s' (%d)",
 							   name, err);
 	}
+
+	name = "hid";
+	err = android_enable_function(dev, name);
+	if (err)
+		pr_err("android_usb: Cannot enable '%s' (%d)",
+					name, err);
 
 	mutex_unlock(&dev->mutex);
 
