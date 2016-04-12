@@ -73,24 +73,7 @@ static int qcom_wdt_set_timeout(struct watchdog_device *wdd,
 	return qcom_wdt_start(wdd);
 }
 
-static const struct watchdog_ops qcom_wdt_ops = {
-	.start		= qcom_wdt_start,
-	.stop		= qcom_wdt_stop,
-	.ping		= qcom_wdt_ping,
-	.set_timeout	= qcom_wdt_set_timeout,
-	.owner		= THIS_MODULE,
-};
-
-static const struct watchdog_info qcom_wdt_info = {
-	.options	= WDIOF_KEEPALIVEPING
-			| WDIOF_MAGICCLOSE
-			| WDIOF_SETTIMEOUT
-			| WDIOF_CARDRESET,
-	.identity	= KBUILD_MODNAME,
-};
-
-static int qcom_wdt_restart(struct notifier_block *nb, unsigned long action,
-			    void *data)
+static int qcom_wdt_restart(struct watchdog_device *wdd)
 {
 	struct qcom_wdt *wdt = to_qcom_wdt(wdd);
 	u32 timeout;
@@ -128,7 +111,7 @@ static const struct watchdog_ops qcom_wdt_ops = {
 static const struct watchdog_info qcom_wdt_info = {
 	.options	= WDIOF_KEEPALIVEPING
 			| WDIOF_MAGICCLOSE
-			| WDIOF_SETTIMEOUT,
+			| WDIOF_SETTIMEOUT
 			| WDIOF_CARDRESET,
 	.identity	= KBUILD_MODNAME,
 };
