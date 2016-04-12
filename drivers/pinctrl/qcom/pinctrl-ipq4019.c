@@ -89,12 +89,12 @@ static const struct pinctrl_pin_desc ipq4019_pins[] = {
 	PINCTRL_PIN(67, "GPIO_67"),
 	PINCTRL_PIN(68, "GPIO_68"),
 	PINCTRL_PIN(69, "GPIO_69"),
-	PINCTRL_PIN(70, "GPIO_70"),
-	PINCTRL_PIN(71, "GPIO_71"),
-	PINCTRL_PIN(72, "GPIO_72"),
-	PINCTRL_PIN(73, "GPIO_73"),
-	PINCTRL_PIN(74, "GPIO_74"),
-	PINCTRL_PIN(75, "GPIO_75"),
+	PINCTRL_PIN(70, "SDC1_CLK"),
+	PINCTRL_PIN(71, "SDC1_CMD"),
+	PINCTRL_PIN(72, "SDC1_DATA"),
+	PINCTRL_PIN(73, "SDC2_CLK"),
+	PINCTRL_PIN(74, "SDC2_CMD"),
+	PINCTRL_PIN(75, "SDC2_DATA"),
 	PINCTRL_PIN(76, "GPIO_76"),
 	PINCTRL_PIN(77, "GPIO_77"),
 	PINCTRL_PIN(78, "GPIO_78"),
@@ -224,6 +224,13 @@ DECLARE_QCA_GPIO_PINS(97);
 DECLARE_QCA_GPIO_PINS(98);
 DECLARE_QCA_GPIO_PINS(99);
 
+static const unsigned int sdc1_clk_pins[] = { 70 };
+static const unsigned int sdc1_cmd_pins[] = { 71 };
+static const unsigned int sdc1_data_pins[] = { 72 };
+static const unsigned int sdc2_clk_pins[] = { 73 };
+static const unsigned int sdc2_cmd_pins[] = { 74 };
+static const unsigned int sdc2_data_pins[] = { 75 };
+
 #define FUNCTION(fname)			                \
 	[qca_mux_##fname] = {		                \
 		.name = #fname,				\
@@ -283,6 +290,17 @@ enum ipq4019_functions {
 	qca_mux_blsp_uart0,
 	qca_mux_blsp_spi1,
 	qca_mux_blsp_spi0,
+	qca_mux_sdio1,
+	qca_mux_sdio2,
+	qca_mux_sdio3,
+	qca_mux_sdio_clk,
+	qca_mux_sdio_cd,
+	qca_mux_sdio0,
+	qca_mux_sdio_cmd,
+	qca_mux_sdio4,
+	qca_mux_sdio5,
+	qca_mux_sdio6,
+	qca_mux_sdio7,
 	qca_mux_NA,
 };
 
@@ -320,8 +338,42 @@ static const char * const blsp_i2c1_groups[] = {
 static const char * const blsp_uart0_groups[] = {
 	"gpio16", "gpio17", "gpio60", "gpio61",
 };
+
 static const char * const blsp_spi1_groups[] = {
 	"gpio44", "gpio45", "gpio46", "gpio47",
+};
+static const char * const sdio1_groups[] = {
+	"gpio24",
+};
+static const char * const sdio2_groups[] = {
+	"gpio25",
+};
+static const char * const sdio3_groups[] = {
+	"gpio26",
+};
+static const char * const sdio_cd_groups[] = {
+	"gpio22",
+};
+static const char * const sdio4_groups[] = {
+	"gpio29",
+};
+static const char * const sdio_clk_groups[] = {
+	"gpio27",
+};
+static const char * const sdio5_groups[] = {
+	"gpio30",
+};
+static const char * const sdio6_groups[] = {
+	"gpio31",
+};
+static const char * const sdio7_groups[] = {
+	"gpio32",
+};
+static const char * const sdio0_groups[] = {
+	"gpio23",
+};
+static const char * const sdio_cmd_groups[] = {
+	"gpio28",
 };
 
 static const struct msm_function ipq4019_functions[] = {
@@ -332,6 +384,17 @@ static const struct msm_function ipq4019_functions[] = {
 	FUNCTION(blsp_uart0),
 	FUNCTION(blsp_spi1),
 	FUNCTION(blsp_spi0),
+	FUNCTION(sdio1),
+	FUNCTION(sdio2),
+	FUNCTION(sdio3),
+	FUNCTION(sdio_clk),
+	FUNCTION(sdio_cd),
+	FUNCTION(sdio0),
+	FUNCTION(sdio_cmd),
+	FUNCTION(sdio4),
+	FUNCTION(sdio5),
+	FUNCTION(sdio6),
+	FUNCTION(sdio7),
 };
 
 static const struct msm_pingroup ipq4019_groups[] = {
@@ -358,16 +421,16 @@ static const struct msm_pingroup ipq4019_groups[] = {
 	PINGROUP(20, blsp_i2c0, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
 	PINGROUP(21, blsp_i2c0, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
 	PINGROUP(22, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	PINGROUP(23, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	PINGROUP(24, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	PINGROUP(25, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	PINGROUP(26, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	PINGROUP(27, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	PINGROUP(28, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	PINGROUP(29, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	PINGROUP(30, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	PINGROUP(31, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	PINGROUP(32, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
+	PINGROUP(23, sdio0, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
+	PINGROUP(24, sdio1, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
+	PINGROUP(25, sdio2, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
+	PINGROUP(26, sdio3, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
+	PINGROUP(27, sdio_clk, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
+	PINGROUP(28, sdio_cmd, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
+	PINGROUP(29, sdio4, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
+	PINGROUP(30, sdio5, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
+	PINGROUP(31, sdio6, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
+	PINGROUP(32, sdio7, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
 	PINGROUP(33, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
 	PINGROUP(34, blsp_i2c1, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
 	PINGROUP(35, blsp_i2c1, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
