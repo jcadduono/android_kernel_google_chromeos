@@ -46,36 +46,6 @@
 #define XTAL_CLK		270 /* 27M */
 #define AUX_CH_BUFFER_SIZE	16
 #define AUX_WAIT_TIMEOUT_MS	15
-#define AUX_WAIT_INTERVAL_MS	1
-
-/*
- * _wait_for - magic (register) wait macro
- *
- * Does the right thing for modeset paths when run under kdgb or similar atomic
- * contexts. Note that it's important that we check the condition again after
- * having timed out, since the timeout could be due to preemption or similar and
- * we've never had a chance to check the condition before the timeout.
- */
-#define _wait_for(COND, TO_MS, INTVL_MS) ({ \
-	unsigned long timeout__ = jiffies + msecs_to_jiffies(TO_MS) + 1;\
-	int ret__ = 0;							\
-	while (!(COND)) {						\
-		if (time_after(jiffies, timeout__)) {			\
-			if (!(COND))					\
-				ret__ = -ETIMEDOUT;			\
-			break;						\
-		}							\
-		if (drm_can_sleep())  {					\
-			usleep_range(INTVL_MS * 1000,			\
-				(INTVL_MS + 1) * 1000);			\
-		} else {						\
-			cpu_relax();					\
-		}							\
-	}								\
-	ret__;								\
-})
-
-#define wait_for(COND, TO_MS, INTVL_MS) _wait_for(COND, TO_MS, INTVL_MS)
 
 static const u8 anx78xx_i2c_addresses[] = {
 	[I2C_IDX_TX_P0] = TX_P0,
@@ -86,12 +56,12 @@ static const u8 anx78xx_i2c_addresses[] = {
 };
 
 struct anx78xx_platform_data {
-	struct gpio_desc *gpiod_cable_det;
+	struct gpio_desc *gpiod_hpd;
 	struct gpio_desc *gpiod_pd;
 	struct gpio_desc *gpiod_reset;
 	struct gpio_desc *gpiod_v10;
 
-	int cable_det_irq;
+	int hpd_irq;
 	int intp_irq;
 };
 
@@ -115,7 +85,7 @@ struct anx78xx {
 	u16 chipid;
 	u8 dpcd[DP_RECEIVER_CAP_SIZE];
 
-	bool running;
+	bool powered;
 };
 
 static int anx78xx_set_bits(struct regmap *map, u8 reg, u8 mask)
@@ -148,9 +118,29 @@ static int anx78xx_aux_wait(struct anx78xx *anx78xx)
 {
 	int err;
 	unsigned int status;
+	unsigned long timeout;
 
-	err = wait_for(!anx78xx_aux_op_finished(anx78xx), AUX_WAIT_TIMEOUT_MS,
-		       AUX_WAIT_INTERVAL_MS);
+	/*
+	 * Does the right thing for modeset paths when run under kdgb or
+	 * similar atomic contexts. Note that it's important that we check the
+	 * condition again after having timed out, since the timeout could be
+	 * due to preemption or similar and we've never had a chance to check
+	 * the condition before the timeout.
+	 */
+	err = 0;
+	timeout = jiffies + msecs_to_jiffies(AUX_WAIT_TIMEOUT_MS) + 1;
+	while (anx78xx_aux_op_finished(anx78xx)) {
+		if (time_after(jiffies, timeout)) {
+			if (anx78xx_aux_op_finished(anx78xx))
+				err = -ETIMEDOUT;
+			break;
+		}
+		if (drm_can_sleep())
+			usleep_range(1000, 2000);
+		else
+			cpu_relax();
+	}
+
 	if (err) {
 		DRM_ERROR("Timed out waiting AUX to finish\n");
 		return -ETIMEDOUT;
@@ -198,12 +188,11 @@ static int anx78xx_aux_address(struct anx78xx *anx78xx, unsigned int addr)
 static ssize_t anx78xx_aux_transfer(struct drm_dp_aux *aux,
 				    struct drm_dp_aux_msg *msg)
 {
-	int i, err = 0;
+	int err = 0;
 	struct anx78xx *anx78xx = container_of(aux, struct anx78xx, aux);
 	u8 ctrl1 = msg->request;
 	u8 ctrl2 = SP_AUX_EN;
 	u8 *buffer = msg->buffer;
-	unsigned int regval;
 
 	/* The DP AUX transmit and receive buffer has 16 bytes. */
 	if (WARN_ON(msg->size > AUX_CH_BUFFER_SIZE))
@@ -217,27 +206,26 @@ static ssize_t anx78xx_aux_transfer(struct drm_dp_aux *aux,
 
 	if ((msg->request & DP_AUX_I2C_READ) == 0) {
 		/* When WRITE | MOT write values to data buffer */
-		for (i = 0; i < msg->size; i++) {
-			err = regmap_write(anx78xx->map[I2C_IDX_TX_P0],
-					   SP_DP_BUF_DATA0_REG + i, buffer[i]);
-			if (err)
-				return err;
-		}
+		err = regmap_bulk_write(anx78xx->map[I2C_IDX_TX_P0],
+					SP_DP_BUF_DATA0_REG, buffer,
+					msg->size);
+		if (err)
+			return err;
 	}
 
 	/* Write address and request */
-	err |= anx78xx_aux_address(anx78xx, msg->address);
+	err = anx78xx_aux_address(anx78xx, msg->address);
 	err |= regmap_write(anx78xx->map[I2C_IDX_TX_P0], SP_DP_AUX_CH_CTRL1_REG,
 			    ctrl1);
 	if (err)
 		return -EIO;
 
 	/* Start transaction */
-	err |= regmap_update_bits(anx78xx->map[I2C_IDX_TX_P0],
-				  SP_DP_AUX_CH_CTRL2_REG, SP_ADDR_ONLY |
-				  SP_AUX_EN, ctrl2);
+	err = regmap_update_bits(anx78xx->map[I2C_IDX_TX_P0],
+				 SP_DP_AUX_CH_CTRL2_REG, SP_ADDR_ONLY |
+				 SP_AUX_EN, ctrl2);
 	if (err)
-		return -EIO;
+		return err;
 
 	err = anx78xx_aux_wait(anx78xx);
 
@@ -245,20 +233,17 @@ static ssize_t anx78xx_aux_transfer(struct drm_dp_aux *aux,
 
 	if ((msg->size > 0) && (msg->request & DP_AUX_I2C_READ)) {
 		/* Read values from data buffer */
-		for (i = 0; i < msg->size; i++) {
-			err = regmap_read(anx78xx->map[I2C_IDX_TX_P0],
-					  SP_DP_BUF_DATA0_REG + i, &regval);
-			if (err)
-				return -EIO;
-
-			buffer[i] = (u8)regval;
-		}
+		err = regmap_bulk_read(anx78xx->map[I2C_IDX_TX_P0],
+				       SP_DP_BUF_DATA0_REG, buffer,
+				       msg->size);
+		if (err)
+			return err;
 	}
 
 	err = anx78xx_clear_bits(anx78xx->map[I2C_IDX_TX_P0],
 				 SP_DP_AUX_CH_CTRL2_REG, SP_ADDR_ONLY);
 	if (err)
-		return -EIO;
+		return err;
 
 	return msg->size;
 }
@@ -500,12 +485,6 @@ static int anx78xx_tx_initialization(struct anx78xx *anx78xx)
 	err |= anx78xx_set_bits(anx78xx->map[I2C_IDX_TX_P0],
 				SP_DP_ANALOG_POWER_DOWN_REG, SP_CH0_PD);
 
-	/*
-	 * BIT0: INT pin assertion polarity: 1 = assert high
-	 * BIT1: INT pin output type: 0 = push/pull
-	 */
-	err |= regmap_write(anx78xx->map[I2C_IDX_TX_P2], SP_INT_CTRL_REG, 0x01);
-
 	err |= anx78xx_link_phy_initialization(anx78xx);
 
 	/* Gen m_clk with downspreading */
@@ -521,6 +500,12 @@ static int anx78xx_tx_initialization(struct anx78xx *anx78xx)
 static int anx78xx_enable_interrupts(struct anx78xx *anx78xx)
 {
 	int err = 0;
+
+	/*
+	 * BIT0: INT pin assertion polarity: 1 = assert high
+	 * BIT1: INT pin output type: 0 = push/pull
+	 */
+	err |= regmap_write(anx78xx->map[I2C_IDX_TX_P2], SP_INT_CTRL_REG, 0x01);
 
 	err |= regmap_write(anx78xx->map[I2C_IDX_TX_P2],
 			    SP_COMMON_INT_MASK4_REG, SP_HPD_LOST | SP_HPD_PLUG);
@@ -541,68 +526,77 @@ static void anx78xx_poweron(struct anx78xx *anx78xx)
 {
 	struct anx78xx_platform_data *pdata = &anx78xx->pdata;
 
+	if (WARN_ON(anx78xx->powered))
+		return;
+
 	if (pdata->gpiod_v10) {
 		gpiod_set_value_cansleep(pdata->gpiod_v10, 1);
 		usleep_range(1000, 2000);
 	}
 
-	gpiod_set_value_cansleep(pdata->gpiod_reset, 0);
+	gpiod_set_value_cansleep(pdata->gpiod_reset, 1);
 	usleep_range(1000, 2000);
 
 	gpiod_set_value_cansleep(pdata->gpiod_pd, 0);
 	usleep_range(1000, 2000);
 
-	gpiod_set_value_cansleep(pdata->gpiod_reset, 1);
+	gpiod_set_value_cansleep(pdata->gpiod_reset, 0);
+
+	/* Power on registers module */
+	anx78xx_set_bits(anx78xx->map[I2C_IDX_TX_P2], SP_POWERDOWN_CTRL_REG,
+			 SP_HDCP_PD | SP_AUDIO_PD | SP_VIDEO_PD | SP_LINK_PD);
+	anx78xx_clear_bits(anx78xx->map[I2C_IDX_TX_P2], SP_POWERDOWN_CTRL_REG,
+			   SP_REGISTER_PD | SP_TOTAL_PD);
+
+	anx78xx->powered = true;
 }
 
 static void anx78xx_poweroff(struct anx78xx *anx78xx)
 {
 	struct anx78xx_platform_data *pdata = &anx78xx->pdata;
 
-	if (!anx78xx->running)
+	if (WARN_ON(!anx78xx->powered))
 		return;
+
+	gpiod_set_value_cansleep(pdata->gpiod_reset, 1);
+	usleep_range(1000, 2000);
+
+	gpiod_set_value_cansleep(pdata->gpiod_pd, 1);
+	usleep_range(1000, 2000);
 
 	if (pdata->gpiod_v10) {
 		gpiod_set_value_cansleep(pdata->gpiod_v10, 0);
 		usleep_range(1000, 2000);
 	}
 
-	gpiod_set_value_cansleep(pdata->gpiod_reset, 0);
-	usleep_range(1000, 2000);
-
-	gpiod_set_value_cansleep(pdata->gpiod_pd, 1);
-	usleep_range(1000, 2000);
-
-	anx78xx->running = false;
+	anx78xx->powered = false;
 }
 
 static int anx78xx_start(struct anx78xx *anx78xx)
 {
 	int err = 0;
 
-	if (anx78xx->running)
-		return 0;
-
-	anx78xx_poweron(anx78xx);
-
 	/* Power on all modules */
-	err |= regmap_write(anx78xx->map[I2C_IDX_TX_P2], SP_POWERDOWN_CTRL_REG,
-			    0x00);
+	err |= anx78xx_clear_bits(anx78xx->map[I2C_IDX_TX_P2],
+				  SP_POWERDOWN_CTRL_REG,
+				  SP_HDCP_PD | SP_AUDIO_PD | SP_VIDEO_PD |
+				  SP_LINK_PD);
 
+	err |= anx78xx_enable_interrupts(anx78xx);
 	err |= anx78xx_rx_initialization(anx78xx);
 	err |= anx78xx_tx_initialization(anx78xx);
-	err |= anx78xx_enable_interrupts(anx78xx);
 
-	if (err)
+	if (err) {
+		DRM_ERROR("Failed SlimPort transmitter initialization\n");
+		anx78xx_poweroff(anx78xx);
 		return -EIO;
+	}
 
 	/*
 	 * This delay seems to help keep the hardware in a good state. Without
 	 * it, there are times where it fails silently.
 	 */
 	usleep_range(10000, 15000);
-
-	anx78xx->running = true;
 
 	return 0;
 }
@@ -612,10 +606,10 @@ static int anx78xx_init_gpio(struct anx78xx *anx78xx)
 	struct device *dev = &anx78xx->client->dev;
 	struct anx78xx_platform_data *pdata = &anx78xx->pdata;
 
-	/* GPIO for cable detection */
-	pdata->gpiod_cable_det = devm_gpiod_get(dev, "cable-det", GPIOD_IN);
-	if (IS_ERR(pdata->gpiod_cable_det))
-		return PTR_ERR(pdata->gpiod_cable_det);
+	/* GPIO for hpd */
+	pdata->gpiod_hpd = devm_gpiod_get(dev, "hpd", GPIOD_IN);
+	if (IS_ERR(pdata->gpiod_hpd))
+		return PTR_ERR(pdata->gpiod_hpd);
 
 	/* GPIO for chip power down */
 	pdata->gpiod_pd = devm_gpiod_get(dev, "pd", GPIOD_OUT_HIGH);
@@ -629,10 +623,8 @@ static int anx78xx_init_gpio(struct anx78xx *anx78xx)
 
 	/* GPIO for V10 power control */
 	pdata->gpiod_v10 = devm_gpiod_get_optional(dev, "v10", GPIOD_OUT_LOW);
-	if (IS_ERR(pdata->gpiod_v10))
-		return PTR_ERR(pdata->gpiod_v10);
 
-	return 0;
+	return PTR_ERR_OR_ZERO(pdata->gpiod_v10);
 }
 
 static int anx78xx_dp_link_training(struct anx78xx *anx78xx)
@@ -691,7 +683,7 @@ static int anx78xx_dp_link_training(struct anx78xx *anx78xx)
 	}
 
 	/* Power up the sink */
-	err =  drm_dp_link_power_up(&anx78xx->aux, &anx78xx->link);
+	err = drm_dp_link_power_up(&anx78xx->aux, &anx78xx->link);
 	if (err < 0) {
 		DRM_ERROR("Failed to power up DisplayPort link\n");
 		return err;
@@ -701,7 +693,7 @@ static int anx78xx_dp_link_training(struct anx78xx *anx78xx)
 	err = regmap_write(anx78xx->map[I2C_IDX_TX_P0],
 			   SP_DP_DOWNSPREAD_CTRL1_REG, 0);
 	if (err)
-		return -EIO;
+		return err;
 
 	if (anx78xx->dpcd[3] & 0x1) {
 		DRM_DEBUG("Enable downspread on the sink\n");
@@ -709,7 +701,7 @@ static int anx78xx_dp_link_training(struct anx78xx *anx78xx)
 		err = regmap_write(anx78xx->map[I2C_IDX_TX_P0],
 				   SP_DP_DOWNSPREAD_CTRL1_REG, 8);
 		if (err)
-			return -EIO;
+			return err;
 
 		err = drm_dp_dpcd_writeb(&anx78xx->aux, DP_DOWNSPREAD_CTRL,
 					 DP_SPREAD_AMP_0_5);
@@ -731,13 +723,13 @@ static int anx78xx_dp_link_training(struct anx78xx *anx78xx)
 					 SP_DP_SYSTEM_CTRL_BASE + 4,
 					 SP_ENHANCED_MODE);
 	if (err)
-		return -EIO;
+		return err;
 
 	regval = drm_dp_link_rate_to_bw_code(anx78xx->link.rate);
 	err = regmap_write(anx78xx->map[I2C_IDX_TX_P0],
 			   SP_DP_MAIN_LINK_BW_SET_REG, regval);
 	if (err)
-		return -EIO;
+		return err;
 
 	err = drm_dp_link_configure(&anx78xx->aux, &anx78xx->link);
 	if (err < 0) {
@@ -749,7 +741,7 @@ static int anx78xx_dp_link_training(struct anx78xx *anx78xx)
 	err = regmap_write(anx78xx->map[I2C_IDX_TX_P0], SP_DP_LT_CTRL_REG,
 			   SP_LT_EN);
 	if (err)
-		return -EIO;
+		return err;
 
 	return 0;
 }
@@ -829,51 +821,40 @@ static int anx78xx_get_downstream_info(struct anx78xx *anx78xx)
 static int anx78xx_get_modes(struct drm_connector *connector)
 {
 	int err, num_modes = 0;
-	bool power_cycle;
 	struct anx78xx *anx78xx = connector_to_anx78xx(connector);
+
+	if (WARN_ON(!anx78xx->powered))
+		return 0;
 
 	if (anx78xx->edid)
 		return drm_add_edid_modes(connector, anx78xx->edid);
 
 	mutex_lock(&anx78xx->lock);
 
-	power_cycle = !anx78xx->running;
-
-	if (power_cycle) {
-		err = anx78xx_start(anx78xx);
-		if (err) {
-			DRM_ERROR("Failed to start transmitter: %d\n", err);
-			goto out;
-		}
-	}
-
 	err = anx78xx_get_downstream_info(anx78xx);
 	if (err) {
 		DRM_ERROR("Failed to get downstream info: %d\n", err);
-		goto out;
+		goto unlock;
 	}
 
 	anx78xx->edid = drm_get_edid(connector, &anx78xx->aux.ddc);
 	if (!anx78xx->edid) {
 		DRM_ERROR("Failed to read edid\n");
-		goto out;
+		goto unlock;
 	}
 
 	err = drm_mode_connector_update_edid_property(connector,
 						      anx78xx->edid);
 	if (err) {
 		DRM_ERROR("Failed to update edid property\n");
-		goto out;
+		goto unlock;
 	}
 
 	num_modes = drm_add_edid_modes(connector, anx78xx->edid);
 	/* Store the ELD */
 	drm_edid_to_eld(connector, anx78xx->edid);
 
-out:
-	if (power_cycle)
-		anx78xx_poweroff(anx78xx);
-
+unlock:
 	mutex_unlock(&anx78xx->lock);
 
 	return num_modes;
@@ -895,26 +876,18 @@ static const struct drm_connector_helper_funcs
 static enum drm_connector_status anx78xx_detect(struct drm_connector *connector,
 						bool force)
 {
-	enum drm_connector_status status;
 	struct anx78xx *anx78xx = container_of(connector, struct anx78xx,
 					       connector);
 
 	DRM_DEBUG_KMS("[CONNECTOR:%d:%s]\n", connector->base.id,
 		      connector->name);
 
-	mutex_lock(&anx78xx->lock);
-
-	if (!gpiod_get_value(anx78xx->pdata.gpiod_cable_det)) {
+	if (!gpiod_get_value(anx78xx->pdata.gpiod_hpd)) {
 		DRM_DEBUG_KMS("CONNECTOR STATUS DISCONNECTED\n");
-		status = connector_status_disconnected;
-		goto out;
+		return connector_status_disconnected;
 	}
 
-	status = connector_status_connected;
-
-out:
-	mutex_unlock(&anx78xx->lock);
-	return status;
+	return connector_status_connected;
 }
 
 static void anx78xx_connector_destroy(struct drm_connector *connector)
@@ -1001,15 +974,15 @@ static bool anx78xx_bridge_mode_fixup(struct drm_bridge *bridge,
 	return true;
 }
 
-static void anx78xx_bridge_disable(struct drm_bridge *bridge) {}
-
-static void anx78xx_bridge_post_disable(struct drm_bridge *bridge)
+static void anx78xx_bridge_disable(struct drm_bridge *bridge)
 {
 	struct anx78xx *anx78xx = bridge_to_anx78xx(bridge);
 
 	mutex_lock(&anx78xx->lock);
 
-	anx78xx_poweroff(anx78xx);
+	/* Power off all modules except configuration registers access */
+	anx78xx_set_bits(anx78xx->map[I2C_IDX_TX_P2], SP_POWERDOWN_CTRL_REG,
+			 SP_HDCP_PD | SP_AUDIO_PD | SP_VIDEO_PD | SP_LINK_PD);
 
 	mutex_unlock(&anx78xx->lock);
 }
@@ -1022,33 +995,28 @@ static void anx78xx_bridge_mode_set(struct drm_bridge *bridge,
 	struct hdmi_avi_infoframe frame;
 	struct anx78xx *anx78xx = bridge_to_anx78xx(bridge);
 
-	mutex_lock(&anx78xx->lock);
+	if (WARN_ON(!anx78xx->powered))
+		return;
 
-	if (!anx78xx->running) {
-		err = anx78xx_start(anx78xx);
-		if (err) {
-			DRM_ERROR("Failed to start transmitter: %d\n", err);
-			goto out;
-		}
-	}
+	mutex_lock(&anx78xx->lock);
 
 	mode = adjusted_mode;
 
 	err = drm_hdmi_avi_infoframe_from_display_mode(&frame, mode);
 	if (err) {
 		DRM_ERROR("Failed to setup AVI infoframe: %d\n", err);
-		goto out;
+		goto unlock;
 	}
 
 	err = anx78xx_send_video_infoframe(anx78xx, &frame);
 	if (err)
 		DRM_ERROR("Failed to send AVI infoframe: %d\n", err);
 
-out:
+unlock:
 	mutex_unlock(&anx78xx->lock);
 }
 
-static void anx78xx_bridge_pre_enable(struct drm_bridge *bridge)
+static void anx78xx_bridge_enable(struct drm_bridge *bridge)
 {
 	int err;
 	struct anx78xx *anx78xx = bridge_to_anx78xx(bridge);
@@ -1066,28 +1034,30 @@ static void anx78xx_bridge_pre_enable(struct drm_bridge *bridge)
 	mutex_unlock(&anx78xx->lock);
 }
 
-static void anx78xx_bridge_enable(struct drm_bridge *bridge) {}
-
 static const struct drm_bridge_funcs anx78xx_bridge_funcs = {
 	.attach		= anx78xx_bridge_attach,
 	.mode_fixup	= anx78xx_bridge_mode_fixup,
 	.disable	= anx78xx_bridge_disable,
-	.post_disable	= anx78xx_bridge_post_disable,
 	.mode_set	= anx78xx_bridge_mode_set,
-	.pre_enable	= anx78xx_bridge_pre_enable,
 	.enable		= anx78xx_bridge_enable,
 };
 
-static irqreturn_t anx78xx_cable_det_threaded_handler(int unused, void *data)
+static irqreturn_t anx78xx_hpd_threaded_handler(int unused, void *data)
 {
 	int err;
 	struct anx78xx *anx78xx = data;
 
+	if (anx78xx->powered)
+		return IRQ_HANDLED;
+
 	mutex_lock(&anx78xx->lock);
 
-	err = anx78xx_start(anx78xx);
+	/* Cable is pulled, power on the chip */
+	anx78xx_poweron(anx78xx);
+
+	err = anx78xx_enable_interrupts(anx78xx);
 	if (err)
-		DRM_ERROR("Failed to start transmitter: %d\n", err);
+		DRM_ERROR("Failed to enable interrupts: %d\n", err);
 
 	mutex_unlock(&anx78xx->lock);
 
@@ -1130,14 +1100,13 @@ static bool anx78xx_handle_common_int_4(struct anx78xx *anx78xx, u8 irq)
 	if (irq & SP_HPD_LOST) {
 		DRM_DEBUG_KMS("IRQ: Hot plug detect - cable is pulled out\n");
 		event = true;
-		/* Free cached EDID */
-		kfree(anx78xx->edid);
-		anx78xx->edid = NULL;
-		/* and poweroff the chip */
 		anx78xx_poweroff(anx78xx);
 	} else if (irq & SP_HPD_PLUG) {
 		DRM_DEBUG_KMS("IRQ: Hot plug detect - cable plug\n");
 		event = true;
+		/* Free previous cached EDID if any */
+		kfree(anx78xx->edid);
+		anx78xx->edid = NULL;
 	}
 
 	return event;
@@ -1190,15 +1159,11 @@ static irqreturn_t anx78xx_intp_threaded_handler(int unused, void *data)
 
 	mutex_lock(&anx78xx->lock);
 
-	/* Make sure we are still running after waiting for the lock */
-	if (!anx78xx->running)
-		goto out;
-
 	err = regmap_read(anx78xx->map[I2C_IDX_TX_P2], SP_DP_INT_STATUS1_REG,
 			  &irq);
 	if (err) {
 		DRM_ERROR("Failed to read dp int 1 status %d\n", err);
-		goto out;
+		goto unlock;
 	} else if (irq) {
 		anx78xx_handle_dp_int_1(anx78xx, irq);
 	}
@@ -1207,14 +1172,14 @@ static irqreturn_t anx78xx_intp_threaded_handler(int unused, void *data)
 			  SP_COMMON_INT_STATUS4_REG, &irq);
 	if (err) {
 		DRM_ERROR("Failed to read common int 4 status %d\n", err);
-		goto out;
+		goto unlock;
 	} else if (irq) {
 		event = anx78xx_handle_common_int_4(anx78xx, irq);
 	}
 
-	/* Make sure we are still running after handle HPD events */
-	if (!anx78xx->running)
-		goto out;
+	/* Make sure we are still powered after handle HPD events */
+	if (!anx78xx->powered)
+		goto unlock;
 
 	err = regmap_read(anx78xx->map[I2C_IDX_RX_P0], SP_INT_STATUS1_REG,
 			  &irq);
@@ -1223,7 +1188,7 @@ static irqreturn_t anx78xx_intp_threaded_handler(int unused, void *data)
 	else if (irq)
 		anx78xx_handle_hdmi_int_1(anx78xx, irq);
 
-out:
+unlock:
 	mutex_unlock(&anx78xx->lock);
 
 	if (event)
@@ -1282,10 +1247,10 @@ static int anx78xx_i2c_probe(struct i2c_client *client,
 		return err;
 	}
 
-	pdata->cable_det_irq = gpiod_to_irq(pdata->gpiod_cable_det);
-	if (pdata->cable_det_irq < 0) {
-		DRM_ERROR("Failed to get cable_det irq %d\n",
-			  pdata->cable_det_irq);
+	pdata->hpd_irq = gpiod_to_irq(pdata->gpiod_hpd);
+	if (pdata->hpd_irq < 0) {
+		DRM_ERROR("Failed to get hpd irq %d\n",
+			  pdata->hpd_irq);
 		return -ENODEV;
 	}
 
@@ -1300,9 +1265,10 @@ static int anx78xx_i2c_probe(struct i2c_client *client,
 		anx78xx->i2c_dummy[i] = i2c_new_dummy(client->adapter,
 						anx78xx_i2c_addresses[i] >> 1);
 		if (!anx78xx->i2c_dummy[i]) {
+			err = -ENOMEM;
 			DRM_ERROR("Failed to reserve i2c bus %02x.\n",
 				  anx78xx_i2c_addresses[i]);
-			goto err_i2c;
+			goto err_unregister_i2c;
 		}
 
 		anx78xx->map[i] = devm_regmap_init_i2c(anx78xx->i2c_dummy[i],
@@ -1311,7 +1277,7 @@ static int anx78xx_i2c_probe(struct i2c_client *client,
 			err = PTR_ERR(anx78xx->map[i]);
 			DRM_ERROR("Failed regmap initialization %02x.\n",
 				  anx78xx_i2c_addresses[i]);
-			goto err_i2c;
+			goto err_unregister_i2c;
 		}
 	}
 
@@ -1321,19 +1287,19 @@ static int anx78xx_i2c_probe(struct i2c_client *client,
 	err = regmap_read(anx78xx->map[I2C_IDX_TX_P2], SP_DEVICE_IDL_REG,
 			  &idl);
 	if (err)
-		goto err_i2c;
+		goto err_poweroff;
 
 	err = regmap_read(anx78xx->map[I2C_IDX_TX_P2], SP_DEVICE_IDH_REG,
 			  &idh);
 	if (err)
-		goto err_i2c;
+		goto err_poweroff;
 
 	anx78xx->chipid = (u8)idl | ((u8)idh << 8);
 
 	err = regmap_read(anx78xx->map[I2C_IDX_TX_P2], SP_DEVICE_VERSION_REG,
 			  &version);
 	if (err)
-		goto err_i2c;
+		goto err_poweroff;
 
 	for (i = 0; i < ARRAY_SIZE(anx78xx_chipid_list); i++) {
 		if (anx78xx->chipid == anx78xx_chipid_list[i]) {
@@ -1344,23 +1310,21 @@ static int anx78xx_i2c_probe(struct i2c_client *client,
 		}
 	}
 
-	anx78xx_poweroff(anx78xx);
-
 	if (!found) {
 		DRM_ERROR("ANX%x (ver. %d) not supported by this driver\n",
 			  anx78xx->chipid, version);
 		err = -ENODEV;
-		goto err_i2c;
+		goto err_poweroff;
 	}
 
-	err = devm_request_threaded_irq(&client->dev, pdata->cable_det_irq,
+	err = devm_request_threaded_irq(&client->dev, pdata->hpd_irq,
 					NULL,
-					anx78xx_cable_det_threaded_handler,
+					anx78xx_hpd_threaded_handler,
 					IRQF_TRIGGER_RISING | IRQF_ONESHOT,
-					"anx78xx-cable-det", anx78xx);
+					"anx78xx-hpd", anx78xx);
 	if (err) {
 		DRM_ERROR("Failed to request CABLE_DET threaded irq\n");
-		goto err_i2c;
+		goto err_poweroff;
 	}
 
 	err = devm_request_threaded_irq(&client->dev, pdata->intp_irq, NULL,
@@ -1369,20 +1333,26 @@ static int anx78xx_i2c_probe(struct i2c_client *client,
 					"anx78xx-intp", anx78xx);
 	if (err) {
 		DRM_ERROR("Failed to request INTP threaded irq\n");
-		goto err_i2c;
+		goto err_poweroff;
 	}
 
 	anx78xx->bridge.funcs = &anx78xx_bridge_funcs;
 	err = drm_bridge_add(&anx78xx->bridge);
 	if (err < 0) {
 		DRM_ERROR("Failed to add drm bridge\n");
-		goto err_i2c;
+		goto err_poweroff;
 	}
+
+	/* If cable is pulled out, just poweroff and wait for hpd event */
+	if (!gpiod_get_value(anx78xx->pdata.gpiod_hpd))
+		anx78xx_poweroff(anx78xx);
 
 	return 0;
 
-err_i2c:
+err_poweroff:
 	anx78xx_poweroff(anx78xx);
+
+err_unregister_i2c:
 	unregister_i2c_dummy_clients(anx78xx);
 	return err;
 }
