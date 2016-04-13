@@ -1,6 +1,4 @@
-/*
- * Google Gale device tree source
- *
+/* Copyright (c) 2016, The Linux Foundation. All rights reserved.
  * Copyright (c) 2016 Google, Inc
  *
  * This program is free software; you can redistribute it and/or modify
@@ -9,6 +7,8 @@
  */
 
 #include "qcom-ipq4019.dtsi"
+#include <dt-bindings/input/input.h>
+#include <dt-bindings/gpio/gpio.h>
 
 / {
 	model = "Google IPQ4019/Gale";
@@ -17,6 +17,14 @@
 	memory {
 		device_type = "memory";
 		reg = <0x80000000 0x20000000>; /* 512MB */
+	};
+
+	clocks {
+		xo: xo {
+			compatible = "fixed-clock";
+			clock-frequency = <48000000>;
+			#clock-cells = <0>;
+		};
 	};
 
 	reserved-memory {
@@ -41,6 +49,16 @@
 	};
 
 	soc {
+
+		timer {
+			compatible = "arm,armv7-timer";
+			interrupts = <1 2 0xf08>,
+				     <1 3 0xf08>,
+				     <1 4 0xf08>,
+				     <1 1 0xf08>;
+			clock-frequency = <48000000>;
+		};
+
 		pinctrl@0x01000000 {
 
 			fw_pins: fw_pinmux {
@@ -58,9 +76,67 @@
 				};
 			};
 
+			reset802_15_4 {
+					pins = "gpio40";
+			};
+
+			led_reset {
+					pins = "gpio22";
+					bias-pull,up;
+			};
+
 			sys_reset {
-				pins = "gpio19";
-				output-high;
+					pins = "gpio19";
+					output-high;
+			};
+
+			rx_active {
+					pins = "gpio43";
+					bias-pull,down;
+			};
+
+			spi_0_pins: spi_0_pinmux {
+				pinmux {
+					function = "blsp_spi0";
+					pins = "gpio13", "gpio14","gpio15";
+				};
+				pinmux_cs {
+					function = "gpio";
+					pins = "gpio12";
+				};
+				pinconf {
+					pins = "gpio13", "gpio14","gpio15";
+					drive-strength = <12>;
+					bias-disable;
+				};
+				pinconf_cs {
+					pins = "gpio12";
+					drive-strength = <2>;
+					bias-disable;
+					output-high;
+				};
+			};
+
+			spi_1_pins: spi_1_pinmux {
+				pinmux {
+					function = "blsp_spi1";
+					pins = "gpio44", "gpio46","gpio47";
+				};
+				pinmux_cs {
+					function = "gpio";
+					pins = "gpio45";
+				};
+				pinconf {
+					pins = "gpio44", "gpio46","gpio47";
+					drive-strength = <12>;
+					bias-disable;
+				};
+				pinconf_cs {
+					pins = "gpio45";
+					drive-strength = <2>;
+					bias-disable;
+					output-high;
+				};
 			};
 
 			serial_0_pins: serial0_pinmux {
@@ -78,6 +154,80 @@
 					bias-disable;
 				};
 			};
+
+			i2c_0_pins: i2c_0_pinmux {
+				mux {
+					pins = "gpio20", "gpio21";
+					function = "blsp_i2c0";
+					bias-disable;
+				};
+			};
+
+			i2c_1_pins: i2c_1_pinmux {
+				mux {
+					pins = "gpio34", "gpio35";
+					function = "blsp_i2c1";
+					bias-disable;
+				};
+			};
+
+			sd_0_pins: sd_0_pinmux {
+				sd0 {
+					pins = "gpio23";
+					function = "sdio0";
+					drive-strength = <10>;
+				};
+				sd1 {
+					pins = "gpio24";
+					function = "sdio1";
+					drive-strength = <10>;
+				};
+				sd2 {
+					pins = "gpio25";
+					function = "sdio2";
+					drive-strength = <10>;
+				};
+				sd3 {
+					pins = "gpio26";
+					function = "sdio3";
+					drive-strength = <10>;
+				};
+				sdclk {
+					pins = "gpio27";
+					function = "sdio_clk";
+					drive-strength = <16>;
+				};
+				sdcmd {
+					pins = "gpio28";
+					function = "sdio_cmd";
+					drive-strength = <10>;
+				};
+				sd4 {
+					pins = "gpio29";
+					function = "sdio4";
+					drive-strength = <10>;
+				};
+				sd5 {
+					pins = "gpio30";
+					function = "sdio5";
+					drive-strength = <10>;
+				};
+				sd6 {
+					pins = "gpio31";
+					function = "sdio6";
+					drive-strength = <10>;
+				};
+				sd7 {
+					pins = "gpio32";
+					function = "sdio7";
+					drive-strength = <10>;
+					bias-disable;
+				};
+			};
+		};
+
+		blsp_dma: dma@7884000 {
+			status = "ok";
 		};
 
 		serial@78af000 {
@@ -89,7 +239,248 @@
 		serial@78b0000 {
 			pinctrl-0 = <&serial_1_pins>;
 			pinctrl-names = "default";
-			status = "disabled";
+			status = "ok";
+		};
+
+
+		usb3_ss_phy: ssphy@0 {
+			status = "ok";
+		};
+
+		dummy_ss_phy: ssphy@1 {
+			status = "ok";
+		};
+
+		usb3_hs_phy: hsphy@a6000 {
+			status = "ok";
+		};
+
+		usb2_hs_phy: hsphy@a8000 {
+			status = "ok";
+		};
+
+		usb3: usb3@8a00000 {
+			status = "ok";
+		};
+
+		usb2: usb2@6000000 {
+			status = "ok";
+		};
+
+		spi_0: spi@78b5000 { /* BLSP1 QUP1 */
+			pinctrl-0 = <&spi_0_pins>;
+			pinctrl-names = "default";
+			status = "ok";
+			cs-gpios = <&tlmm 12 0>;
+
+			m25p80@0 {
+				#address-cells = <1>;
+				#size-cells = <1>;
+				reg = <0>;
+				compatible = "n25q128a11";
+				linux,modalias = "m25p80", "n25q128a11";
+				spi-max-frequency = <24000000>;
+				use-default-sizes;
+			};
+		};
+
+		spi_1: spi@78b6000 { /* BLSP1 QUP2 */
+			pinctrl-0 = <&spi_1_pins>;
+			pinctrl-names = "default";
+			status = "ok";
+			cs-gpios = <&tlmm 45 0>;
+
+			spidev@0 {
+				compatible = "spidev";
+				reg = <0>;
+				spi-max-frequency = <24000000>;
+			};
+		};
+
+		i2c_0: i2c@78b7000 { /* BLSP1 QUP3 */
+			pinctrl-0 = <&i2c_0_pins>;
+			pinctrl-names = "default";
+			status = "ok";
+			trusted-platform-module {
+				compatible = "infineon,slb9645tt";
+				reg = <0x20>;
+				powered-while-suspended;
+			};
+		};
+
+		i2c_1: i2c@78b8000 { /* BLSP1 QUP4 */
+			pinctrl-0 = <&i2c_1_pins>;
+			pinctrl-names = "default";
+			status = "ok";
+			lp55231@32 {
+				compatible = "national,lp5523";
+				reg = <0x32>;
+				clock-mode = [01];
+
+				chan0 {
+					chan-name = "LED0_Red";
+					led-cur = [64];
+					max-cur = [78];
+				};
+
+				chan1 {
+					chan-name = "LED0_Green";
+					led-cur = [64];
+					max-cur = [78];
+				};
+
+				chan2 {
+					chan-name = "LED0_Blue";
+					led-cur = [64];
+					max-cur = [78];
+				};
+
+				chan3 {
+					chan-name = "LED1_Red";
+					led-cur = [64];
+					max-cur = [78];
+				};
+
+				chan4 {
+					chan-name = "LED1_Green";
+					led-cur = [64];
+					max-cur = [78];
+				};
+
+				chan5 {
+					chan-name = "LED1_Blue";
+					led-cur = [64];
+					max-cur = [78];
+				};
+
+				chan6 {
+					chan-name = "LED2_Red";
+					led-cur = [64];
+					max-cur = [78];
+				};
+
+				chan7 {
+					chan-name = "LED2_Green";
+					led-cur = [64];
+					max-cur = [78];
+				};
+
+				chan8 {
+					chan-name = "LED2_Blue";
+					led-cur = [64];
+					max-cur = [78];
+				};
+			};
+
+			lp55231@33 {
+				compatible = "national,lp5523";
+				reg = <0x33>;
+				clock-mode = [01];
+
+				chan0 {
+					chan-name = "LED3_Red";
+					led-cur = [64];
+					max-cur = [78];
+				};
+
+				chan1 {
+					chan-name = "LED3_Green";
+					led-cur = [64];
+					max-cur = [78];
+				};
+
+				chan2 {
+					chan-name = "LED3_Blue";
+					led-cur = [64];
+					max-cur = [78];
+				};
+
+				chan3 {
+					chan-name = "LED4_Red";
+					led-cur = [64];
+					max-cur = [78];
+				};
+
+				chan4 {
+					chan-name = "LED4_Green";
+					led-cur = [64];
+					max-cur = [78];
+				};
+
+				chan5 {
+					chan-name = "LED4_Blue";
+					led-cur = [64];
+					max-cur = [78];
+				};
+
+				chan6 {
+					chan-name = "LED5_Red";
+					led-cur = [64];
+					max-cur = [78];
+				};
+
+				chan7 {
+					chan-name = "LED5_Green";
+					led-cur = [64];
+					max-cur = [78];
+				};
+
+				chan8 {
+					chan-name = "LED5_Blue";
+					led-cur = [64];
+					max-cur = [78];
+				};
+			};
+
+			atmegaxx_captouch@51 {
+				compatible = "atmegaxx_captouch";
+				reg = <0x51>;
+				gpios = <&tlmm 67 GPIO_ACTIVE_LOW>;
+				num-of-buttons = <8>;
+				button-codes = <BTN_0>, <BTN_1>,
+					<BTN_2>, <BTN_3>,
+					<BTN_4>, <BTN_5>,
+					<BTN_6>, <BTN_7>;
+			};
+		};
+
+		qcom_crypto: qcrypto@8e20000 {
+			status = "ok";
+		};
+
+		qcom_cedev: qcedev@8e20000 {
+			status = "ok";
+		};
+
+		usb3: usb3@8a00000 {
+			status = "ok";
+		};
+
+		usb2: usb2@6000000 {
+			status = "ok";
+		};
+
+		vccq_sd0: regulator@0 {
+			status = "ok";
+		};
+
+		sdhci@7824000 {
+			status = "ok";
+			pinctrl-0 = <&sd_0_pins>;
+			pinctrl-names = "default";
+			vqmmc-supply = <&vccq_sd0>;
+			non-removable;
+                };
+
+		gpio_keys {
+			compatible = "gpio-keys";
+
+			button@1 {
+				label = "wps";
+				linux,code = <KEY_WPS_BUTTON>;
+				gpios = <&tlmm 18 GPIO_ACTIVE_LOW>;
+				linux,input-type = <1>;
+			};
 		};
 	};
 };
