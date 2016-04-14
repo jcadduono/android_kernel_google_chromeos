@@ -20,8 +20,11 @@ static const char * const qcom_dt_match[] __initconst = {
 	"qcom,apq8084",
 	"qcom,ipq8062",
 	"qcom,ipq8064",
+	"qcom,ipq4019",
+	"qcom,ipq40xx-apdk04.1",
 	"qcom,msm8660-surf",
 	"qcom,msm8960-cdp",
+	"google,gale",
 	NULL
 };
 
