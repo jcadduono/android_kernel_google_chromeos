@@ -42,9 +42,9 @@
 		chromeos {
 			pinctrl-0 = <&fw_pins>;
 			pinctrl-names = "default";
-			write-protect-gpio = <&tlmm 6 0>;
-			recovery-switch = <&tlmm 7 0>;
-			developer-switch = <&tlmm 41 0>;
+			write-protect-gpio = <&tlmm 6 GPIO_ACTIVE_LOW>;
+			recovery-switch = <&tlmm 7 GPIO_ACTIVE_LOW>;
+			developer-switch = <&tlmm 41 GPIO_ACTIVE_LOW>;
 		};
 	};
 
