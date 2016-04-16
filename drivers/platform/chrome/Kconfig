@@ -26,7 +26,6 @@ config CHROMEOS_OF_FIRMWARE
 	bool "ChromeOS firmware interface driver"
 	depends on OF
 	select CHROMEOS
-	select CHROMEOS_VBC_EC
 	---help---
 	  This driver provides an interface to ChromeOS firmware.
 
