@@ -1,13 +1,22 @@
 /*
- * memconsole-of.c
+ * memconsole-coreboot.c
  *
- * Open Firmware / device tree specific parts of the memory based BIOS console.
+ * Memory based BIOS console accessed through coreboot table.
  *
- * Copyright 2014 Google Inc.
+ * Copyright 2016 Google Inc.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License v2.0 as published by
+ * the Free Software Foundation.
+ *
+ * This program is distributed in the hope that it will be useful,
+ * but WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+ * GNU General Public License for more details.
  */
 
 #include <linux/kernel.h>
-#include <linux/of_address.h>
+#include <linux/module.h>
 #include <linux/platform_device.h>
 
 #include "memconsole.h"
@@ -15,7 +24,7 @@
 
 #define CB_TAG_CBMEM_CONSOLE	0x17
 
-static int memconsole_of_probe(struct platform_device *pdev)
+static int memconsole_probe(struct platform_device *pdev)
 {
 	int ret;
 	struct lb_cbmem_ref entry;
@@ -31,15 +40,15 @@ static int memconsole_of_probe(struct platform_device *pdev)
 	return memconsole_sysfs_init();
 }
 
-static int memconsole_of_remove(struct platform_device *pdev)
+static int memconsole_remove(struct platform_device *pdev)
 {
 	memconsole_exit();
 	return 0;
 }
 
 static struct platform_driver memconsole_driver = {
-	.probe = memconsole_of_probe,
-	.remove = memconsole_of_remove,
+	.probe = memconsole_probe,
+	.remove = memconsole_remove,
 	.driver = {
 		.name = "memconsole",
 	},
@@ -59,3 +68,6 @@ static int __init platform_memconsole_init(void)
 }
 
 module_init(platform_memconsole_init);
+
+MODULE_AUTHOR("Google, Inc.");
+MODULE_LICENSE("GPL");
