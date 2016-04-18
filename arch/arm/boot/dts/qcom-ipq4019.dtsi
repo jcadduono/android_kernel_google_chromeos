@@ -26,6 +26,7 @@
 	aliases {
 		spi0 = &spi_0;
 		i2c0 = &i2c_0;
+		i2c1 = &i2c_1;
 	};
 
 	cpus {
@@ -170,6 +171,17 @@
 			status = "disabled";
 		};
 
+		i2c_1: i2c@78b8000 {
+			compatible = "qcom,i2c-qup-v2.2.1";
+			reg = <0x78b7000 0x6000>;
+			interrupts = <GIC_SPI 98 IRQ_TYPE_LEVEL_HIGH>;
+			clocks = <&gcc GCC_BLSP1_AHB_CLK>,
+				 <&gcc GCC_BLSP1_QUP2_I2C_APPS_CLK>;
+			clock-names = "iface", "core";
+			#address-cells = <1>;
+			#size-cells = <0>;
+			status = "disabled";
+		};
 
 		cryptobam: dma@8e04000 {
 			compatible = "qcom,bam-v1.7.0";
