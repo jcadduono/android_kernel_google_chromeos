@@ -644,6 +644,13 @@ mwifiex_close(struct net_device *dev)
 		priv->scan_aborting = true;
 	}
 
+	if (priv->sched_scanning) {
+		mwifiex_dbg(priv->adapter, INFO,
+			    "aborting bgscan on ndo_stop\n");
+		mwifiex_stop_bg_scan(priv);
+		cfg80211_sched_scan_stopped(priv->wdev.wiphy);
+	}
+
 	netif_tx_stop_all_queues(dev);
 	return 0;
 }
@@ -669,13 +676,6 @@ int mwifiex_queue_tx_pkt(struct mwifiex_private *priv, struct sk_buff *skb)
 	mwifiex_wmm_add_buf_txqueue(priv, skb);
 
 	mwifiex_queue_main_work(priv->adapter);
-
-	if (priv->sched_scanning) {
-		mwifiex_dbg(priv->adapter, INFO,
-			    "aborting bgscan on ndo_stop\n");
-		mwifiex_stop_bg_scan(priv);
-		cfg80211_sched_scan_stopped(priv->wdev.wiphy);
-	}
 
 	return 0;
 }
