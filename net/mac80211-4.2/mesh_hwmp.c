@@ -1190,30 +1190,19 @@ int mesh_nexthop_lookup(struct ieee80211_sub_if_data *sdata,
 	struct ieee80211_hdr *hdr = (struct ieee80211_hdr *) skb->data;
 	u8 *target_addr = hdr->addr3;
 	int err = -ENOENT;
-#ifdef MESH_BYPASS_ROUTING
-	struct ieee80211s_hdr *mesh_hdr;
-#endif
 
 	rcu_read_lock();
 	mpath = mesh_path_lookup(sdata, target_addr);
 
 	if (!mpath || !(mpath->flags & MESH_PATH_ACTIVE)) {
-#ifdef MESH_BYPASS_ROUTING
+#ifdef MESH_BYPASS_ROUTING_FOR_TEST_FRAMES
 		/* Allow injected packets to bypass mesh routing -
 		 * The assumption is that these packets have
-		 * DA = all zeros and SA = targeted mesh peer MAC.
-		 * Put the peer MAC in RA/meshDA/DA and own addr
-		 * in TA/meshSA/SA. */
+		 * DA (addr3) is 0. the actual destination is set to addr1
+		 * already in tx.c. copy it to addr3.
+		 */
 		if (is_zero_ether_addr(target_addr)) {
-			mesh_hdr = (struct ieee80211s_hdr *) (skb->data +
-					ieee80211_hdrlen(hdr->frame_control));
-			/* copy addr2 to RA/DA and mesh vif to TA/SA */
-			memcpy(hdr->addr1, mesh_hdr->eaddr2, ETH_ALEN);
-			memcpy(hdr->addr3, mesh_hdr->eaddr2, ETH_ALEN);
-			memcpy(mesh_hdr->eaddr1, mesh_hdr->eaddr2, ETH_ALEN);
-			memcpy(hdr->addr2, sdata->vif.addr, ETH_ALEN);
-			memcpy(hdr->addr4, sdata->vif.addr, ETH_ALEN);
-			memcpy(mesh_hdr->eaddr2, sdata->vif.addr, ETH_ALEN);
+			memcpy(hdr->addr3, hdr->addr1, ETH_ALEN);
 			err = 0;
 		}
 #endif

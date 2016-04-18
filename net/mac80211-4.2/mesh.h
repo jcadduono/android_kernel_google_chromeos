@@ -15,6 +15,7 @@
 #include <linux/jhash.h>
 #include "ieee80211_i.h"
 
+#define MESH_BYPASS_ROUTING_FOR_TEST_FRAMES
 
 /* Data structures */
 
