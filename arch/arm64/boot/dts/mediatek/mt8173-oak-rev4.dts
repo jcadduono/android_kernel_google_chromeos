@@ -21,7 +21,7 @@
 };
 
 &anx7814 {
-	reset-gpios = <&pio 98 GPIO_ACTIVE_HIGH>;
+	reset-gpios = <&pio 98 GPIO_ACTIVE_LOW>;
 };
 
 &anx7814_pins {
