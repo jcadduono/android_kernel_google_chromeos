@@ -257,6 +257,16 @@
 			regulator;
 		};
 
+		sdhci@7824000 {
+			compatible = "qcom,sdhci-msm-v4";
+			reg = <0x7824900 0x11c>, <0x7824000 0x800>;
+			interrupts = <0 123 0>, <0 138 0>;
+			bus-width = <8>;
+			clocks = <&gcc GCC_SDCC1_APPS_CLK>, <&gcc GCC_SDCC1_AHB_CLK>;
+			clock-names = "core", "iface";
+			status = "disabled";
+		};
+
 		vccq_sd0: regulator@0 {
 			compatible = "qcom,regulator-ipq4019";
 			regulator-name = "SD0 VccQ";
