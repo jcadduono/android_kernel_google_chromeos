@@ -545,6 +545,51 @@ MPATH_OPS_RW(path_stats);
 
 #endif
 
+#ifdef CONFIG_MAC80211_DEBUGFS
+
+static ssize_t sta_link_degrade_db_read(struct file *file,
+					char __user *userbuf,
+					size_t count, loff_t *ppos)
+{
+	struct sta_info *sta = file->private_data;
+	char buf[10], *p = buf;
+	u32 link_degrade_db;
+
+	link_degrade_db = sta->link_degrade_db;
+	p += scnprintf(p, sizeof(buf)+buf-p, "%d\n", link_degrade_db);
+	return simple_read_from_buffer(userbuf, count, ppos, buf, p - buf);
+}
+
+static ssize_t sta_link_degrade_db_write(struct file *file,
+					       const char __user *userbuf,
+					       size_t count, loff_t *ppos)
+{
+	char _buf[12] = {}, *buf = _buf;
+	struct sta_info *sta = file->private_data;
+	unsigned long link_degrade_db;
+	int ret;
+
+	if (count > sizeof(_buf))
+		return -EINVAL;
+
+	if (!sta->mesh)
+		return -EINVAL;
+
+	if (copy_from_user(buf, userbuf, count))
+		return -EFAULT;
+
+	buf[sizeof(_buf) - 1] = '\0';
+	ret = kstrtoul(buf, 0, &link_degrade_db);
+	if(link_degrade_db < 0 ||  link_degrade_db > 100)
+		return -EINVAL;
+	sta->link_degrade_db = link_degrade_db;
+	return ret ?: count;
+}
+
+STA_OPS_RW(link_degrade_db);
+
+#endif
+
 #define DEBUGFS_ADD(name) \
 	debugfs_create_file(#name, 0400, \
 		sta->debugfs.dir, sta, &sta_ ##name## _ops);
@@ -704,6 +749,10 @@ void ieee80211_sta_debugfs_add(struct sta_info *sta)
 #ifdef CONFIG_MAC80211_MESH
 	if (sdata->vif.type == NL80211_IFTYPE_MESH_POINT)
 		DEBUGFS_ADD(mesh_link_metric);
+#endif
+
+#ifdef CONFIG_MAC80211_DEBUGFS
+	DEBUGFS_ADD(link_degrade_db);
 #endif
 
 	if (sizeof(sta->driver_buffered_tids) == sizeof(u32))

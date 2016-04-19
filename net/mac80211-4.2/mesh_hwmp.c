@@ -335,6 +335,7 @@ u32 airtime_link_metric_get(struct ieee80211_local *local,
 	int err;
 	u32 tx_time, estimated_retx;
 	u64 result;
+	u32 bitrate_avg = sta->mesh->bitrate_avg;
 
 	if (sta->mesh->fail_avg >= 100)
 		return MAX_METRIC;
@@ -344,11 +345,53 @@ u32 airtime_link_metric_get(struct ieee80211_local *local,
 
 	err = (sta->mesh->fail_avg << ARITH_SHIFT) / 100;
 
+#ifdef CONFIG_MAC80211_DEBUGFS
+/* signal strength in db below witch the rate remains at 6Mbps */
+#define MIN_SIGNAL_STRENGTH -99
+#define MIN_BIT_RATE  6000 /* Lowest rate in Kbps */
+/* signal strength below which rates start dropping exponentially */
+#define RATE_DROP_DB_THRESHOLD  -40
+/*
+ * Approximate signal strength change in db that results
+ * in rate to drop by half.
+ */
+#define DB_DEGRADE_TO_HALF_RATE  6
+	/*
+	 * Degrade rate with the following rules.
+	 * - Force the rate to 6Mbps if resulting signal strengh is below
+	 *   MIN_SIGNAL_STRENGTH.
+	 * - Rate remains same until RATE_DROP_DB_THRESHOLD and drops by
+	 *   half for every HALF_RATE_DB_DELTA db drop there after.
+	 */
+	if (sta->link_degrade_db) {
+		int avg_signal;
+		/* the average signal strength is stored as a +ve value */
+		avg_signal = (s8) -ewma_read(&sta->avg_signal);
+		if (avg_signal > MIN_SIGNAL_STRENGTH && bitrate_avg > MIN_BIT_RATE) {
+			if ((avg_signal - (int)sta->link_degrade_db) < MIN_SIGNAL_STRENGTH) {
+				bitrate_avg = MIN_BIT_RATE;
+			} else {
+				int db_change=0;
+				if ((avg_signal - sta->link_degrade_db) < RATE_DROP_DB_THRESHOLD) {
+					/*
+					 * Degraded signal falls below RATE_DROP_DB_THRESHOLD,
+					 * calculate delta from RATE_DROP_DB_THRESHOLD to the
+					 * resulting signal strength.
+					 */
+					db_change =  RATE_DROP_DB_THRESHOLD -
+						(avg_signal - sta->link_degrade_db);
+				}
+				bitrate_avg =  MIN_BIT_RATE +
+					((bitrate_avg - MIN_BIT_RATE) >>
+					 (db_change/DB_DEGRADE_TO_HALF_RATE));
+			}
+		}
+	}
+#endif
 	/* bitrate is in units of 1 Kbps, while we need rate in units of
 	 * 1Mbps. This will be corrected on tx_time computation.
 	 */
-	tx_time = (device_constant + 1000 * test_frame_len /
-		sta->mesh->bitrate_avg);
+	tx_time = (device_constant + 1000 * test_frame_len / bitrate_avg);
 	estimated_retx = ((1 << (2 * ARITH_SHIFT)) / (s_unit - err));
 	result = (tx_time * estimated_retx) >> (2 * ARITH_SHIFT) ;
 	return (u32)result;

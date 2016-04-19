@@ -1975,11 +1975,29 @@ void sta_set_sinfo(struct sta_info *sta, struct station_info *sinfo)
 	    ieee80211_hw_check(&sta->local->hw, SIGNAL_UNSPEC)) {
 		if (!(sinfo->filled & BIT(NL80211_STA_INFO_SIGNAL))) {
 			sinfo->signal = (s8)sta->last_signal;
+#ifdef CONFIG_MAC80211_DEBUGFS
+			if ( sta->link_degrade_db) {
+				if (((int)sinfo->signal - (int)sta->link_degrade_db) < -127) {
+					sinfo->signal = -127;
+				} else {
+					sinfo->signal -= (int)sta->link_degrade_db;
+				}
+			}
+#endif
 			sinfo->filled |= BIT(NL80211_STA_INFO_SIGNAL);
 		}
 
 		if (!(sinfo->filled & BIT(NL80211_STA_INFO_SIGNAL_AVG))) {
 			sinfo->signal_avg = (s8) -ewma_read(&sta->avg_signal);
+#ifdef CONFIG_MAC80211_DEBUGFS
+			if ( sta->link_degrade_db) {
+				if (((int)sinfo->signal_avg - (int)sta->link_degrade_db) < -127) {
+					sinfo->signal_avg= -127 ;
+				} else {
+					sinfo->signal_avg -= (int)sta->link_degrade_db;
+				}
+			}
+#endif
 			sinfo->filled |= BIT(NL80211_STA_INFO_SIGNAL_AVG);
 		}
 	}

@@ -511,6 +511,8 @@ struct sta_info {
 	u8 timer_to_tid[IEEE80211_NUM_TIDS];
 
 #ifdef CONFIG_MAC80211_DEBUGFS
+	/* force link degradation by this db */
+	u32 link_degrade_db;
 	struct sta_info_debugfsdentries {
 		struct dentry *dir;
 		bool add_has_run;
