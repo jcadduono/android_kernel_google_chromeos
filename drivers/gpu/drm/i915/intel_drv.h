@@ -458,6 +458,8 @@ struct intel_crtc_state {
 
 	/* Gamma mode programmed on the pipe */
 	uint32_t gamma_mode;
+	/* IVB sprite scaling w/a (WaCxSRDisabledForSpriteScaling:ivb) */
+	bool disable_lp_wm;
 };
 
 struct vlv_wm_state {
