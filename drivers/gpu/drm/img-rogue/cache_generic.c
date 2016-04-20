@@ -276,18 +276,24 @@ static INLINE PVRSRV_ERROR CacheOpRangeBasedSlow (PMR *psPMR,
 		{
 			PVR_ASSERT(ui32PageIndex == ui32KMapNumOfPages);
 
+			/* Drop kernel mapping data here for completed batch */
 			eError = PMRReleaseKernelMappingData(psPMR, hPrivOut);
 			PVR_ASSERT(eError == PVRSRV_OK);
 
+			/* Less the just completed batch */
 			ui32NumOfPages -= ui32KMapNumOfPages;
-			if (ui32NumOfPages < ui32KMapNumOfPages)
+			if (! ui32NumOfPages)
 			{
-				ui32KMapNumOfPages = ui32NumOfPages;
-				ui32KMapNumOfPagesSize = ui32KMapNumOfPages << OS_PAGE_SHIFT;
-				ui32NumOfPages = 0;
+				break;
 			}
-
-			ui32PageIndex = 0;
+			else
+			{
+				if (ui32NumOfPages < ui32KMapNumOfPages)
+				{
+					ui32KMapNumOfPages = ui32NumOfPages;
+					ui32KMapNumOfPagesSize = ui32KMapNumOfPages << OS_PAGE_SHIFT;
+				}
+			}
 		}
 	}
 
