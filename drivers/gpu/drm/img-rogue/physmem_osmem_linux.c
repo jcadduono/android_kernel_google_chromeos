@@ -175,6 +175,12 @@ static PVRSRV_ERROR
 _FreePagesFromPoolUnlocked(IMG_UINT32 uiMaxPagesToFree,
 						   IMG_UINT32 *puiPagesFreed);
 
+static inline PVRSRV_ERROR
+_ApplyOSPagesAttribute(struct page **ppsPage,
+					   IMG_UINT32 uiNumPages,
+					   IMG_BOOL bFlush,
+					   IMG_UINT32 ui32CPUCacheFlags);
+
 /* A struct for our page pool holding an array of pages.
  * We always put units of page arrays to the pool but are
  * able to take individual pages */
@@ -1048,7 +1054,9 @@ e_oom_exit:
 /* Moves a page array to the page pool.
  * 
  * If this function is successful the ppsPageArray is unusable and needs to be
- * reallocated in case the _PMR_OSPAGEARRAY_DATA_ will be reused. */
+ * reallocated in case the _PMR_OSPAGEARRAY_DATA_ will be reused.
+ * This function expects cached pages to be not in the cache anymore,
+ * invalidate them before, ideally without using the pool lock. */
 static IMG_BOOL
 _PutPagesToPoolUnlocked(IMG_UINT32 ui32CPUCacheFlags,
 						struct page **ppsPageArray,
@@ -1111,6 +1119,19 @@ _PutPagesToPoolLocked(IMG_UINT32 ui32CPUCacheFlags,
 		!bUnpinned &&
 		uiNumPages >= PVR_LINUX_PHYSMEM_MIN_PAGES_TO_ADD_TO_POOL)
 	{
+		/* Do cache maintenance so allocations from the pool can be
+		 * considered clean */
+		if (ui32CPUCacheFlags == PVRSRV_MEMALLOCFLAG_CPU_CACHED)
+		{
+			PVRSRV_ERROR eError;
+			eError = _ApplyOSPagesAttribute(ppsPageArray,
+			                                uiNumPages,
+			                                IMG_FALSE,
+			                                ui32CPUCacheFlags);
+			if (eError != PVRSRV_OK)
+				return IMG_FALSE;
+		}
+
 		_PagePoolLock();
 		
 		/* Try to quickly move page array to the pool */

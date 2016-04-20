@@ -54,6 +54,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "devicemem_mmap.h"
 #include "devicemem_utils.h"
 #include "client_mm_bridge.h"
+#include "client_cachegeneric_bridge.h"
 #if defined(PDUMP)
 #include "devicemem_pdump.h"
 #endif
@@ -65,10 +66,13 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #endif
 
 #if defined(__KERNEL__)
+#include "rgxdefs_km.h"
 #include "pvrsrv.h"
 #if defined(LINUX)
 #include "linux/kernel.h"
 #endif
+#else
+#include "rgxdefs.h"
 #endif
 
 /** Page size.
@@ -332,6 +336,10 @@ _SubAllocImportAlloc(RA_PERARENA_HANDLE hArena,
 		goto failMap;
 	}
 
+	/* Mark this import struct as clean so we can save some PDump LDBs
+	 * and do not have to CPU map + memset + flush*/
+	psImport->uiProperties |= DEVMEM_PROPERTIES_IMPORT_IS_CLEAN;
+
 	*puiBase = psImport->sDeviceImport.sDevVAddr.uiAddr;
 	*puiActualSize = uiSize;
 	*phImport = psImport;
@@ -539,10 +547,22 @@ DevmemCreateContext(SHARED_DEV_CONNECTION hDevConnection,
     psCtx->hDevConnection = hDevConnection;
 
     /* Create (server-side) Device Memory context */
-    eError = BridgeDevmemIntCtxCreate(psCtx->hDevConnection,
-                                      bHeapCfgMetaId,
-                                      &hDevMemServerContext,
-                                      &hPrivData);
+    eError = BridgeDevmemIntCtxCreateCLS(psCtx->hDevConnection,
+                                         bHeapCfgMetaId,
+                                         &hDevMemServerContext,
+                                         &hPrivData,
+                                         &psCtx->ui32CPUCacheLineSize);
+
+    if (eError == PVRSRV_ERROR_BRIDGE_CALL_FAILED)
+    {
+
+        psCtx->ui32CPUCacheLineSize = 0;
+        eError = BridgeDevmemIntCtxCreate(psCtx->hDevConnection,
+                                          bHeapCfgMetaId,
+                                          &hDevMemServerContext,
+                                          &hPrivData);
+    }
+
     if (eError != PVRSRV_OK)
     {
         goto e1;
@@ -1061,6 +1081,7 @@ DevmemSubAllocate(IMG_UINT8 uiPreAllocMultiplier,
     DEVMEM_MEMDESC *psMemDesc = NULL;
 	IMG_DEVMEM_OFFSET_T uiOffset = 0;
 	DEVMEM_IMPORT *psImport;
+	IMG_UINT32 ui32CPUCacheLineSize;
 	void *pvAddr;
 
 	if (uiFlags & PVRSRV_MEMALLOCFLAG_NO_OSPAGES_ON_ALLOC)
@@ -1070,11 +1091,38 @@ DevmemSubAllocate(IMG_UINT8 uiPreAllocMultiplier,
 		goto failParams;
 	}
 
-    if (psHeap == NULL || ppsMemDescPtr == NULL)
+    if (psHeap == NULL || psHeap->psCtx == NULL || ppsMemDescPtr == NULL)
     {
         eError = PVRSRV_ERROR_INVALID_PARAMS;
         goto failParams;
     }
+
+
+	/* The following logic makes sure that any cached memory is aligned to both the CPU and GPU.
+	 * To be aligned on both you have to take the Lowest Common Multiple (LCM) of the cache line sizes of each.
+	 * As the possibilities are all powers of 2 then simply the largest number can be picked as the LCM.
+	 * Therefore this algorithm just picks the highest from the CPU, GPU and given alignments.
+	 */
+	ui32CPUCacheLineSize = psHeap->psCtx->ui32CPUCacheLineSize;
+	 /* If the CPU cache line size is larger than the alignment given then it is the lowest common multiple
+	 * Also checking if the allocation is going to be cached on the CPU
+	 * Currently there is no check for the validity of the cache coherent option.
+	 * In this case, the alignment could be applied but the mode could still fall back to uncached.
+	 */
+	if(ui32CPUCacheLineSize > uiAlign && (((uiFlags & PVRSRV_MEMALLOCFLAG_CPU_CACHE_MODE_MASK) == PVRSRV_MEMALLOCFLAG_CPU_CACHE_COHERENT) || ((uiFlags & PVRSRV_MEMALLOCFLAG_CPU_CACHE_MODE_MASK) == PVRSRV_MEMALLOCFLAG_CPU_CACHE_INCOHERENT) || ((uiFlags & PVRSRV_MEMALLOCFLAG_CPU_CACHE_MODE_MASK) == PVRSRV_MEMALLOCFLAG_CPU_CACHED_CACHE_COHERENT)))
+	{
+		uiAlign = ui32CPUCacheLineSize;
+	}
+
+	/* If the GPU cache line size is larger than the alignment given then it is the lowest common multiple
+	 * Also checking if the allocation is going to be cached on the GPU via checking for any of the cached options.
+	 * Currently there is no check for the validity of the cache coherent option.
+	 * In this case, the alignment could be applied but the mode could still fall back to uncached.
+	 */
+	if(ROGUE_CACHE_LINE_SIZE > uiAlign && (((uiFlags & PVRSRV_MEMALLOCFLAG_GPU_CACHE_MODE_MASK) == PVRSRV_MEMALLOCFLAG_GPU_CACHE_COHERENT) || ((uiFlags & PVRSRV_MEMALLOCFLAG_GPU_CACHE_MODE_MASK) == PVRSRV_MEMALLOCFLAG_GPU_CACHE_INCOHERENT) || ((uiFlags & PVRSRV_MEMALLOCFLAG_GPU_CACHE_MODE_MASK) == PVRSRV_MEMALLOCFLAG_GPU_CACHED_CACHE_COHERENT)))
+	{
+		uiAlign = ROGUE_CACHE_LINE_SIZE;
+	}
 
 	eError = _DevmemValidateParams(uiSize,
 								   uiAlign,
@@ -1164,6 +1212,26 @@ DevmemSubAllocate(IMG_UINT8 uiPreAllocMultiplier,
 #if defined(PDUMP)
 		DevmemPDumpLoadZeroMem(psMemDesc, 0, uiSize, PDUMP_FLAGS_CONTINUOUS);
 #endif
+	}
+
+	/* Flush if (cached && (!clean || zeroed) */
+	if (PVRSRV_CPU_CACHE_MODE(uiFlags) == PVRSRV_MEMALLOCFLAG_CPU_CACHE_INCOHERENT)
+	{
+		PVRSRV_CACHE_OP eOp = PVRSRV_CACHE_OP_NONE;
+
+		if (uiFlags & PVRSRV_MEMALLOCFLAG_ZERO_ON_ALLOC)
+			eOp = PVRSRV_CACHE_OP_FLUSH;
+		else if (!(psMemDesc->psImport->uiProperties & DEVMEM_PROPERTIES_IMPORT_IS_CLEAN))
+			eOp = PVRSRV_CACHE_OP_INVALIDATE;
+
+		if (eOp != PVRSRV_CACHE_OP_NONE)
+		{
+			BridgeCacheOpQueue (psMemDesc->psImport->hDevConnection,
+								psMemDesc->psImport->hPMR,
+								psMemDesc->uiOffset,
+								psMemDesc->uiAllocSize,
+								eOp);
+		}
 	}
 
 #if defined(SUPPORT_PAGE_FAULT_DEBUG)

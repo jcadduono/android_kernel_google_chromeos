@@ -383,6 +383,30 @@ fail_alloc:
 }
 
 /*************************************************************************/ /*!
+@Function       DevmemIntCtxCreateCLS
+@Description    Creates and initialises a device memory context.
+@Return         valid Device Memory context handle - Success
+                PVRSRV_ERROR failure code
+*/ /**************************************************************************/
+PVRSRV_ERROR
+DevmemIntCtxCreateCLS(CONNECTION_DATA *psConnection,
+                      PVRSRV_DEVICE_NODE *psDeviceNode,
+                      IMG_BOOL bKernelMemoryCtx,
+                      DEVMEMINT_CTX **ppsDevmemCtxPtr,
+                      IMG_HANDLE *hPrivData,
+                      IMG_UINT32 *pui32CPUCacheLineSize)
+{
+	/* Pass the CPU cache line size through the bridge to the user mode as it can't be queried in user mode.*/
+	*pui32CPUCacheLineSize = OSCPUCacheAttributeSize(PVR_DCACHE_LINE_SIZE);
+
+	return DevmemIntCtxCreate(psConnection,
+	                          psDeviceNode,
+	                          bKernelMemoryCtx,
+	                          ppsDevmemCtxPtr,
+	                          hPrivData);
+}
+
+/*************************************************************************/ /*!
 @Function       DevmemIntHeapCreate
 @Description    Creates and initialises a device memory heap.
 @Return         valid Device Memory heap handle - Success

@@ -103,8 +103,11 @@ struct _DEVMEM_CONTEXT_ {
     /* pointer to array of such heaps */
     struct _DEVMEM_HEAP_ **ppsAutoHeapArray;
 
-	/* Private data handle for device specific data */
-	IMG_HANDLE hPrivData;
+    /* The cache line size for use when allocating memory, as it is not queryable on the client side */
+    IMG_UINT32 ui32CPUCacheLineSize;
+
+    /* Private data handle for device specific data */
+    IMG_HANDLE hPrivData;
 };
 
 
@@ -167,7 +170,8 @@ typedef IMG_UINT32 DEVMEM_PROPERTIES_T;                 /*!< Typedef for Devicem
 #define DEVMEM_PROPERTIES_EXPORTABLE        (1UL<<0)    /*!< Is it exportable? */
 #define DEVMEM_PROPERTIES_IMPORTED          (1UL<<1)    /*!< Is it imported from another process? */
 #define DEVMEM_PROPERTIES_SUBALLOCATABLE    (1UL<<2)    /*!< Is it suballocatable? */
-#define DEVMEM_PROPERTIES_UNPINNED          (1UL<<4)    /*!< Is it currently pinned? */
+#define DEVMEM_PROPERTIES_UNPINNED          (1UL<<3)    /*!< Is it currently pinned? */
+#define DEVMEM_PROPERTIES_IMPORT_IS_CLEAN   (1UL<<4)    /*!< Is the import clean, e.g. properly zeroed and cache clean? */
 
 typedef struct _DEVMEM_DEVICE_IMPORT_ {
 	DEVMEM_HEAP *psHeap;			/*!< Heap this import is bound to */

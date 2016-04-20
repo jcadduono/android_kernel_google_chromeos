@@ -1,6 +1,7 @@
 pvrsrvkm-y += \
  server_breakpoint_bridge.o \
  server_cachegeneric_bridge.o \
+ client_cachegeneric_bridge.o \
  server_cmm_bridge.o \
  server_debugmisc_bridge.o \
  client_htbuffer_bridge.o \

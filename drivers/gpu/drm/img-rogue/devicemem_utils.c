@@ -221,6 +221,11 @@ void _DevmemMemDescRelease(DEVMEM_MEMDESC *psMemDesc)
 		}
 		else
 		{
+			/* As soon as the first sub-allocation on the psImport is freed
+			 * we might get dirty memory when reusing it.
+			 * We have to delete the CLEAN flag */
+			psMemDesc->psImport->uiProperties &= ~DEVMEM_PROPERTIES_IMPORT_IS_CLEAN;
+
 			RA_Free(psMemDesc->psImport->sDeviceImport.psHeap->psSubAllocRA,
 					psMemDesc->psImport->sDeviceImport.sDevVAddr.uiAddr +
 					psMemDesc->uiOffset);

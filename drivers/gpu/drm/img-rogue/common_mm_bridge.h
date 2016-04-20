@@ -85,7 +85,8 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #define PVRSRV_BRIDGE_MM_HEAPCFGHEAPCOUNT			PVRSRV_BRIDGE_MM_CMD_FIRST+29
 #define PVRSRV_BRIDGE_MM_HEAPCFGHEAPCONFIGNAME			PVRSRV_BRIDGE_MM_CMD_FIRST+30
 #define PVRSRV_BRIDGE_MM_HEAPCFGHEAPDETAILS			PVRSRV_BRIDGE_MM_CMD_FIRST+31
-#define PVRSRV_BRIDGE_MM_CMD_LAST			(PVRSRV_BRIDGE_MM_CMD_FIRST+31)
+#define PVRSRV_BRIDGE_MM_DEVMEMINTCTXCREATECLS			PVRSRV_BRIDGE_MM_CMD_FIRST+32
+#define PVRSRV_BRIDGE_MM_CMD_LAST			(PVRSRV_BRIDGE_MM_CMD_FIRST+32)
 
 
 /*******************************************
@@ -706,6 +707,26 @@ typedef struct PVRSRV_BRIDGE_OUT_HEAPCFGHEAPDETAILS_TAG
 	IMG_UINT32 ui32Log2ImportAlignmentOut;
 	PVRSRV_ERROR eError;
 } __attribute__((packed)) PVRSRV_BRIDGE_OUT_HEAPCFGHEAPDETAILS;
+
+
+/*******************************************
+            DevmemIntCtxCreateCLS          
+ *******************************************/
+
+/* Bridge in structure for DevmemIntCtxCreateCLS */
+typedef struct PVRSRV_BRIDGE_IN_DEVMEMINTCTXCREATECLS_TAG
+{
+	IMG_BOOL bbKernelMemoryCtx;
+} __attribute__((packed)) PVRSRV_BRIDGE_IN_DEVMEMINTCTXCREATECLS;
+
+/* Bridge out structure for DevmemIntCtxCreateCLS */
+typedef struct PVRSRV_BRIDGE_OUT_DEVMEMINTCTXCREATECLS_TAG
+{
+	IMG_HANDLE hDevMemServerContext;
+	IMG_HANDLE hPrivData;
+	IMG_UINT32 ui32CPUCacheLineSize;
+	PVRSRV_ERROR eError;
+} __attribute__((packed)) PVRSRV_BRIDGE_OUT_DEVMEMINTCTXCREATECLS;
 
 
 #endif /* COMMON_MM_BRIDGE_H */

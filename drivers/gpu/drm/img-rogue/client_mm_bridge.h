@@ -216,5 +216,11 @@ IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeHeapCfgHeapDetails(IMG_HANDLE hBrid
 								IMG_UINT32 *pui32Log2DataPageSizeOut,
 								IMG_UINT32 *pui32Log2ImportAlignmentOut);
 
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeDevmemIntCtxCreateCLS(IMG_HANDLE hBridge,
+								   IMG_BOOL bbKernelMemoryCtx,
+								   IMG_HANDLE *phDevMemServerContext,
+								   IMG_HANDLE *phPrivData,
+								   IMG_UINT32 *pui32CPUCacheLineSize);
+
 
 #endif /* CLIENT_MM_BRIDGE_H */

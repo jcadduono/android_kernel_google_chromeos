@@ -729,3 +729,27 @@ IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeHeapCfgHeapDetails(IMG_HANDLE hBrid
 	return eError;
 }
 
+IMG_INTERNAL PVRSRV_ERROR IMG_CALLCONV BridgeDevmemIntCtxCreateCLS(IMG_HANDLE hBridge,
+								   IMG_BOOL bbKernelMemoryCtx,
+								   IMG_HANDLE *phDevMemServerContext,
+								   IMG_HANDLE *phPrivData,
+								   IMG_UINT32 *pui32CPUCacheLineSize)
+{
+	PVRSRV_ERROR eError;
+	DEVMEMINT_CTX * psDevMemServerContextInt;
+	IMG_HANDLE hPrivDataInt;
+
+
+	eError =
+		DevmemIntCtxCreateCLS(NULL, (PVRSRV_DEVICE_NODE *)((void*) hBridge)
+		,
+					bbKernelMemoryCtx,
+					&psDevMemServerContextInt,
+					&hPrivDataInt,
+					pui32CPUCacheLineSize);
+
+	*phDevMemServerContext = psDevMemServerContextInt;
+	*phPrivData = hPrivDataInt;
+	return eError;
+}
+

@@ -1934,6 +1934,91 @@ HeapCfgHeapDetails_exit:
 	return 0;
 }
 
+static IMG_INT
+PVRSRVBridgeDevmemIntCtxCreateCLS(IMG_UINT32 ui32DispatchTableEntry,
+					  PVRSRV_BRIDGE_IN_DEVMEMINTCTXCREATECLS *psDevmemIntCtxCreateCLSIN,
+					  PVRSRV_BRIDGE_OUT_DEVMEMINTCTXCREATECLS *psDevmemIntCtxCreateCLSOUT,
+					 CONNECTION_DATA *psConnection)
+{
+	DEVMEMINT_CTX * psDevMemServerContextInt = NULL;
+	IMG_HANDLE hPrivDataInt = NULL;
+
+
+
+	psDevmemIntCtxCreateCLSOUT->hDevMemServerContext = NULL;
+
+
+	PMRLock();
+
+
+	psDevmemIntCtxCreateCLSOUT->eError =
+		DevmemIntCtxCreateCLS(psConnection, OSGetDevData(psConnection),
+					psDevmemIntCtxCreateCLSIN->bbKernelMemoryCtx,
+					&psDevMemServerContextInt,
+					&hPrivDataInt,
+					&psDevmemIntCtxCreateCLSOUT->ui32CPUCacheLineSize);
+	/* Exit early if bridged call fails */
+	if(psDevmemIntCtxCreateCLSOUT->eError != PVRSRV_OK)
+	{
+		PMRUnlock();
+		goto DevmemIntCtxCreateCLS_exit;
+	}
+	PMRUnlock();
+
+
+	psDevmemIntCtxCreateCLSOUT->eError = PVRSRVAllocHandle(psConnection->psHandleBase,
+							&psDevmemIntCtxCreateCLSOUT->hDevMemServerContext,
+							(void *) psDevMemServerContextInt,
+							PVRSRV_HANDLE_TYPE_DEVMEMINT_CTX,
+							PVRSRV_HANDLE_ALLOC_FLAG_MULTI
+							,(PFN_HANDLE_RELEASE)&DevmemIntCtxDestroy);
+	if (psDevmemIntCtxCreateCLSOUT->eError != PVRSRV_OK)
+	{
+		goto DevmemIntCtxCreateCLS_exit;
+	}
+
+
+	psDevmemIntCtxCreateCLSOUT->eError = PVRSRVAllocSubHandle(psConnection->psHandleBase,
+							&psDevmemIntCtxCreateCLSOUT->hPrivData,
+							(void *) hPrivDataInt,
+							PVRSRV_HANDLE_TYPE_DEV_PRIV_DATA,
+							PVRSRV_HANDLE_ALLOC_FLAG_MULTI
+							,psDevmemIntCtxCreateCLSOUT->hDevMemServerContext);
+	if (psDevmemIntCtxCreateCLSOUT->eError != PVRSRV_OK)
+	{
+		goto DevmemIntCtxCreateCLS_exit;
+	}
+
+
+
+
+DevmemIntCtxCreateCLS_exit:
+	if (psDevmemIntCtxCreateCLSOUT->eError != PVRSRV_OK)
+	{
+		if (psDevmemIntCtxCreateCLSOUT->hDevMemServerContext)
+		{
+			PVRSRV_ERROR eError = PVRSRVReleaseHandle(psConnection->psHandleBase,
+						(IMG_HANDLE) psDevmemIntCtxCreateCLSOUT->hDevMemServerContext,
+						PVRSRV_HANDLE_TYPE_DEVMEMINT_CTX);
+
+			/* Releasing the handle should free/destroy/release the resource. This should never fail... */
+			PVR_ASSERT((eError == PVRSRV_OK) || (eError == PVRSRV_ERROR_RETRY));
+
+			/* Avoid freeing/destroying/releasing the resource a second time below */
+			psDevMemServerContextInt = NULL;
+		}
+
+
+		if (psDevMemServerContextInt)
+		{
+			DevmemIntCtxDestroy(psDevMemServerContextInt);
+		}
+	}
+
+
+	return 0;
+}
+
 
 
 /* *************************************************************************** 
@@ -2045,6 +2130,9 @@ PVRSRV_ERROR InitMMBridge(void)
 					NULL, bUseLock);
 
 	SetDispatchTableEntry(PVRSRV_BRIDGE_MM, PVRSRV_BRIDGE_MM_HEAPCFGHEAPDETAILS, PVRSRVBridgeHeapCfgHeapDetails,
+					NULL, bUseLock);
+
+	SetDispatchTableEntry(PVRSRV_BRIDGE_MM, PVRSRV_BRIDGE_MM_DEVMEMINTCTXCREATECLS, PVRSRVBridgeDevmemIntCtxCreateCLS,
 					NULL, bUseLock);
 
 

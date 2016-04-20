@@ -176,6 +176,17 @@ DevmemIntCtxCreate(CONNECTION_DATA *psConnection,
                    IMG_BOOL bKernelMemoryCtx,
                    DEVMEMINT_CTX **ppsDevmemCtxPtr,
                    IMG_HANDLE *hPrivData);
+
+/* Same as DevmemIntCtxCreate but additionally carries the
+ * CPU cache line size back to the user */
+extern PVRSRV_ERROR
+DevmemIntCtxCreateCLS(CONNECTION_DATA *psConnection,
+                      PVRSRV_DEVICE_NODE *psDeviceNode,
+                      IMG_BOOL bKernelMemoryCtx,
+                      DEVMEMINT_CTX **ppsDevmemCtxPtr,
+                      IMG_HANDLE *hPrivData,
+                      IMG_UINT32 *pui32CPUCacheLineSize);
+
 /*
  * DevmemIntCtxDestroy()
  *
