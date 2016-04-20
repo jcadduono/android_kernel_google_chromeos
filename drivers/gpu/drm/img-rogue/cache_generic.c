@@ -365,6 +365,18 @@ PVRSRV_ERROR CacheOpQueue(PMR *psPMR,
 		PVR_ASSERT(0);
 		return eError;
 	}
+	else
+	{
+		/* Carry out full dcache operation if size (in pages) qualifies */
+		if ((uiSize >> OS_PAGE_SHIFT) >= PVR_DIRTY_PAGECOUNT_FLUSH_THRESHOLD)
+		{
+			eError = OSCPUOperation(PVRSRV_CACHE_OP_FLUSH);
+			if (eError == PVRSRV_OK)
+			{
+				return PVRSRV_OK;
+			}
+		}
+	}
 
 	if (! guiCacheLineSize)
 	{
@@ -412,7 +424,6 @@ PVRSRV_ERROR CacheOpQueue(PMR *psPMR,
 			else
 			{
 				OSFreeMem(psCpuPhyAddr);
-				psCpuPhyAddr = NULL;
 			}
 		}
 	}
