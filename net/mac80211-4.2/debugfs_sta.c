@@ -702,7 +702,8 @@ void ieee80211_sta_debugfs_add(struct sta_info *sta)
 	DEBUGFS_ADD_COUNTER(tx_filtered, tx_filtered_count);
 
 #ifdef CONFIG_MAC80211_MESH
-	DEBUGFS_ADD(mesh_link_metric);
+	if (sdata->vif.type == NL80211_IFTYPE_MESH_POINT)
+		DEBUGFS_ADD(mesh_link_metric);
 #endif
 
 	if (sizeof(sta->driver_buffered_tids) == sizeof(u32))
