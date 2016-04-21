@@ -2820,6 +2820,7 @@ static int mwifiex_cfg80211_resume(struct wiphy *wiphy)
 	struct mwifiex_ds_wakeup_reason wakeup_reason;
 	struct cfg80211_wowlan_wakeup wakeup_report;
 	int i;
+	bool report_wakeup_reason = true;
 
 	for (i = 0; i < adapter->priv_num; i++) {
 		priv = adapter->priv[i];
@@ -2862,16 +2863,12 @@ static int mwifiex_cfg80211_resume(struct wiphy *wiphy)
 		if (wiphy->wowlan_config->n_patterns)
 			wakeup_report.pattern_idx = 1;
 		break;
-	case CONTROL_FRAME_MATCHED:
-		break;
-	case MANAGEMENT_FRAME_MATCHED:
-		break;
 	default:
+		report_wakeup_reason = false;
 		break;
 	}
 
-	if ((wakeup_reason.hs_wakeup_reason > 0) &&
-	    (wakeup_reason.hs_wakeup_reason <= 7))
+	if (report_wakeup_reason)
 		cfg80211_report_wowlan_wakeup(&priv->wdev, &wakeup_report,
 					      GFP_KERNEL);
 
