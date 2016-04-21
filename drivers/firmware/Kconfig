@@ -142,6 +142,16 @@ config QCOM_SCM
 	bool
 	depends on ARM || ARM64
 
+config QCA_SCM_RESTART_REASON
+        bool "QCOM SCM Write restart reason on reboot"
+        depends on ARCH_QCOM && QCOM_SCM
+        help
+          Say y here to enable writing scm restart reason by invoking the SCM.
+	  This adds a reboot handler to invoke trusted software to disable
+	  software debug and magic cookie. This also registers for panic
+          notification so that magic cookies can be set for download mode.
+          If unsure, say N
+
 source "drivers/firmware/google/Kconfig"
 source "drivers/firmware/efi/Kconfig"
 
