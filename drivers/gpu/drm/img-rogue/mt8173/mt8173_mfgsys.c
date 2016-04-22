@@ -31,7 +31,6 @@ static const char * const top_mfg_clk_name[] = {
 	"mfg_axi_in_sel",
 	"top_axi",
 	"top_mem",
-	"top_mfg",
 };
 
 #define MAX_TOP_MFG_CLK ARRAY_SIZE(top_mfg_clk_name)
@@ -61,6 +60,9 @@ static int mtk_mfg_prepare_clock(struct mtk_mfg *mfg)
 		if (ret)
 			goto unwind;
 	}
+	ret = clk_prepare(mfg->top_mfg);
+	if (ret)
+		goto unwind;
 
 	return 0;
 unwind:
@@ -74,6 +76,7 @@ static void mtk_mfg_unprepare_clock(struct mtk_mfg *mfg)
 {
 	int i;
 
+	clk_unprepare(mfg->top_mfg);
 	for (i = MAX_TOP_MFG_CLK - 1; i >= 0; i--)
 		clk_unprepare(mfg->top_clk[i]);
 }
@@ -88,6 +91,9 @@ static int mtk_mfg_enable_clock(struct mtk_mfg *mfg)
 		if (ret)
 			goto unwind;
 	}
+	ret = clk_enable(mfg->top_mfg);
+	if (ret)
+		goto unwind;
 	mtk_mfg_clr_clock_gating(mfg->reg_base);
 
 	return 0;
@@ -102,6 +108,7 @@ static void mtk_mfg_disable_clock(struct mtk_mfg *mfg)
 {
 	int i;
 
+	clk_disable(mfg->top_mfg);
 	for (i = MAX_TOP_MFG_CLK - 1; i >= 0; i--)
 		clk_disable(mfg->top_clk[i]);
 }
@@ -159,16 +166,33 @@ int mtk_mfg_freq_set(struct mtk_mfg *mfg, unsigned long freq)
 {
 	int ret;
 
-	ret = clk_set_rate(mfg->mmpll, freq);
+	ret = clk_prepare_enable(mfg->top_mfg);
 	if (ret) {
-		dev_err(mfg->dev, "Set freq to %lu Hz failed, %d\n",
-			freq, ret);
+		dev_err(mfg->dev, "enable and prepare top_mfg failed, %d\n", ret);
 		return ret;
 	}
 
-	dev_dbg(mfg->dev, "Freq set to %lu Hz\n", freq);
+	ret = clk_set_parent(mfg->top_mfg, mfg->clk26m);
+	if (ret) {
+		dev_err(mfg->dev, "Set clk parent to clk26m failed, %d\n", ret);
+		goto unprepare_top_mfg;
+	}
 
-	return 0;
+	ret = clk_set_rate(mfg->mmpll, freq);
+	if (ret)
+		dev_err(mfg->dev, "Set freq to %lu Hz failed, %d\n", freq, ret);
+
+	ret = clk_set_parent(mfg->top_mfg, mfg->top_mmpll);
+	if (ret)
+		dev_err(mfg->dev, "Set clk parent to top_mmpll failed, %d\n", ret);
+
+unprepare_top_mfg:
+	clk_disable_unprepare(mfg->top_mfg);
+
+	if (!ret)
+		dev_dbg(mfg->dev, "Freq set to %lu Hz\n", freq);
+
+	return ret;
 }
 
 int mtk_mfg_volt_set(struct mtk_mfg *mfg, int volt)
@@ -227,6 +251,24 @@ static int mtk_mfg_bind_device_resource(struct mtk_mfg *mfg)
 				top_mfg_clk_name[i]);
 			return PTR_ERR(mfg->top_clk[i]);
 		}
+	}
+
+	mfg->top_mfg = devm_clk_get(dev, "top_mfg");
+	if (IS_ERR(mfg->top_mfg)) {
+		dev_err(dev, "devm_clk_get top_mfg failed !!!\n");
+		return PTR_ERR(mfg->top_mfg);
+	}
+
+	mfg->top_mmpll = devm_clk_get(dev, "top_mmpll");
+	if (IS_ERR(mfg->top_mmpll)) {
+		dev_err(dev, "devm_clk_get top_mmpll failed !!!\n");
+		return PTR_ERR(mfg->top_mmpll);
+	}
+
+	mfg->clk26m = devm_clk_get(dev, "clk26m");
+	if (IS_ERR(mfg->clk26m)) {
+		dev_err(dev, "devm_clk_get clk26m failed !!!\n");
+		return PTR_ERR(mfg->clk26m);
 	}
 
 	mfg->tz = thermal_zone_get_zone_by_name("cpu_thermal");
