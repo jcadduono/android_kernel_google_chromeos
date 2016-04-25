@@ -564,6 +564,9 @@ enum ath10k_dev_flags {
 
 	/* Disable Per Station statistics service */
 	ATH10K_FLAG_PEER_STATS_DISABLED,
+
+	/* Do not use checksum offload */
+	ATH10K_FLAG_HW_CSUM_DISABLED,
 };
 
 enum ath10k_cal_mode {
