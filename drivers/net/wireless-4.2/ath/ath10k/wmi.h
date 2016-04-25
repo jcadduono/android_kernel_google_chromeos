@@ -2436,6 +2436,7 @@ enum wmi_10_2_feature_mask {
 	WMI_10_2_ATF_CONFIG    			= BIT(1),
 	WMI_10_2_COEX_GPIO     			= BIT(3),
 	WMI_10_2_AUX_RADIO_SPECTRAL_INTF	= BIT(4),
+	WMI_10_2_AUX_RADIO_CHAN_LOAD_INTF	= BIT(5),
 	WMI_10_2_PEER_STATS    			= BIT(7),
 };
 
