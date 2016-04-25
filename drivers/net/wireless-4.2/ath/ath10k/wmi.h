@@ -2432,10 +2432,11 @@ struct wmi_resource_config_10x {
 } __packed;
 
 enum wmi_10_2_feature_mask {
-	WMI_10_2_RX_BATCH_MODE = BIT(0),
-	WMI_10_2_ATF_CONFIG    = BIT(1),
-	WMI_10_2_COEX_GPIO     = BIT(3),
-	WMI_10_2_PEER_STATS    = BIT(7),
+	WMI_10_2_RX_BATCH_MODE 			= BIT(0),
+	WMI_10_2_ATF_CONFIG    			= BIT(1),
+	WMI_10_2_COEX_GPIO     			= BIT(3),
+	WMI_10_2_AUX_RADIO_SPECTRAL_INTF	= BIT(4),
+	WMI_10_2_PEER_STATS    			= BIT(7),
 };
 
 struct wmi_resource_config_10_2 {
@@ -3082,6 +3083,9 @@ enum phy_err_type {
 	PHY_ERROR_FALSE_RADAR_EXT,
 	PHY_ERROR_RADAR
 };
+
+#define PHYERR_FLAG_INTERFRC_5G			0x01
+#define PHYERR_FLAG_INTERFRC_2G			0x02
 
 struct wmi_phyerr {
 	__le32 tsf_timestamp;
@@ -6196,6 +6200,7 @@ struct wmi_phyerr_ev_arg {
 	u8 rssi_combined;
 	u8 chan_width_mhz;
 	u8 phy_err_code;
+	u8 rsvd0;
 	u16 nf_chains[4];
 	u32 buf_len;
 	const u8 *buf;

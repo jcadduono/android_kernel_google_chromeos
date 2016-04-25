@@ -5633,6 +5633,10 @@ static struct sk_buff *ath10k_wmi_10_2_op_gen_init(struct ath10k *ar)
 	if (ath10k_peer_stats_enabled(ar))
 		features |= WMI_10_2_PEER_STATS;
 
+	if ((ar->wlan_interfrc_mask & ATH10K_SPECTRAL_INTERFRC) &&
+	    (test_bit(WMI_SERVICE_AUX_SPECTRAL_INTF, ar->wmi.svc_map)))
+		features |= WMI_10_2_AUX_RADIO_SPECTRAL_INTF;
+
 	cmd->resource_config.feature_mask = __cpu_to_le32(features);
 
 	memcpy(&cmd->resource_config.common, &config, sizeof(config));
