@@ -4382,15 +4382,6 @@ static int ath10k_start(struct ieee80211_hw *hw)
 		}
 	}
 
-	if (test_bit(WMI_SERVICE_BURST, ar->wmi.svc_map)) {
-		param = ar->wmi.pdev_param->burst_enable;
-		ret = ath10k_wmi_pdev_set_param(ar, param, 0);
-		if (ret) {
-			ath10k_warn(ar, "failed to disable burst: %d\n", ret);
-			goto err_core_stop;
-		}
-	}
-
 	__ath10k_set_antenna(ar, ar->cfg_tx_chainmask, ar->cfg_rx_chainmask);
 
 	/*
