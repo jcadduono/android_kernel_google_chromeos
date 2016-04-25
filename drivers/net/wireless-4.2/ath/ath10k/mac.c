@@ -6394,6 +6394,34 @@ static void ath10k_reconfig_complete(struct ieee80211_hw *hw,
 	mutex_unlock(&ar->conf_mutex);
 }
 
+int ath10k_mac_update_chan_survey(struct ath10k *ar)
+{
+	unsigned long time_left;
+	int ret = 0;
+
+	lockdep_assert_held(&ar->conf_mutex);
+
+	spin_lock_bh(&ar->data_lock);
+	reinit_completion(&ar->chan_survey_completed);
+	spin_unlock_bh(&ar->data_lock);
+
+	ret = ath10k_wmi_send_chan_survey_req(ar, WMI_READ_CHAN_SURVEY);
+	if (ret) {
+		ath10k_warn(ar, "failed to transmit wmi command (channel survey): %d\n",
+			    ret);
+		goto out;
+	}
+
+	time_left = wait_for_completion_timeout(&ar->chan_survey_completed,
+						3 * HZ);
+	if (time_left == 0) {
+		ath10k_warn(ar, "timed out waiting for channel survey update\n");
+		ret = -ETIMEDOUT;
+	}
+out:
+	return ret;
+}
+
 static int ath10k_get_survey(struct ieee80211_hw *hw, int idx,
 			     struct survey_info *survey)
 {
@@ -6417,6 +6445,10 @@ static int ath10k_get_survey(struct ieee80211_hw *hw, int idx,
 		ret = -ENOENT;
 		goto exit;
 	}
+
+	if ((ar->rx_channel == &sband->channels[idx]) &&
+	    test_bit(WMI_SERVICE_BSS_CHANNEL_INFO_64, ar->wmi.svc_map))
+		ath10k_mac_update_chan_survey(ar);
 
 	spin_lock_bh(&ar->data_lock);
 	memcpy(survey, ar_survey, sizeof(*survey));
@@ -6839,6 +6871,15 @@ static int ath10k_ampdu_action(struct ieee80211_hw *hw,
 	return -EINVAL;
 }
 
+static void ath10k_mac_reset_chan_survey_count(struct ath10k *ar)
+{
+	ar->last_tx_cycle_count = 0;
+	ar->last_rx_cycle_count = 0;
+	ar->last_rx_clear_count = 0;
+	ar->last_bss_rx_cycle_count = 0;
+	ar->last_cycle_count = 0;
+}
+
 static void
 ath10k_mac_update_rx_channel(struct ath10k *ar,
 			     struct ieee80211_chanctx_conf *ctx,
@@ -6846,6 +6887,7 @@ ath10k_mac_update_rx_channel(struct ath10k *ar,
 			     int n_vifs)
 {
 	struct cfg80211_chan_def *def = NULL;
+	struct ieee80211_channel *prev_rx_channel;
 
 	/* Both locks are required because ar->rx_channel is modified. This
 	 * allows readers to hold either lock.
@@ -6855,6 +6897,8 @@ ath10k_mac_update_rx_channel(struct ath10k *ar,
 
 	WARN_ON(ctx && vifs);
 	WARN_ON(vifs && n_vifs != 1);
+
+	prev_rx_channel = ar->rx_channel;
 
 	/* FIXME: Sort of an optimization and a workaround. Peers and vifs are
 	 * on a linked list now. Doing a lookup peer -> vif -> chanctx for each
@@ -6882,6 +6926,9 @@ ath10k_mac_update_rx_channel(struct ath10k *ar,
 		ar->rx_channel = NULL;
 	}
 	rcu_read_unlock();
+
+	if (prev_rx_channel != ar->rx_channel)
+		ath10k_mac_reset_chan_survey_count(ar);
 }
 
 static void

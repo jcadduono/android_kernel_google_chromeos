@@ -773,6 +773,7 @@ struct wmi_cmd_map {
 	u32 tdls_set_state_cmdid;
 	u32 tdls_peer_update_cmdid;
 	u32 adaptive_qcs_cmdid;
+	u32 pdev_chan_survey_update_cmdid;
 	u32 scan_update_request_cmdid;
 	u32 vdev_standby_response_cmdid;
 	u32 vdev_resume_response_cmdid;
@@ -1429,6 +1430,7 @@ enum wmi_10_2_cmd_id {
 	WMI_10_2_MU_CAL_START_CMDID,
 	WMI_10_2_SET_LTEU_CONFIG_CMDID,
 	WMI_10_2_SET_CCA_PARAMS,
+	WMI_10_2_PDEV_CHAN_SURVEY_UPDATE_CMDID,
 	WMI_10_2_PDEV_UTF_CMDID = WMI_10_2_END_CMDID - 1,
 };
 
@@ -1472,6 +1474,8 @@ enum wmi_10_2_event_id {
 	WMI_10_2_WDS_PEER_EVENTID,
 	WMI_10_2_PEER_STA_PS_STATECHG_EVENTID,
 	WMI_10_2_PDEV_TEMPERATURE_EVENTID,
+	WMI_10_2_MU_REPORT_EVENTID,
+	WMI_10_2_PDEV_CHAN_SURVEY_UPDATE_EVENTID,
 	WMI_10_2_PDEV_UTF_EVENTID = WMI_10_2_END_EVENTID - 1,
 };
 
@@ -2437,6 +2441,7 @@ enum wmi_10_2_feature_mask {
 	WMI_10_2_COEX_GPIO     			= BIT(3),
 	WMI_10_2_AUX_RADIO_SPECTRAL_INTF	= BIT(4),
 	WMI_10_2_AUX_RADIO_CHAN_LOAD_INTF	= BIT(5),
+	WMI_10_2_BSS_CHANNEL_INFO_64		= BIT(6),
 	WMI_10_2_PEER_STATS    			= BIT(7),
 };
 
@@ -5993,6 +5998,17 @@ struct wmi_10_4_chan_info_event {
 	__le32 rx_frame_count;
 } __packed;
 
+struct wmi_chan_survey_event {
+	__le32 freq;
+	__le32 noise_floor;
+	__le64 rx_clear_count;
+	__le64 cycle_count;
+	__le64 tx_cycle_count;
+	__le64 rx_cycle_count;
+	__le64 bss_rx_cycle_count;
+	__le32 reserved;
+} __packed;
+
 struct wmi_peer_sta_kickout_event {
 	struct wmi_mac_addr peer_macaddr;
 } __packed;
@@ -6177,6 +6193,16 @@ struct wmi_ch_info_ev_arg {
 	__le32 chan_tx_pwr_range;
 	__le32 chan_tx_pwr_tp;
 	__le32 rx_frame_count;
+};
+
+struct wmi_chan_survey_ev_arg {
+	__le32 freq;
+	__le32 noise_floor;
+	__le64 rx_clear_count;
+	__le64 cycle_count;
+	__le64 tx_cycle_count;
+	__le64 rx_cycle_count;
+	__le64 bss_rx_cycle_count;
 };
 
 struct wmi_vdev_start_ev_arg {
@@ -6455,6 +6481,16 @@ enum wmi_host_platform_type {
 	WMI_HOST_PLATFORM_HIGH_PERF,
 	WMI_HOST_PLATFORM_LOW_PERF,
 };
+
+enum wmi_chan_survey_req_param {
+	WMI_READ_CHAN_SURVEY = 1,
+	WMI_READ_AND_RESET_CHAN_SURVEY = 2,
+};
+
+struct wmi_chan_survey_req_cmd {
+	__le32 param;
+	__le32 reserved;
+} __packed;
 
 struct ath10k;
 struct ath10k_vif;

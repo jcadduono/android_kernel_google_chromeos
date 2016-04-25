@@ -51,6 +51,9 @@ struct wmi_ops {
 			    struct wmi_roam_ev_arg *arg);
 	int (*pull_wow_event)(struct ath10k *ar, struct sk_buff *skb,
 			      struct wmi_wow_ev_arg *arg);
+	int (*pull_chan_survey_update)(struct ath10k *ar, struct sk_buff *skb,
+				       struct wmi_chan_survey_ev_arg *arg);
+
 	enum wmi_txbf_conf (*get_txbf_conf_scheme)(struct ath10k *ar);
 
 	struct sk_buff *(*gen_pdev_suspend)(struct ath10k *ar, u32 suspend_opt);
@@ -177,6 +180,8 @@ struct wmi_ops {
 						const struct wmi_tdls_peer_capab_arg *cap,
 						const struct wmi_channel_arg *chan);
 	struct sk_buff *(*gen_adaptive_qcs)(struct ath10k *ar, bool enable);
+	struct sk_buff *(*gen_chan_survey_send)(struct ath10k *ar,
+						enum wmi_chan_survey_req_param param);
 	struct sk_buff *(*gen_pdev_get_tpc_config)(struct ath10k *ar,
 						   u32 param);
 	void (*fw_stats_fill)(struct ath10k *ar,
@@ -353,6 +358,16 @@ ath10k_wmi_get_txbf_conf_scheme(struct ath10k *ar)
 		return WMI_TXBF_CONF_UNSUPPORTED;
 
 	return ar->wmi.ops->get_txbf_conf_scheme(ar);
+}
+
+static inline int
+ath10k_wmi_pull_chan_survey_update(struct ath10k *ar, struct sk_buff *skb,
+				   struct wmi_chan_survey_ev_arg *arg)
+{
+	if (!ar->wmi.ops->pull_chan_survey_update)
+		return -EOPNOTSUPP;
+
+	return ar->wmi.ops->pull_chan_survey_update(ar, skb, arg);
 }
 
 static inline int
@@ -1282,6 +1297,25 @@ ath10k_wmi_adaptive_qcs(struct ath10k *ar, bool enable)
 		return PTR_ERR(skb);
 
 	return ath10k_wmi_cmd_send(ar, skb, ar->wmi.cmd->adaptive_qcs_cmdid);
+}
+
+static inline int
+ath10k_wmi_send_chan_survey_req(struct ath10k *ar,
+				enum wmi_chan_survey_req_param param)
+{
+	struct sk_buff *skb;
+	u32 cmd_id;
+
+	if (!ar->wmi.ops->gen_chan_survey_send)
+		return -EOPNOTSUPP;
+
+	skb = ar->wmi.ops->gen_chan_survey_send(ar, param);
+	if (IS_ERR(skb))
+		return PTR_ERR(skb);
+
+	cmd_id = ar->wmi.cmd->pdev_chan_survey_update_cmdid;
+
+	return ath10k_wmi_cmd_send(ar, skb, cmd_id);
 }
 
 static inline int

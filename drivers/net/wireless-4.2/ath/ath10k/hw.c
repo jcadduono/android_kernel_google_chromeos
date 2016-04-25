@@ -176,7 +176,8 @@ const struct ath10k_hw_values qca4019_values = {
 };
 
 void ath10k_hw_fill_survey_time(struct ath10k *ar, struct survey_info *survey,
-				u32 cc, u32 rcc, u32 cc_prev, u32 rcc_prev)
+				u32 cc, u32 rcc, u32 cc_prev, u32 rcc_prev,
+				u32 freq)
 {
 	u32 cc_fix = 0;
 
@@ -191,6 +192,21 @@ void ath10k_hw_fill_survey_time(struct ath10k *ar, struct survey_info *survey,
 	cc -= cc_prev - cc_fix;
 	rcc -= rcc_prev;
 
-	survey->time = CCNT_TO_MSEC(ar, cc);
-	survey->time_busy = CCNT_TO_MSEC(ar, rcc);
+	/* The background scan may happened when the BSS working
+	 * Exclude the scan time from the cycle_count and accumulate
+	 * the the same channel time to the operating channel survey time
+	 * in this case
+	 */
+	if (ar->rx_channel) {
+		ar->last_rx_clear_count += rcc;
+		ar->last_cycle_count += cc;
+	}
+
+	if (ar->rx_channel && (freq == ar->rx_channel->center_freq)) {
+		survey->time += CCNT_TO_MSEC(ar, cc);
+		survey->time_busy += CCNT_TO_MSEC(ar, rcc);
+	} else {
+		survey->time = CCNT_TO_MSEC(ar, cc);
+		survey->time_busy = CCNT_TO_MSEC(ar, rcc);
+	}
 }

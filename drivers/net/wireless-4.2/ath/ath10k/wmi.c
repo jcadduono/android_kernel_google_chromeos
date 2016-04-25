@@ -479,6 +479,7 @@ static struct wmi_cmd_map wmi_10_2_4_cmd_map = {
 	.gpio_config_cmdid = WMI_10_2_GPIO_CONFIG_CMDID,
 	.gpio_output_cmdid = WMI_10_2_GPIO_OUTPUT_CMDID,
 	.pdev_get_temperature_cmdid = WMI_10_2_PDEV_GET_TEMPERATURE_CMDID,
+	.pdev_chan_survey_update_cmdid = WMI_10_2_PDEV_CHAN_SURVEY_UPDATE_CMDID,
 	.pdev_enable_adaptive_cca_cmdid = WMI_10_2_SET_CCA_PARAMS,
 	.scan_update_request_cmdid = WMI_CMD_UNSUPPORTED,
 	.vdev_standby_response_cmdid = WMI_CMD_UNSUPPORTED,
@@ -2463,7 +2464,8 @@ void ath10k_wmi_event_chan_info(struct ath10k *ar, struct sk_buff *skb)
 						   cycle_count,
 						   rx_clear_count,
 						   ar->survey_last_cycle_count,
-						   ar->survey_last_rx_clear_count);
+						   ar->survey_last_rx_clear_count,
+						   freq);
 		}
 
 		ar->ch_info_can_report_survey = false;
@@ -2491,6 +2493,28 @@ int ath10k_wmi_event_debug_mesg(struct ath10k *ar, struct sk_buff *skb)
 		   skb->len);
 
 	trace_ath10k_wmi_dbglog(ar, skb->data, skb->len);
+
+	return 0;
+}
+
+static int
+ath10k_wmi_op_pull_chan_survey_update_ev(struct ath10k *ar,
+					 struct sk_buff *skb,
+					 struct wmi_chan_survey_ev_arg *arg)
+{
+	struct wmi_chan_survey_event *ev = (void *)skb->data;
+
+	if (skb->len < sizeof(*ev))
+		return -EPROTO;
+
+	skb_pull(skb, sizeof(*ev));
+	arg->freq = ev->freq;
+	arg->noise_floor = ev->noise_floor;
+	arg->rx_clear_count = ev->rx_clear_count;
+	arg->cycle_count = ev->cycle_count;
+	arg->tx_cycle_count = ev->tx_cycle_count;
+	arg->rx_cycle_count = ev->rx_cycle_count;
+	arg->bss_rx_cycle_count = ev->bss_rx_cycle_count;
 
 	return 0;
 }
@@ -4791,6 +4815,91 @@ static int ath10k_wmi_event_temperature(struct ath10k *ar, struct sk_buff *skb)
 	return 0;
 }
 
+void ath10k_wmi_event_chan_survey_update(struct ath10k *ar,
+					 struct sk_buff *skb)
+{
+	struct wmi_chan_survey_ev_arg arg = {};
+	struct survey_info *survey;
+	u32 freq, noise_floor;
+	u64 tx_cycle_count, rx_cycle_count, bss_rx_cycle_count;
+	u64 rx_clear_count, cycle_count, delta;
+	int idx, ret;
+
+	ret = ath10k_wmi_pull_chan_survey_update(ar, skb, &arg);
+	if (ret) {
+		ath10k_warn(ar, "failed to parse chan survey event: %d\n", ret);
+		return;
+	}
+
+	freq = __le32_to_cpu(arg.freq);
+	noise_floor = __le32_to_cpu(arg.noise_floor);
+	tx_cycle_count = __le64_to_cpu(arg.tx_cycle_count);
+	rx_cycle_count = __le64_to_cpu(arg.rx_cycle_count);
+	bss_rx_cycle_count = __le64_to_cpu(arg.bss_rx_cycle_count);
+	rx_clear_count = __le64_to_cpu(arg.rx_clear_count);
+	cycle_count = __le64_to_cpu(arg.cycle_count);
+
+	ath10k_dbg(ar, ATH10K_DBG_WMI,
+		   "wmi channel survey info freq %d noise_floor %d rx_clear_count 0x%lx cycle_count 0x%lx tx_cycle_count 0x%lx rx_cycle_count 0x%lx bss_rx_cycle_count 0x%lx\n",
+		   freq, noise_floor, (unsigned long)rx_clear_count,
+		   (unsigned long)cycle_count, (unsigned long)tx_cycle_count,
+		   (unsigned long)rx_cycle_count,
+		   (unsigned long)bss_rx_cycle_count);
+
+	spin_lock_bh(&ar->data_lock);
+
+	idx = freq_to_idx(ar, freq);
+	if (idx >= ARRAY_SIZE(ar->survey)) {
+		ath10k_warn(ar, "channel survey: invalid frequency %d (idx %d out of bounds)\n",
+			    freq, idx);
+		goto exit;
+	}
+
+	if (WARN_ON(!ar->rx_channel))
+		goto exit;
+
+	if (freq != ar->rx_channel->center_freq) {
+		ath10k_warn(ar, "channel survey report %d not match with currently channel %d\n",
+			    freq, ar->rx_channel->center_freq);
+		goto exit;
+	}
+
+	if (ar->last_cycle_count) {
+		survey = &ar->survey[idx];
+		delta = tx_cycle_count - ar->last_tx_cycle_count;
+		survey->time_tx +=
+			div64_u64(delta,
+				  ar->hw_params.channel_counters_freq_hz);
+		delta =	bss_rx_cycle_count - ar->last_bss_rx_cycle_count;
+		survey->time_rx +=
+			div64_u64(delta,
+				  ar->hw_params.channel_counters_freq_hz);
+		delta = rx_clear_count - ar->last_rx_clear_count;
+		survey->time_busy +=
+			div64_u64(delta,
+				  ar->hw_params.channel_counters_freq_hz);
+		delta = cycle_count - ar->last_cycle_count;
+		survey->time +=
+			div64_u64(delta,
+				  ar->hw_params.channel_counters_freq_hz);
+
+		survey->noise = noise_floor;
+		survey->filled = SURVEY_INFO_TIME_TX |
+			SURVEY_INFO_TIME_RX |
+			SURVEY_INFO_TIME_BUSY |
+			SURVEY_INFO_TIME |
+			SURVEY_INFO_NOISE_DBM;
+	}
+	ar->last_tx_cycle_count = tx_cycle_count;
+	ar->last_rx_cycle_count = rx_cycle_count;
+	ar->last_rx_clear_count = rx_clear_count;
+	ar->last_bss_rx_cycle_count = bss_rx_cycle_count;
+	ar->last_cycle_count = cycle_count;
+exit:
+	complete(&ar->chan_survey_completed);
+	spin_unlock_bh(&ar->data_lock);
+}
+
 static void ath10k_wmi_op_rx(struct ath10k *ar, struct sk_buff *skb)
 {
 	struct wmi_cmd_hdr *cmd_hdr;
@@ -5147,6 +5256,9 @@ static void ath10k_wmi_10_2_op_rx(struct ath10k *ar, struct sk_buff *skb)
 		break;
 	case WMI_10_2_PDEV_TEMPERATURE_EVENTID:
 		ath10k_wmi_event_temperature(ar, skb);
+		break;
+	case WMI_10_2_PDEV_CHAN_SURVEY_UPDATE_EVENTID:
+		ath10k_wmi_event_chan_survey_update(ar, skb);
 		break;
 	case WMI_10_2_RTT_KEEPALIVE_EVENTID:
 	case WMI_10_2_GPIO_INPUT_EVENTID:
@@ -5641,6 +5753,8 @@ static struct sk_buff *ath10k_wmi_10_2_op_gen_init(struct ath10k *ar)
 	    (test_bit(WMI_SERVICE_AUX_CHAN_LOAD_INTF, ar->wmi.svc_map)))
 		features |= WMI_10_2_AUX_RADIO_CHAN_LOAD_INTF;
 
+	if (test_bit(WMI_SERVICE_BSS_CHANNEL_INFO_64, ar->wmi.svc_map))
+		features |= WMI_10_2_BSS_CHANNEL_INFO_64;
 
 	cmd->resource_config.feature_mask = __cpu_to_le32(features);
 
@@ -7566,6 +7680,25 @@ ath10k_wmi_10_4_ext_resource_config(struct ath10k *ar,
 	return skb;
 }
 
+static struct sk_buff *
+ath10k_wmi_op_gen_chan_survey_send(struct ath10k *ar,
+				   enum wmi_chan_survey_req_param param)
+{
+	struct wmi_chan_survey_req_cmd *cmd;
+	struct sk_buff *skb;
+
+	skb = ath10k_wmi_alloc_skb(ar, sizeof(*cmd));
+	if (!skb)
+		return ERR_PTR(-ENOMEM);
+
+	cmd = (struct wmi_chan_survey_req_cmd *)skb->data;
+	cmd->param = __cpu_to_le32(param);
+
+	ath10k_dbg(ar, ATH10K_DBG_WMI,
+		   "wmi mgmt send channel survey request param %d\n", param);
+	return skb;
+}
+
 static const struct wmi_ops wmi_ops = {
 	.rx = ath10k_wmi_op_rx,
 	.map_svc = wmi_main_svc_map,
@@ -7789,6 +7922,7 @@ static const struct wmi_ops wmi_10_2_4_ops = {
 	.pull_phyerr = ath10k_wmi_op_pull_phyerr_ev,
 	.pull_rdy = ath10k_wmi_op_pull_rdy_ev,
 	.pull_roam_ev = ath10k_wmi_op_pull_roam_ev,
+	.pull_chan_survey_update = ath10k_wmi_op_pull_chan_survey_update_ev,
 
 	.gen_pdev_suspend = ath10k_wmi_op_gen_pdev_suspend,
 	.gen_pdev_resume = ath10k_wmi_op_gen_pdev_resume,
@@ -7825,6 +7959,7 @@ static const struct wmi_ops wmi_10_2_4_ops = {
 	.gen_addba_send = ath10k_wmi_op_gen_addba_send,
 	.gen_addba_set_resp = ath10k_wmi_op_gen_addba_set_resp,
 	.gen_delba_send = ath10k_wmi_op_gen_delba_send,
+	.gen_chan_survey_send = ath10k_wmi_op_gen_chan_survey_send,
 	.gen_pdev_get_tpc_config = ath10k_wmi_10_2_4_op_gen_pdev_get_tpc_config,
 	.fw_stats_fill = ath10k_wmi_10x_op_fw_stats_fill,
 	.gen_pdev_enable_adaptive_cca =
