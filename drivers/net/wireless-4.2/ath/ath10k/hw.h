@@ -288,6 +288,105 @@ enum ath10k_mcast2ucast_mode {
 	ATH10K_MCAST2UCAST_ENABLED = 1,
 };
 
+enum ath10k_pktlog_type {
+	ATH10K_PKTLOG_TYPE_TX_CTRL = 1,
+	ATH10K_PKTLOG_TYPE_TX_STAT,
+	ATH10K_PKTLOG_TYPE_TX_MSDU_ID,
+	ATH10K_PKTLOG_TYPE_TX_FRM_HDR,
+	ATH10K_PKTLOG_TYPE_RX_STAT,
+	ATH10K_PKTLOG_TYPE_RC_FIND,
+	ATH10K_PKTLOG_TYPE_RC_UPDATE,
+	ATH10K_PKTLOG_TYPE_TX_VIRT_ADDR,
+	ATH10K_PKTLOG_TYPE_DBG_PRINT,
+	ATH10K_PKTLOG_TYPE_MAX,
+};
+
+#define TX_PPDU_NUM_BW 4 /* 20, 40, 80, 160 MHz */
+#define TX_PPDU_NUM_SERIES 2
+
+struct tx_ppdu_series {
+	__le32 info[4];
+} __packed;
+
+#define TX_PPDU_SERIES_INFO_0_SHORT_GI_LSB		28
+#define TX_PPDU_SERIES_INFO_0_SHORT_GI_MASK		0x30000000
+#define TX_PPDU_SERIES_INFO_1_RATE_LSB			24
+#define TX_PPDU_SERIES_INFO_1_RATE_MASK			0x0f000000
+#define TX_PPDU_SERIES_INFO_1_NSS_LSB			28
+#define TX_PPDU_SERIES_INFO_1_NSS_MASK			0x30000000
+#define TX_PPDU_SERIES_INFO_1_PREAMBLE_TYPE_LSB		30
+#define TX_PPDU_SERIES_INFO_1_PREAMBLE_TYPE_MASK	0xc0000000
+
+enum tx_ppdu_bw {
+	TX_PPDU_BW_20_MHZ,
+	TX_PPDU_BW_40_MHZ,
+	TX_PPDU_BW_80_MHZ,
+	TX_PPDU_BW_160_MHZ,
+};
+
+enum tx_ppdu_nss {
+	TX_PPDU_NSS_1,
+	TX_PPDU_NSS_2,
+	TX_PPDU_NSS_3,
+};
+
+enum tx_ppdu_preamble_type {
+	TX_PPDU_PREAMBLE_TYPE_OFDM,
+	TX_PPDU_PREAMBLE_TYPE_CCK,
+	TX_PPDU_PREAMBLE_TYPE_HT,
+	TX_PPDU_PREAMBLE_TYPE_VHT,
+};
+
+enum tx_ppdu_rate_ofdm {
+	TX_PPDU_RATE_OFDM_48_MBPS,
+	TX_PPDU_RATE_OFDM_24_MBPS,
+	TX_PPDU_RATE_OFDM_12_MBPS,
+	TX_PPDU_RATE_OFDM_6_MBPS,
+	TX_PPDU_RATE_OFDM_54_MBPS,
+	TX_PPDU_RATE_OFDM_36_MBPS,
+	TX_PPDU_RATE_OFDM_18_MBPS,
+	TX_PPDU_RATE_OFDM_9_MBPS,
+};
+
+enum tx_ppdu_rate_cck {
+	TX_PPDU_RATE_CCK_11_MBPS,
+	TX_PPDU_RATE_CCK_5_5_MBPS,
+	TX_PPDU_RATE_CCK_2_MBPS,
+	TX_PPDU_RATE_CCK_1_MBPS,
+	TX_PPDU_RATE_CCK_11_MBPS_SHORT,
+	TX_PPDU_RATE_CCK_5_5_MBPS_SHORT,
+	TX_PPDU_RATE_CCK_2_MBPS_SHORT,
+};
+
+struct tx_ppdu_start {
+	__le32 unknown0[21];
+	struct tx_ppdu_series series[TX_PPDU_NUM_BW * TX_PPDU_NUM_SERIES];
+	__le32 unknown1[2];
+} __packed;
+
+struct tx_ppdu_try {
+	__le32 info;
+} __packed;
+
+#define TX_PPDU_TRY_INFO_SERIES_LSB	24
+#define TX_PPDU_TRY_INFO_SERIES_MASK	0x01000000
+#define TX_PPDU_TRY_INFO_PACKET_BW_LSB	28
+#define TX_PPDU_TRY_INFO_PACKET_BW_MASK	0x30000000
+
+struct tx_ppdu_status {
+	__le32 unknown0[11];
+	__le32 info;
+	__le32 unknown1[4];
+} __packed;
+
+#define TX_PPDU_STATUS_INFO_TOTAL_TRIES_LSB	24
+#define TX_PPDU_STATUS_INFO_TOTAL_TRIES_MASK	0x1f000000
+
+struct tx_ppdu_end {
+	struct tx_ppdu_try tries[16];
+	struct tx_ppdu_status status;
+} __packed;
+
 struct ath10k_pktlog_hdr {
 	__le16 flags;
 	__le16 missed_cnt;

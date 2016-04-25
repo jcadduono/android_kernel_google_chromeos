@@ -4382,6 +4382,14 @@ static int ath10k_start(struct ieee80211_hw *hw)
 		}
 	}
 
+	ar->debug.pktlog_filter |= ATH10K_PKTLOG_TX;
+	/* This is used for tx status rate reporting */
+	ret = ath10k_wmi_pdev_pktlog_enable(ar, ar->debug.pktlog_filter);
+	if (ret) {
+		ath10k_warn(ar, "failed to enable tx pktlog: %d\n", ret);
+		goto err_core_stop;
+	}
+
 	__ath10k_set_antenna(ar, ar->cfg_tx_chainmask, ar->cfg_rx_chainmask);
 
 	/*

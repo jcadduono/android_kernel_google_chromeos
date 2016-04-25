@@ -1554,6 +1554,11 @@ struct ath10k_htt {
 	const enum htt_t2h_msg_type *t2h_msg_types;
 	u32 t2h_msg_types_max;
 
+	/* tx status rate reporting */
+	struct ieee80211_tx_rate tx_rate;
+	enum tx_ppdu_bw tx_bw;
+	u32 tx_series;
+
 	struct {
 		/*
 		 * Ring of network buffer objects - This ring is

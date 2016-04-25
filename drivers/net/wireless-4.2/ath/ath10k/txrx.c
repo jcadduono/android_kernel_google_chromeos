@@ -106,6 +106,8 @@ void ath10k_txrx_tx_unref(struct ath10k_htt *htt,
 	memset(&info->status, 0, sizeof(info->status));
 	trace_ath10k_txrx_tx_unref(ar, tx_done->msdu_id);
 
+	info->status.rates[0] = ar->htt.tx_rate;
+
 	if (tx_done->discard) {
 		ieee80211_free_txskb(htt->ar->hw, msdu);
 		return;
