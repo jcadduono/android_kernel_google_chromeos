@@ -29,7 +29,8 @@
 #include "rx_desc.h"
 #include "hw.h"
 
-#define ATH10K_TX_STATS_OFFSET	128
+#define ATH10K_10_2_TX_STATS_OFFSET	128
+#define ATH10K_10_4_TX_STATS_OFFSET	144
 #define ATH10K_TX_STATS_NO_OF_COMB_FB 4
 
 struct ath10k_per_peer_tx_stats {

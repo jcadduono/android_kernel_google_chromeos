@@ -59,7 +59,6 @@ void ath10k_update_peer_tx_stats(struct ath10k *ar,
 		legacy_rate = ((pream == WMI_RATE_PREAMBLE_CCK) ||
 			       (pream == WMI_RATE_PREAMBLE_OFDM));
 
-		tx_stats->ba_fails += ATH10K_HW_BA_FAIL(peer_stats->flags[i]);
 		gi = ATH10K_HW_GI(peer_stats->flags[i]);
 
 		if (legacy_rate) {
@@ -87,6 +86,8 @@ void ath10k_update_peer_tx_stats(struct ath10k *ar,
 				(peer_stats->success_pkts[i] +
 				peer_stats->failed_pkts[i] +
 				peer_stats->retry_pkts[i]);
+			tx_stats->ack_fails +=
+				ATH10K_HW_BA_FAIL(peer_stats->flags[i]);
 		} else {
 			bw = ATH10K_HW_BW(peer_stats->flags[i]);
 			nss = ATH10K_HW_NSS(peer_stats->ratecode[i]) - 1;
@@ -99,6 +100,8 @@ void ath10k_update_peer_tx_stats(struct ath10k *ar,
 				continue;
 			}
 			if (ATH10K_HW_AMPDU(peer_stats->flags[i])) {
+				tx_stats->ba_fails +=
+					ATH10K_HW_BA_FAIL(peer_stats->flags[i]);
 				tx_stats->ampdu_bytes_mcs[mcs] +=
 					__le16_to_cpu(peer_stats->success_bytes[i]) +
 					__le16_to_cpu(peer_stats->retry_bytes[i]);
@@ -129,6 +132,9 @@ void ath10k_update_peer_tx_stats(struct ath10k *ar,
 				tx_stats->ampdu_pkts_rate_num[idx] +=
 						(peer_stats->success_pkts[i] +
 						 peer_stats->retry_pkts[i]);
+			} else {
+				tx_stats->ack_fails +=
+					ATH10K_HW_BA_FAIL(peer_stats->flags[i]);
 			}
 			tx_stats->succ_bytes_mcs[mcs] +=
 				__le16_to_cpu(peer_stats->success_bytes[i]);
@@ -585,6 +591,8 @@ static ssize_t ath10k_dbg_sta_dump_tx_stats(struct file *file,
 
 	len += scnprintf(buf + len, size - len,
 			"BA fails:\t %llu\n", arsta->tx_stats.ba_fails);
+	len += scnprintf(buf + len, size - len,
+			"ACK fails\n %llu\n", arsta->tx_stats.ack_fails);
 
 	if (len > size)
 		len = size;
