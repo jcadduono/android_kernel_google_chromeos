@@ -45,26 +45,12 @@ static const struct mtk_mdp_fmt mtk_mdp_formats[] = {
 		.num_planes	= 2,
 		.num_comp	= 2,
 	}, {
-		.name		= "YUV 4:2:0 2p, Y/CbCr",
-		.pixelformat	= V4L2_PIX_FMT_NV12,
-		.depth		= { 8, 4 },
-		.color		= MTK_MDP_YUV420,
-		.num_planes	= 2,
-		.num_comp	= 2,
-	}, {
 		.name		= "YUV 4:2:0 non-contig. 2p, Y/CbCr",
 		.pixelformat	= V4L2_PIX_FMT_NV12M,
 		.depth		= { 8, 4 },
 		.color		= MTK_MDP_YUV420,
 		.num_planes	= 2,
 		.num_comp	= 2,
-	}, {
-		.name		= "YUV 4:2:0 3p, Y/Cb/Cr",
-		.pixelformat	= V4L2_PIX_FMT_YUV420,
-		.depth		= { 8, 2, 2 },
-		.color		= MTK_MDP_YUV420,
-		.num_planes	= 3,
-		.num_comp	= 3,
 	}, {
 		.name		= "YUV 4:2:0 non-contig. 3p, Y/Cb/Cr",
 		.pixelformat	= V4L2_PIX_FMT_YUV420M,
