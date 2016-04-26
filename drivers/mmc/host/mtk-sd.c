@@ -527,6 +527,7 @@ static void msdc_set_mclk(struct msdc_host *host, unsigned char timing, u32 hz)
 	u32 flags;
 	u32 div;
 	u32 sclk;
+	unsigned long irq_flags;
 
 	if (!hz) {
 		dev_dbg(host->dev, "set mclk to 0\n");
@@ -535,8 +536,11 @@ static void msdc_set_mclk(struct msdc_host *host, unsigned char timing, u32 hz)
 		return;
 	}
 
+	spin_lock_irqsave(&host->irqlock, irq_flags);
 	flags = readl(host->base + MSDC_INTEN);
 	sdr_clr_bits(host->base + MSDC_INTEN, flags);
+	spin_unlock_irqrestore(&host->irqlock, irq_flags);
+
 	sdr_clr_bits(host->base + MSDC_CFG, MSDC_CFG_HS400_CK_MODE);
 	if (timing == MMC_TIMING_UHS_DDR50 ||
 	    timing == MMC_TIMING_MMC_DDR52 ||
@@ -586,7 +590,10 @@ static void msdc_set_mclk(struct msdc_host *host, unsigned char timing, u32 hz)
 	host->timing = timing;
 	/* need because clk changed. */
 	msdc_set_timeout(host, host->timeout_ns, host->timeout_clks);
+
+	spin_lock_irqsave(&host->irqlock, irq_flags);
 	sdr_set_bits(host->base + MSDC_INTEN, flags);
+	spin_unlock_irqrestore(&host->irqlock, irq_flags);
 
 	dev_dbg(host->dev, "sclk: %d, timing: %d\n", host->sclk, timing);
 }
@@ -748,9 +755,7 @@ static void msdc_request_done(struct msdc_host *host, struct mmc_request *mrq)
 	if (mrq->data)
 		msdc_unprepare_data(host, mrq);
 	mmc_request_done(host->mmc, mrq);
-
-	pm_runtime_mark_last_busy(host->dev);
-	pm_runtime_put_autosuspend(host->dev);
+	msdc_recheck_sdio_irq(host);
 }
 
 /* returns true if command is fully handled; returns false otherwise */
@@ -904,10 +909,6 @@ static void msdc_ops_request(struct mmc_host *mmc, struct mmc_request *mrq)
 	WARN_ON(host->mrq);
 	host->mrq = mrq;
 
-	pm_runtime_get_sync(host->dev);
-
-	msdc_recheck_sdio_irq(host);
-
 	if (mrq->data)
 		msdc_prepare_data(host, mrq);
 
@@ -986,7 +987,11 @@ static bool msdc_data_xfer_done(struct msdc_host *host, u32 events,
 		sdr_set_field(host->base + MSDC_DMA_CTRL, MSDC_DMA_CTRL_STOP, 1);
 		while (readl(host->base + MSDC_DMA_CFG) & MSDC_DMA_CFG_STS)
 			cpu_relax();
+
+		spin_lock_irqsave(&host->irqlock, flags);
 		sdr_clr_bits(host->base + MSDC_INTEN, data_ints_mask);
+		spin_unlock_irqrestore(&host->irqlock, flags);
+
 		dev_dbg(host->dev, "DMA stop\n");
 
 		if ((events & MSDC_INT_XFER_COMPL) && (!stop || !stop->error)) {
@@ -1118,9 +1123,9 @@ static irqreturn_t msdc_irq(int irq, void *dev_id)
 	/* clear interrupts */
 	writel(events & event_mask, host->base + MSDC_INT);
 
-	mrq = ACCESS_ONCE(host->mrq);
-	cmd = ACCESS_ONCE(host->cmd);
-	data = ACCESS_ONCE(host->data);
+	mrq = host->mrq;
+	cmd = host->cmd;
+	data = host->data;
 	spin_unlock_irqrestore(&host->irqlock, flags);
 
 	if ((events & event_mask)& MSDC_INT_SDIOIRQ) {
@@ -1153,6 +1158,7 @@ static irqreturn_t msdc_irq(int irq, void *dev_id)
 static void msdc_init_hw(struct msdc_host *host)
 {
 	u32 val;
+	unsigned long flags;
 
 	/* Configure to MMC/SD mode, clock free running */
 	sdr_set_bits(host->base + MSDC_CFG, MSDC_CFG_MODE | MSDC_CFG_CKPDN);
@@ -1164,9 +1170,11 @@ static void msdc_init_hw(struct msdc_host *host)
 	sdr_clr_bits(host->base + MSDC_PS, MSDC_PS_CDEN);
 
 	/* Disable and clear all interrupts */
+	spin_lock_irqsave(&host->irqlock, flags);
 	writel(0, host->base + MSDC_INTEN);
 	val = readl(host->base + MSDC_INT);
 	writel(val, host->base + MSDC_INT);
+	spin_unlock_irqrestore(&host->irqlock, flags);
 
 	sdr_set_field(host->base + MSDC_PAD_TUNE,
 		MSDC_PAD_TUNE_CLKTDLY, host->sdr104_clk_delay);
@@ -1196,11 +1204,15 @@ static void msdc_init_hw(struct msdc_host *host)
 static void msdc_deinit_hw(struct msdc_host *host)
 {
 	u32 val;
+	unsigned long flags;
+
 	/* Disable and clear all interrupts */
+	spin_lock_irqsave(&host->irqlock, flags);
 	writel(0, host->base + MSDC_INTEN);
 
 	val = readl(host->base + MSDC_INT);
 	writel(val, host->base + MSDC_INT);
+	spin_unlock_irqrestore(&host->irqlock, flags);
 }
 
 /* init gpd and bd list in msdc_drv_probe */
@@ -1228,8 +1240,6 @@ static void msdc_ops_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	struct msdc_host *host = mmc_priv(mmc);
 	int ret;
 
-	pm_runtime_get_sync(host->dev);
-
 	msdc_set_buswidth(host, ios->bus_width);
 
 	/* Suspend/Resume will do power off/on */
@@ -1241,7 +1251,7 @@ static void msdc_ops_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 					ios->vdd);
 			if (ret) {
 				dev_err(host->dev, "Failed to set vmmc power!\n");
-				goto end;
+				return;
 			}
 		}
 		break;
@@ -1270,9 +1280,6 @@ static void msdc_ops_set_ios(struct mmc_host *mmc, struct mmc_ios *ios)
 	if (host->mclk != ios->clock || host->timing != ios->timing)
 		msdc_set_mclk(host, ios->timing, ios->clock);
 
-end:
-	pm_runtime_mark_last_busy(host->dev);
-	pm_runtime_put_autosuspend(host->dev);
 }
 
 static u32 test_delay_bit(u32 delay, u32 bit)
@@ -1435,7 +1442,6 @@ static int msdc_execute_tuning(struct mmc_host *mmc, u32 opcode)
 	struct msdc_host *host = mmc_priv(mmc);
 	int ret;
 
-	pm_runtime_get_sync(host->dev);
 	ret = msdc_tune_response(mmc, opcode);
 	if (ret == -EIO) {
 		dev_err(host->dev, "Tune response fail!\n");
@@ -1446,8 +1452,6 @@ static int msdc_execute_tuning(struct mmc_host *mmc, u32 opcode)
 		dev_err(host->dev, "Tune data fail!\n");
 
 out:
-	pm_runtime_mark_last_busy(host->dev);
-	pm_runtime_put_autosuspend(host->dev);
 	return ret;
 }
 
@@ -1484,8 +1488,9 @@ static void msdc_recheck_sdio_irq(struct msdc_host *host)
 	if (host->mmc->caps & MMC_CAP_SDIO_IRQ && host->irq_thread_alive) {
 		reg_int = readl(host->base + MSDC_INT);
 		reg_ps  = readl(host->base + MSDC_PS);
-		if (!((reg_int & MSDC_INT_SDIOIRQ) || (reg_ps & MSDC_PS_DATA1)))
+		if (!((reg_int & MSDC_INT_SDIOIRQ) || (reg_ps & MSDC_PS_DATA1))) {
 			mmc_signal_sdio_irq(host->mmc);
+		}
 	}
 }
 
