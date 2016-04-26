@@ -16,7 +16,234 @@
 
 #include "core.h"
 #include "wmi-ops.h"
+#include "wmi.h"
 #include "debug.h"
+
+static char ath10k_map_rate_code_number(u8 rate, u8 pream)
+{
+	u8 i;
+	u8 legacy_rates[] = {TX_CCK_RATE_1_MBPS, TX_CCK_RATE_2_MBPS,
+			     TX_CCK_RATE_5_5_MBPS, TX_CCK_RATE_11_MBPS,
+			     TX_OFDM_RATE_6_MBPS, TX_OFDM_RATE_9_MBPS,
+			     TX_OFDM_RATE_12_MBPS, TX_OFDM_RATE_18_MBPS,
+			     TX_OFDM_RATE_24_MBPS, TX_OFDM_RATE_36_MBPS,
+			     TX_OFDM_RATE_48_MBPS, TX_OFDM_RATE_54_MBPS};
+
+	/* For CCK 5.5Mbps firmware sends rate as 6 */
+	if (pream == WMI_RATE_PREAMBLE_CCK && rate == 6)
+		rate = TX_CCK_RATE_5_5_MBPS;
+
+	for (i = 0; i < LEGACY_RATE_NUM; i++) {
+		if (rate == legacy_rates[i])
+			break;
+	}
+
+	return i;
+}
+
+void ath10k_update_peer_tx_stats(struct ath10k *ar,
+				 struct ath10k_sta *arsta,
+				 struct ath10k_per_peer_tx_stats *peer_stats)
+{
+	u8 pream, bw, mcs, nss, rate, pkts, gi;
+	int i, idx;
+	struct ath10k_tx_stats *tx_stats;
+	bool legacy_rate;
+
+	spin_lock_bh(&ar->data_lock);
+	tx_stats = &arsta->tx_stats;
+	pkts = peer_stats->tx_ppdu_cnt;
+
+	for (i = 0; i < pkts; i++) {
+		pream = ATH10K_HW_PREAMBLE(peer_stats->ratecode[i]);
+		legacy_rate = ((pream == WMI_RATE_PREAMBLE_CCK) ||
+			       (pream == WMI_RATE_PREAMBLE_OFDM));
+
+		tx_stats->ba_fails += ATH10K_HW_BA_FAIL(peer_stats->flags[i]);
+
+		if (legacy_rate) {
+			rate = ATH10K_HW_LEGACY_RATE(peer_stats->ratecode[i]);
+			mcs = ath10k_map_rate_code_number(rate, pream);
+			if (mcs == LEGACY_RATE_NUM)
+				continue;
+			if (ATH10K_HW_AMPDU(peer_stats->flags[i])) {
+				tx_stats->ampdu_bytes_legacy_rates[mcs] +=
+				__le16_to_cpu(peer_stats->success_bytes[i]) +
+				__le16_to_cpu(peer_stats->retry_bytes[i]);
+				tx_stats->ampdu_pkts_legacy_rates[mcs] +=
+						(peer_stats->success_pkts[i] +
+						 peer_stats->retry_pkts[i]);
+			} else {
+				tx_stats->succ_bytes_legacy_rates[mcs] +=
+					__le16_to_cpu(peer_stats->success_bytes[i]);
+				tx_stats->succ_pkts_legacy_rates[mcs] +=
+					(peer_stats->success_pkts[i]);
+				tx_stats->fail_bytes_legacy_rates[mcs] +=
+					__le16_to_cpu(peer_stats->failed_bytes[i]);
+				tx_stats->fail_pkts_legacy_rates[mcs] +=
+					(peer_stats->failed_pkts[i]);
+				tx_stats->retry_bytes_legacy_rates[mcs] +=
+					__le16_to_cpu(peer_stats->retry_bytes[i]);
+				tx_stats->retry_pkts_legacy_rates[mcs] +=
+					(peer_stats->retry_pkts[i]);
+				tx_stats->total_bytes_legacy_rates[mcs] +=
+					__le16_to_cpu(peer_stats->success_bytes[i]) +
+					__le16_to_cpu(peer_stats->failed_bytes[i]) +
+					__le16_to_cpu(peer_stats->retry_bytes[i]);
+				tx_stats->total_pkts_legacy_rates[mcs] +=
+					(peer_stats->success_pkts[i] +
+					peer_stats->failed_pkts[i] +
+					peer_stats->retry_pkts[i]);
+			}
+		} else {
+			bw = ATH10K_HW_BW(peer_stats->flags[i]);
+			nss = ATH10K_HW_NSS(peer_stats->ratecode[i]) - 1;
+			gi = 0; /*TODO needs to be updated from flags*/
+			mcs = ATH10K_HW_MCS_RATE(peer_stats->ratecode[i]);
+			idx = mcs * 8 + 8 * 10 * (nss);
+			idx += bw * 2 + gi;
+
+			if (nss > 2 || bw > 2 || mcs > 9) {
+				continue;
+			}
+			if (ATH10K_HW_AMPDU(peer_stats->flags[i])) {
+				tx_stats->ampdu_bytes_mcs[mcs] +=
+					__le16_to_cpu(peer_stats->success_bytes[i]) +
+					__le16_to_cpu(peer_stats->retry_bytes[i]);
+				tx_stats->ampdu_bytes_bw[bw] +=
+					__le16_to_cpu(peer_stats->success_bytes[i]) +
+					__le16_to_cpu(peer_stats->retry_bytes[i]);
+				tx_stats->ampdu_bytes_nss[nss] +=
+					__le16_to_cpu(peer_stats->success_bytes[i]) +
+					__le16_to_cpu(peer_stats->retry_bytes[i]);
+				tx_stats->ampdu_bytes_gi[gi] +=
+					__le16_to_cpu(peer_stats->success_bytes[i]) +
+					__le16_to_cpu(peer_stats->retry_bytes[i]);
+				tx_stats->ampdu_bytes_rate_num[idx] +=
+					__le16_to_cpu(peer_stats->success_bytes[i]) +
+					__le16_to_cpu(peer_stats->retry_bytes[i]);
+				tx_stats->ampdu_pkts_mcs[mcs] +=
+						(peer_stats->success_pkts[i] +
+						 peer_stats->retry_pkts[i]);
+				tx_stats->ampdu_pkts_bw[bw] +=
+						(peer_stats->success_pkts[i] +
+						 peer_stats->retry_pkts[i]);
+				tx_stats->ampdu_pkts_nss[nss] +=
+						(peer_stats->success_pkts[i] +
+						 peer_stats->retry_pkts[i]);
+				tx_stats->ampdu_pkts_gi[gi] +=
+						(peer_stats->success_pkts[i] +
+						 peer_stats->retry_pkts[i]);
+				tx_stats->ampdu_pkts_rate_num[idx] +=
+						(peer_stats->success_pkts[i] +
+						 peer_stats->retry_pkts[i]);
+			} else {
+				tx_stats->succ_bytes_mcs[mcs] +=
+					__le16_to_cpu(peer_stats->success_bytes[i]);
+				tx_stats->succ_bytes_bw[bw] +=
+					__le16_to_cpu(peer_stats->success_bytes[i]);
+				tx_stats->succ_bytes_nss[nss] +=
+					__le16_to_cpu(peer_stats->success_bytes[i]);
+				tx_stats->succ_bytes_gi[gi] +=
+					__le16_to_cpu(peer_stats->success_bytes[i]);
+				tx_stats->succ_bytes_rate_num[idx] +=
+					__le16_to_cpu(peer_stats->success_bytes[i]);
+				tx_stats->succ_pkts_mcs[mcs] +=
+					(peer_stats->success_pkts[i]);
+				tx_stats->succ_pkts_bw[bw] +=
+					(peer_stats->success_pkts[i]);
+				tx_stats->succ_pkts_nss[nss] +=
+					(peer_stats->success_pkts[i]);
+				tx_stats->succ_pkts_gi[gi] +=
+					(peer_stats->success_pkts[i]);
+				tx_stats->succ_pkts_rate_num[idx] +=
+					(peer_stats->success_pkts[i]);
+				tx_stats->fail_bytes_mcs[mcs] +=
+					__le16_to_cpu(peer_stats->failed_bytes[i]);
+				tx_stats->fail_bytes_bw[bw] +=
+					__le16_to_cpu(peer_stats->failed_bytes[i]);
+				tx_stats->fail_bytes_nss[nss] +=
+					__le16_to_cpu(peer_stats->failed_bytes[i]);
+				tx_stats->fail_bytes_gi[gi] +=
+					__le16_to_cpu(peer_stats->failed_bytes[i]);
+				tx_stats->fail_bytes_rate_num[idx] +=
+					__le16_to_cpu(peer_stats->failed_bytes[i]);
+				tx_stats->fail_pkts_mcs[mcs] +=
+					(peer_stats->failed_pkts[i]);
+				tx_stats->fail_pkts_bw[bw] +=
+					(peer_stats->failed_pkts[i]);
+				tx_stats->fail_pkts_nss[nss] +=
+					(peer_stats->failed_pkts[i]);
+				tx_stats->fail_pkts_gi[gi] +=
+					(peer_stats->failed_pkts[i]);
+				tx_stats->fail_pkts_rate_num[idx] +=
+					(peer_stats->failed_pkts[i]);
+				tx_stats->retry_bytes_mcs[mcs] +=
+					__le16_to_cpu(peer_stats->retry_bytes[i]);
+				tx_stats->retry_bytes_bw[bw] +=
+					__le16_to_cpu(peer_stats->retry_bytes[i]);
+				tx_stats->retry_bytes_nss[nss] +=
+					__le16_to_cpu(peer_stats->retry_bytes[i]);
+				tx_stats->retry_bytes_gi[gi] +=
+					__le16_to_cpu(peer_stats->retry_bytes[i]);
+				tx_stats->retry_bytes_rate_num[idx] +=
+					__le16_to_cpu(peer_stats->retry_bytes[i]);
+				tx_stats->retry_pkts_mcs[mcs] +=
+					(peer_stats->retry_pkts[i]);
+				tx_stats->retry_pkts_bw[bw] +=
+					(peer_stats->retry_pkts[i]);
+				tx_stats->retry_pkts_nss[nss] +=
+					(peer_stats->retry_pkts[i]);
+				tx_stats->retry_pkts_gi[gi] +=
+					(peer_stats->retry_pkts[i]);
+				tx_stats->retry_pkts_rate_num[idx] +=
+					(peer_stats->retry_pkts[i]);
+				tx_stats->total_bytes_mcs[mcs] +=
+					__le16_to_cpu(peer_stats->success_bytes[i]) +
+					__le16_to_cpu(peer_stats->failed_bytes[i]) +
+					__le16_to_cpu(peer_stats->retry_bytes[i]);
+				tx_stats->total_bytes_bw[bw] +=
+					__le16_to_cpu(peer_stats->success_bytes[i]) +
+					__le16_to_cpu(peer_stats->failed_bytes[i]) +
+					__le16_to_cpu(peer_stats->retry_bytes[i]);
+				tx_stats->total_bytes_nss[nss] +=
+					__le16_to_cpu(peer_stats->success_bytes[i]) +
+					__le16_to_cpu(peer_stats->failed_bytes[i]) +
+					__le16_to_cpu(peer_stats->retry_bytes[i]);
+				tx_stats->total_bytes_gi[gi] +=
+					__le16_to_cpu(peer_stats->success_bytes[i]) +
+					__le16_to_cpu(peer_stats->failed_bytes[i]) +
+					__le16_to_cpu(peer_stats->retry_bytes[i]);
+				tx_stats->total_bytes_rate_num[idx] +=
+					__le16_to_cpu(peer_stats->success_bytes[i]) +
+					__le16_to_cpu(peer_stats->failed_bytes[i]) +
+					__le16_to_cpu(peer_stats->retry_bytes[i]);
+				tx_stats->total_pkts_mcs[mcs] +=
+					peer_stats->success_pkts[i] +
+					peer_stats->failed_pkts[i] +
+					peer_stats->retry_pkts[i];
+				tx_stats->total_pkts_bw[bw] +=
+					(peer_stats->success_pkts[i] +
+					peer_stats->failed_pkts[i] +
+					peer_stats->retry_pkts[i]);
+				tx_stats->total_pkts_nss[nss] +=
+					(peer_stats->success_pkts[i] +
+					peer_stats->failed_pkts[i] +
+					peer_stats->retry_pkts[i]);
+				tx_stats->total_pkts_gi[gi] +=
+					(peer_stats->success_pkts[i] +
+					peer_stats->failed_pkts[i] +
+					peer_stats->retry_pkts[i]);
+				tx_stats->total_pkts_rate_num[idx] +=
+					(peer_stats->success_pkts[i] +
+					peer_stats->failed_pkts[i] +
+					peer_stats->retry_pkts[i]);
+			}
+		}
+	}
+	tx_stats->tx_duration += __le32_to_cpu(peer_stats->tx_duration);
+	spin_unlock_bh(&ar->data_lock);
+}
 
 void ath10k_sta_update_rx_duration(struct ath10k *ar, struct list_head *head)
 {	struct ieee80211_sta *sta;

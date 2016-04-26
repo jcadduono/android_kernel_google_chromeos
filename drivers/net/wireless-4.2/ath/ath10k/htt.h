@@ -29,6 +29,23 @@
 #include "rx_desc.h"
 #include "hw.h"
 
+#define ATH10K_TX_STATS_OFFSET	128
+#define ATH10K_TX_STATS_NO_OF_COMB_FB 4
+
+struct ath10k_per_peer_tx_stats {
+	u8 ratecode[ATH10K_TX_STATS_NO_OF_COMB_FB];
+	u8 success_pkts[ATH10K_TX_STATS_NO_OF_COMB_FB];
+	__le16 success_bytes[ATH10K_TX_STATS_NO_OF_COMB_FB];
+	u8 retry_pkts[ATH10K_TX_STATS_NO_OF_COMB_FB];
+	__le16 retry_bytes[ATH10K_TX_STATS_NO_OF_COMB_FB];
+	u8 failed_pkts[ATH10K_TX_STATS_NO_OF_COMB_FB];
+	__le16 failed_bytes[ATH10K_TX_STATS_NO_OF_COMB_FB];
+	u8 flags[ATH10K_TX_STATS_NO_OF_COMB_FB];
+	__le32 tx_duration;
+	u8 tx_ppdu_cnt;
+	u8 peer_id;
+} __packed;
+
 enum htt_dbg_stats_type {
 	HTT_DBG_STATS_WAL_PDEV_TXRX = 1 << 0,
 	HTT_DBG_STATS_RX_REORDER    = 1 << 1,

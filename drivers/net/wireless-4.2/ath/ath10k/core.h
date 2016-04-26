@@ -309,6 +309,81 @@ struct ath10k_peer {
 	struct ieee80211_key_conf *keys[WMI_MAX_KEY_INDEX + 1];
 };
 
+struct ath10k_tx_stats {
+	u64 total_bytes_mcs[VHT_MCS_NUM];
+	u64 total_bytes_bw[VHT_BW_NUM];
+	u64 total_bytes_nss[VHT_NSS_NUM];
+	u64 total_bytes_legacy_rates[LEGACY_RATE_NUM];
+	u64 total_bytes_gi[VHT_GI_NUM];
+	u64 total_bytes_rate_num[VHT_RATE_NUM];
+
+	u64 total_pkts_mcs[VHT_MCS_NUM];
+	u64 total_pkts_bw[VHT_BW_NUM];
+	u64 total_pkts_nss[VHT_NSS_NUM];
+	u64 total_pkts_legacy_rates[LEGACY_RATE_NUM];
+	u64 total_pkts_gi[VHT_GI_NUM];
+	u64 total_pkts_rate_num[VHT_RATE_NUM];
+
+	u64 succ_bytes_mcs[VHT_MCS_NUM];
+	u64 succ_bytes_bw[VHT_BW_NUM];
+	u64 succ_bytes_nss[VHT_NSS_NUM];
+	u64 succ_bytes_legacy_rates[LEGACY_RATE_NUM];
+	u64 succ_bytes_gi[VHT_GI_NUM];
+	u64 succ_bytes_rate_num[VHT_RATE_NUM];
+
+	u64 succ_pkts_mcs[VHT_MCS_NUM];
+	u64 succ_pkts_bw[VHT_BW_NUM];
+	u64 succ_pkts_nss[VHT_NSS_NUM];
+	u64 succ_pkts_legacy_rates[LEGACY_RATE_NUM];
+	u64 succ_pkts_gi[VHT_GI_NUM];
+	u64 succ_pkts_rate_num[VHT_RATE_NUM];
+
+	u64 fail_bytes_mcs[VHT_MCS_NUM];
+	u64 fail_bytes_bw[VHT_BW_NUM];
+	u64 fail_bytes_nss[VHT_NSS_NUM];
+	u64 fail_bytes_legacy_rates[LEGACY_RATE_NUM];
+	u64 fail_bytes_gi[VHT_GI_NUM];
+	u64 fail_bytes_rate_num[VHT_RATE_NUM];
+
+	u64 fail_pkts_mcs[VHT_MCS_NUM];
+	u64 fail_pkts_bw[VHT_BW_NUM];
+	u64 fail_pkts_nss[VHT_NSS_NUM];
+	u64 fail_pkts_legacy_rates[LEGACY_RATE_NUM];
+	u64 fail_pkts_gi[VHT_GI_NUM];
+	u64 fail_pkts_rate_num[VHT_RATE_NUM];
+
+	u64 ampdu_bytes_mcs[VHT_MCS_NUM];
+	u64 ampdu_bytes_bw[VHT_BW_NUM];
+	u64 ampdu_bytes_nss[VHT_NSS_NUM];
+	u64 ampdu_bytes_legacy_rates[LEGACY_RATE_NUM];
+	u64 ampdu_bytes_gi[VHT_GI_NUM];
+	u64 ampdu_bytes_rate_num[VHT_RATE_NUM];
+
+	u64 ampdu_pkts_mcs[VHT_MCS_NUM];
+	u64 ampdu_pkts_bw[VHT_BW_NUM];
+	u64 ampdu_pkts_nss[VHT_NSS_NUM];
+	u64 ampdu_pkts_legacy_rates[LEGACY_RATE_NUM];
+	u64 ampdu_pkts_gi[VHT_GI_NUM];
+	u64 ampdu_pkts_rate_num[VHT_RATE_NUM];
+
+	u64 retry_bytes_mcs[VHT_MCS_NUM];
+	u64 retry_bytes_bw[VHT_BW_NUM];
+	u64 retry_bytes_nss[VHT_NSS_NUM];
+	u64 retry_bytes_legacy_rates[LEGACY_RATE_NUM];
+	u64 retry_bytes_gi[VHT_GI_NUM];
+	u64 retry_bytes_rate_num[VHT_RATE_NUM];
+
+	u64 retry_pkts_mcs[VHT_MCS_NUM];
+	u64 retry_pkts_bw[VHT_BW_NUM];
+	u64 retry_pkts_nss[VHT_NSS_NUM];
+	u64 retry_pkts_legacy_rates[LEGACY_RATE_NUM];
+	u64 retry_pkts_gi[VHT_GI_NUM];
+	u64 retry_pkts_rate_num[VHT_RATE_NUM];
+
+	u64 tx_duration;
+	u64 ba_fails;
+};
+
 struct ath10k_txq {
 	struct list_head list;
 	unsigned long num_fw_queued;
@@ -331,6 +406,7 @@ struct ath10k_sta {
 	/* protected by conf_mutex */
 	bool aggr_mode;
 	u64 rx_duration;
+	struct ath10k_tx_stats tx_stats;
 #endif
 };
 
@@ -918,6 +994,7 @@ struct ath10k {
 
 	struct ath10k_thermal thermal;
 	struct ath10k_wow wow;
+	struct ath10k_per_peer_tx_stats peer_tx_stats;
 
 	struct completion chan_survey_completed;
 	/* cycle count for operating channel */

@@ -4567,11 +4567,42 @@ enum wmi_rate_preamble {
 
 #define ATH10K_HW_NSS(rate)		(1 + (((rate) >> 4) & 0x3))
 #define ATH10K_HW_PREAMBLE(rate)	(((rate) >> 6) & 0x3)
+#define ATH10K_HW_MCS_RATE(rate)	((rate) & 0xf)
+#define ATH10K_HW_LEGACY_RATE(rate)	((rate) & 0x3f)
 #define ATH10K_HW_RATECODE(rate, nss, preamble)	\
 	(((preamble) << 6) | ((nss) << 4) | (rate))
 
+#define ATH10K_HW_AMPDU(flags)		(flags & 0x1)
+#define ATH10K_HW_BA_FAIL(flags)	(((flags) >> 1) & 0x3)
+#define ATH10K_HW_BW(flags)		(((flags) >> 3) & 0x3)
+
 /* Value to disable fixed rate setting */
 #define WMI_FIXED_RATE_NONE    (0xff)
+
+#define LEGACY_RATE_NUM	12
+#define VHT_MCS_NUM	10
+#define VHT_BW_NUM	4
+#define VHT_NSS_NUM	4
+#define VHT_GI_NUM	2
+#define VHT_RATE_NUM	320
+
+enum tx_ofdm_rates {
+	TX_OFDM_RATE_48_MBPS = 48,
+	TX_OFDM_RATE_24_MBPS = 24,
+	TX_OFDM_RATE_12_MBPS = 12,
+	TX_OFDM_RATE_54_MBPS = 54,
+	TX_OFDM_RATE_36_MBPS = 36,
+	TX_OFDM_RATE_18_MBPS = 18,
+	TX_OFDM_RATE_9_MBPS = 9,
+	TX_OFDM_RATE_6_MBPS = 6,
+};
+
+enum tx_cck_rates {
+	TX_CCK_RATE_11_MBPS = 11,
+	TX_CCK_RATE_5_5_MBPS = 5,
+	TX_CCK_RATE_2_MBPS = 2,
+	TX_CCK_RATE_1_MBPS = 1,
+};
 
 struct wmi_vdev_param_map {
 	u32 rts_threshold;

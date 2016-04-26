@@ -4938,6 +4938,19 @@ static int ath10k_add_interface(struct ieee80211_hw *hw,
 		ieee80211_wake_queue(ar->hw, arvif->vdev_id);
 	spin_unlock_bh(&ar->htt.tx_lock);
 
+	if (ath10k_peer_stats_enabled(ar)) {
+		ar->debug.pktlog_filter |= ATH10K_PKTLOG_PEER_STATS;
+		/* This is used for per peer tx stats */
+		ret = ath10k_wmi_pdev_pktlog_enable(ar,
+				ar->debug.pktlog_filter);
+		if (ret) {
+			ath10k_warn(ar,
+					"failed to enable peer stats pktlog: %d\n",
+					ret);
+			goto err_peer_delete;
+		}
+	}
+
 	mutex_unlock(&ar->conf_mutex);
 	return 0;
 

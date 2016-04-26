@@ -2409,6 +2409,59 @@ static void ath10k_htt_rx_tx_mode_switch_ind(struct ath10k *ar,
 	ath10k_mac_tx_push_pending(ar);
 }
 
+void ath10k_process_tx_stats(struct ath10k *ar, u8 *data)
+{
+	struct ath10k_pktlog_hdr *pl_hdr = (struct ath10k_pktlog_hdr *)data;
+	u16 log_type = __le16_to_cpu(pl_hdr->log_type);
+	struct ath10k_peer *peer;
+	struct ath10k_per_peer_tx_stats *p_tx_stats = &ar->peer_tx_stats;
+
+	if (log_type != ATH10K_PKTLOG_TYPE_TXCTL &&
+	    log_type != ATH10K_PKTLOG_TYPE_TXSTATS)
+		return;
+
+	if (log_type == ATH10K_PKTLOG_TYPE_TXSTATS) {
+		memcpy(p_tx_stats, (pl_hdr->payload) +
+			ATH10K_TX_STATS_OFFSET, sizeof(*p_tx_stats));
+	} else {
+		struct ieee80211_sta *sta;
+		struct ath10k_sta *arsta;
+		u32 *tx_ctrl_desc;
+		u32 peer_id;
+		u32 ftype;
+		u8 peer_mac[ETH_ALEN];
+
+		tx_ctrl_desc = (u32 *)pl_hdr->payload;
+
+		peer_id = __le32_to_cpu(tx_ctrl_desc[ATH10K_TXC_PEERID]);
+		ftype = TXCS_MS(tx_ctrl_desc, ATH10K_TXC_FTYPE);
+
+		if (ftype != ATH10K_FTYPE_DATA)
+			return;
+
+		spin_lock_bh(&ar->data_lock);
+		peer = ath10k_peer_find_by_id(ar, peer_id);
+		if (!peer) {
+			spin_unlock_bh(&ar->data_lock);
+			return;
+		}
+		ether_addr_copy(peer_mac, peer->addr);
+		spin_unlock_bh(&ar->data_lock);
+
+		rcu_read_lock();
+		sta = ieee80211_find_sta_by_ifaddr(ar->hw, peer_mac, NULL);
+		if (!sta) {
+			rcu_read_unlock();
+			ath10k_dbg(ar, ATH10K_DBG_HTT,
+				   "Sta entry for %pM not found\n", peer_mac);
+			return;
+		}
+		arsta = (struct ath10k_sta *)sta->drv_priv;
+		ath10k_update_peer_tx_stats(ar, arsta, p_tx_stats);
+		rcu_read_unlock();
+	}
+}
+
 void ath10k_htt_t2h_msg_handler(struct ath10k *ar, struct sk_buff *skb)
 {
 	struct ath10k_htt *htt = &ar->htt;
@@ -2530,6 +2583,8 @@ void ath10k_htt_t2h_msg_handler(struct ath10k *ar, struct sk_buff *skb)
 					__le16_to_cpu(hdr->size));
 		ath10k_htt_rx_pktlog(ar, &resp->pktlog_msg,
 				     skb->len - sizeof(resp->pktlog_msg));
+		if (ath10k_peer_stats_enabled(ar))
+			ath10k_process_tx_stats(ar, resp->pktlog_msg.payload);
 		break;
 	}
 	case HTT_T2H_MSG_TYPE_RX_FLUSH: {
