@@ -2173,9 +2173,9 @@ static const struct file_operations fops_btcoex = {
 	.open = simple_open
 };
 
-static ssize_t ath10k_write_peer_stats(struct file *file,
-				       const char __user *ubuf,
-				       size_t count, loff_t *ppos)
+static ssize_t ath10k_write_disable_peer_stats(struct file *file,
+					       const char __user *ubuf,
+					       size_t count, loff_t *ppos)
 {
 	struct ath10k *ar = file->private_data;
 	char buf[32];
@@ -2200,13 +2200,13 @@ static ssize_t ath10k_write_peer_stats(struct file *file,
 		goto exit;
 	}
 
-	if (!(test_bit(ATH10K_FLAG_PEER_STATS, &ar->dev_flags) ^ val))
+	if (!(test_bit(ATH10K_FLAG_PEER_STATS_DISABLED, &ar->dev_flags) ^ val))
 		goto exit;
 
 	if (val)
-		set_bit(ATH10K_FLAG_PEER_STATS, &ar->dev_flags);
+		set_bit(ATH10K_FLAG_PEER_STATS_DISABLED, &ar->dev_flags);
 	else
-		clear_bit(ATH10K_FLAG_PEER_STATS, &ar->dev_flags);
+		clear_bit(ATH10K_FLAG_PEER_STATS_DISABLED, &ar->dev_flags);
 
 	ath10k_info(ar, "restarting firmware due to Peer stats change");
 
@@ -2218,8 +2218,9 @@ exit:
 	return ret;
 }
 
-static ssize_t ath10k_read_peer_stats(struct file *file, char __user *ubuf,
-				      size_t count, loff_t *ppos)
+static ssize_t ath10k_read_disable_peer_stats(struct file *file,
+					      char __user *ubuf,
+					      size_t count, loff_t *ppos)
 
 {
 	char buf[32];
@@ -2228,15 +2229,16 @@ static ssize_t ath10k_read_peer_stats(struct file *file, char __user *ubuf,
 
 	mutex_lock(&ar->conf_mutex);
 	len = scnprintf(buf, sizeof(buf) - len, "%d\n",
-			test_bit(ATH10K_FLAG_PEER_STATS, &ar->dev_flags));
+			test_bit(ATH10K_FLAG_PEER_STATS_DISABLED,
+				 &ar->dev_flags));
 	mutex_unlock(&ar->conf_mutex);
 
 	return simple_read_from_buffer(ubuf, count, ppos, buf, len);
 }
 
-static const struct file_operations fops_peer_stats = {
-	.read = ath10k_read_peer_stats,
-	.write = ath10k_write_peer_stats,
+static const struct file_operations fops_disable_peer_stats = {
+	.read = ath10k_read_disable_peer_stats,
+	.write = ath10k_write_disable_peer_stats,
 	.open = simple_open
 };
 
@@ -2404,9 +2406,9 @@ int ath10k_debug_register(struct ath10k *ar)
 				    ar->debug.debugfs_phy, ar, &fops_btcoex);
 
 	if (test_bit(WMI_SERVICE_PEER_STATS, ar->wmi.svc_map))
-		debugfs_create_file("peer_stats", S_IRUGO | S_IWUSR,
+		debugfs_create_file("disable_peer_stats", S_IRUGO | S_IWUSR,
 				    ar->debug.debugfs_phy, ar,
-				    &fops_peer_stats);
+				    &fops_disable_peer_stats);
 
 	debugfs_create_file("fw_checksums", S_IRUSR,
 			    ar->debug.debugfs_phy, ar, &fops_fw_checksums);

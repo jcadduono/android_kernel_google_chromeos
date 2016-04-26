@@ -562,8 +562,8 @@ enum ath10k_dev_flags {
 	/* Bluetooth coexistance enabled */
 	ATH10K_FLAG_BTCOEX,
 
-	/* Per Station statistics service */
-	ATH10K_FLAG_PEER_STATS,
+	/* Disable Per Station statistics service */
+	ATH10K_FLAG_PEER_STATS_DISABLED,
 };
 
 enum ath10k_cal_mode {
@@ -912,7 +912,7 @@ struct ath10k {
 
 static inline bool ath10k_peer_stats_enabled(struct ath10k *ar)
 {
-	if (test_bit(ATH10K_FLAG_PEER_STATS, &ar->dev_flags) &&
+	if (!test_bit(ATH10K_FLAG_PEER_STATS_DISABLED, &ar->dev_flags) &&
 	    test_bit(WMI_SERVICE_PEER_STATS, ar->wmi.svc_map))
 		return true;
 
