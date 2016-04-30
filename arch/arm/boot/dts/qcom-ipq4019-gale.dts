@@ -433,11 +433,11 @@
 			};
 
 			atmegaxx_captouch@51 {
-				compatible = "atmegaxx_captouch";
+				compatible = "atmel,atmegaxx_captouch";
 				reg = <0x51>;
-				gpios = <&tlmm 67 GPIO_ACTIVE_LOW>;
-				num-of-buttons = <8>;
-				button-codes = <BTN_0>, <BTN_1>,
+				interrupt-parent = <&tlmm>;
+				interrupts = <67 IRQ_TYPE_EDGE_FALLING>;
+				linux,keycodes = <BTN_0>, <BTN_1>,
 					<BTN_2>, <BTN_3>,
 					<BTN_4>, <BTN_5>,
 					<BTN_6>, <BTN_7>;
@@ -470,7 +470,7 @@
 			pinctrl-names = "default";
 			vqmmc-supply = <&vccq_sd0>;
 			non-removable;
-                };
+		};
 
 		gpio_keys {
 			compatible = "gpio-keys";
