@@ -734,6 +734,9 @@ static void msm_handle_tx(struct uart_port *port)
 			dma_count = UARTDM_TX_MAX;
 	}
 
+	if (pio_count > (UART_XMIT_SIZE - xmit->tail))
+		pio_count = UART_XMIT_SIZE - xmit->tail;
+
 	if (pio_count > port->fifosize)
 		pio_count = port->fifosize;
 
