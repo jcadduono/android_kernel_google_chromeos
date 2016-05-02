@@ -352,7 +352,7 @@ int cros_ec_prepare_tx(struct cros_ec_device *ec_dev,
 }
 EXPORT_SYMBOL(cros_ec_prepare_tx);
 
-static int cros_ec_get_next_event(struct cros_ec_device *ec_dev)
+int cros_ec_get_next_event(struct cros_ec_device *ec_dev)
 {
 	struct cros_ec_command msg = {
 		.version = 0,
@@ -370,6 +370,7 @@ static int cros_ec_get_next_event(struct cros_ec_device *ec_dev)
 	}
 	return ret;
 }
+EXPORT_SYMBOL(cros_ec_get_next_event);
 
 static int cros_ec_get_keyboard_state_event(struct cros_ec_device *ec_dev)
 {
