@@ -641,14 +641,23 @@ static const struct dev_pm_ops cros_ec_dev_pm_ops = {
 #endif
 };
 
+static const struct platform_device_id cros_ec_dev_ids[] = {
+	{
+		.name = "cros-ec-dev",
+	},
+	{ /* sentinel */ }
+};
+MODULE_DEVICE_TABLE(platform, cros_ec_dev_ids);
+
 static struct platform_driver cros_ec_dev_driver = {
 	.driver = {
-		.name = "cros-ec-dev",
+		.name = "cros-ec-devs",
 		.owner = THIS_MODULE,
 		.pm = &cros_ec_dev_pm_ops,
 	},
 	.probe = ec_device_probe,
 	.remove = ec_device_remove,
+	.id_table = cros_ec_dev_ids,
 };
 
 static int __init cros_ec_dev_init(void)

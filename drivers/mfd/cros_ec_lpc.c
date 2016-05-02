@@ -29,7 +29,7 @@
 #include <linux/platform_device.h>
 #include <linux/printk.h>
 
-#define MYNAME "cros_ec_lpc"
+#define MYNAME "cros_ec_lpcs"
 
 static int ec_response_timed_out(void)
 {
