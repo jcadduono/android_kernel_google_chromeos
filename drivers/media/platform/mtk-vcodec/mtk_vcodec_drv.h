@@ -21,7 +21,7 @@
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-ioctl.h>
-#include <media/videobuf2-v4l2.h>
+#include <media/videobuf2-core.h>
 
 #include "mtk_vcodec_util.h"
 
@@ -29,7 +29,6 @@
 #define MTK_VCODEC_DEC_NAME	"mtk-vcodec-dec" 
 #define MTK_VCODEC_ENC_NAME	"mtk-vcodec-enc"
 #define MTK_PLATFORM_STR	"platform:mt8173"
-#define MTK_VPU_FW_VERSION	"0.2.14"
 
 #define MTK_VCODEC_MAX_PLANES	3
 #define MTK_V4L2_BENCHMARK	0
@@ -63,8 +62,8 @@ enum mtk_hw_reg_idx {
  * enum mtk_instance_type - The type of an MTK Vcodec instance.
  */
 enum mtk_instance_type {
-	MTK_INST_DECODER = 0,
-	MTK_INST_ENCODER = 1,
+	MTK_INST_DECODER		= 0,
+	MTK_INST_ENCODER		= 1,
 };
 
 /**
@@ -85,7 +84,7 @@ enum mtk_instance_state {
 };
 
 /**
- * struct mtk_param_change - General encoding parameters type
+ * struct mtk_encode_param - General encoding parameters type
  */
 enum mtk_encode_param {
 	MTK_ENCODE_PARAM_NONE = 0,
@@ -106,26 +105,26 @@ enum mtk_fmt_type {
  * struct mtk_video_fmt - Structure used to store information about pixelformats
  */
 struct mtk_video_fmt {
-	u32 fourcc;
-	enum mtk_fmt_type type;
-	u32 num_planes;
+	u32	fourcc;
+	enum mtk_fmt_type	type;
+	u32	num_planes;
 };
 
 /**
  * struct mtk_codec_framesizes - Structure used to store information about
-							framesizes
+ *							framesizes
  */
 struct mtk_codec_framesizes {
-	u32 fourcc;
-	struct v4l2_frmsize_stepwise	stepwise;
+	u32	fourcc;
+	struct	v4l2_frmsize_stepwise	stepwise;
 };
 
 /**
  * struct mtk_q_type - Type of queue
  */
 enum mtk_q_type {
-	MTK_Q_DATA_SRC		= 0,
-	MTK_Q_DATA_DST		= 1,
+	MTK_Q_DATA_SRC = 0,
+	MTK_Q_DATA_DST = 1,
 };
 
 /**
@@ -137,7 +136,6 @@ struct mtk_q_data {
 	unsigned int	coded_width;
 	unsigned int	coded_height;
 	enum v4l2_field	field;
-	enum v4l2_colorspace	colorspace;
 	unsigned int	bytesperline[MTK_VCODEC_MAX_PLANES];
 	unsigned int	sizeimage[MTK_VCODEC_MAX_PLANES];
 	struct mtk_video_fmt	*fmt;
@@ -150,10 +148,13 @@ struct mtk_q_data {
  * @rc_frame: frame based rate control
  * @rc_mb: macroblock based rate control
  * @seq_hdr_mode: H.264 sequence header is encoded separately or joined
- *		with the first frame
+ *		  with the first frame
+ * @intra_period: I frame period
  * @gop_size: group of picture size, it's used as the intra frame period
- * @framerate_num: frame rate numerator. ex: framerate_num=30 and framerate_denom=1 menas FPS is 30
- * @framerate_denom: frame rate denominator. ex: framerate_num=30 and framerate_denom=1 menas FPS is 30
+ * @framerate_num: frame rate numerator. ex: framerate_num=30 and
+ *		   framerate_denom=1 menas FPS is 30
+ * @framerate_denom: frame rate denominator. ex: framerate_num=30 and
+ *		     framerate_denom=1 menas FPS is 30
  * @h264_max_qp: Max value for H.264 quantization parameter
  * @h264_profile: V4L2 defined H.264 profile
  * @h264_level: V4L2 defined H.264 level
@@ -228,10 +229,10 @@ struct vdec_pic_info {
  * @fh: struct v4l2_fh
  * @m2m_ctx: pointer to the v4l2_m2m_ctx of the context
  * @q_data: store information of input and output queue
- *		of the context
- * @idx: index of the context that this structure describes
+ *	    of the context
+ * @id: index of the context that this structure describes
  * @state: state of the context
- * @param_change: encode parameters
+ * @param_change: indicate encode parameter type
  * @enc_params: encoding parameters
  * @dec_if: hooked decoder driver interface
  * @enc_if: hooked encoder driver interface
@@ -242,24 +243,28 @@ struct vdec_pic_info {
  * @int_cond: variable used by the waitqueue
  * @int_type: type of the last interrupt
  * @queue: waitqueue that can be used to wait for this context to
- *	finish
+ *	   finish
  * @irq_status: irq status
  *
  * @ctrl_hdl: handler for v4l2 framework
- *
  * @decode_work: worker for the decoding
  * @encode_work: worker for the encoding
  * @last_decoded_picinfo: pic information get from latest decode
+ *
+ * @colorspace: enum v4l2_colorspace; supplemental to pixelformat
+ * @ycbcr_enc: enum v4l2_ycbcr_encoding, Y'CbCr encoding
+ * @quantization: enum v4l2_quantization, colorspace quantization
+ * @xfer_func: enum v4l2_xfer_func, colorspace transfer function
  */
 struct mtk_vcodec_ctx {
 	enum mtk_instance_type type;
 	struct mtk_vcodec_dev *dev;
-	struct list_head	list;
+	struct list_head list;
 
 	struct v4l2_fh fh;
 	struct v4l2_m2m_ctx *m2m_ctx;
 	struct mtk_q_data q_data[2];
-	int idx;
+	int id;
 	enum mtk_instance_state state;
 	enum mtk_encode_param param_change;
 	struct mtk_enc_params enc_params;
@@ -277,33 +282,36 @@ struct mtk_vcodec_ctx {
 	unsigned int irq_status;
 
 	struct v4l2_ctrl_handler ctrl_hdl;
-
 	struct work_struct decode_work;
 	struct work_struct encode_work;
 	struct vdec_pic_info last_decoded_picinfo;
 
-	int decoded_frame_cnt;
-#if MTK_V4L2_BENCHMARK
-	unsigned int total_enc_dec_cnt;
-	unsigned int total_enc_dec_time;
-	unsigned int total_enc_hdr_time;
-	unsigned int total_enc_dec_init_time;
+	enum v4l2_colorspace colorspace;
 
-	unsigned int total_qbuf_out_time;
-	unsigned int total_qbuf_cap_time;
-	unsigned int total_qbuf_out_cnt;
-	unsigned int total_qbuf_cap_cnt;
-	unsigned int total_dqbuf_out_time;
-	unsigned int total_dqbuf_cap_time;
-	unsigned int total_dqbuf_out_cnt;
-	unsigned int total_dqbuf_cap_cnt;
-	unsigned int total_dqbuf_cnt;
-	unsigned int total_expbuf_time;
-#endif
+	int decoded_frame_cnt;
 };
 
 /**
  * struct mtk_vcodec_dev - driver data
+ * @v4l2_dev: V4L2 device to register video devices for.
+ * @vfd_enc: Video device for encoder.
+ *
+ * @m2m_dev_enc: m2m device for encoder.
+ * @plat_dev: platform device
+ * @vpu_plat_dev: mtk vpu platform device
+ * @alloc_ctx: VB2 allocator context
+ *	       (for allocations without kernel mapping).
+ * @ctx_list: list of struct mtk_vcodec_ctx
+ * @irqlock: protect data access by irq handler and work thread
+ * @curr_ctx: The context that is waiting for codec hardware
+ *
+ * @reg_base: Mapped address of MTK Vcodec registers.
+ *
+ * @id_counter: used to identify current opened instance
+ * @num_instances: counter of active MTK Vcodec instances
+ *
+ * @encode_workqueue: encode work queue
+ *
  * @v4l2_dev: V4L2 device to register video devices for.
  * @vfd_dec: Video device for decoder
  * @vfd_enc: Video device for encoder
@@ -313,10 +321,10 @@ struct mtk_vcodec_ctx {
  * @plat_dev: platform device
  * @vpu_plat_dev: mtk vpu platform device
  * @alloc_ctx:VB2 allocator context
- *		(for allocations without kernel mapping).
+ *	      (for allocations without kernel mapping).
  * @ctx_list: list of struct mtk_vcodec_ctx
+ * @irqlock: protect data access by irq handler and work thread
  * @curr_ctx: The context that is waiting for codec hardware
- *
  * @reg_base: Mapped address of MTK Vcodec registers.
  *
  * @instance_mask: used to mark which index id are used
@@ -330,8 +338,8 @@ struct mtk_vcodec_ctx {
  * @queue: waitqueue for waiting for completion of device commands
  *
  * @dec_irq: decoder irq resource
- * @enc_irq: encoder irq resource
- * @enc_lt_irq: encoder lt irq resource
+ * @enc_irq: h264 encoder irq resource
+ * @enc_lt_irq: vp8 encoder lt irq resource
  *
  * @dec_mutex: decoder hardware lock
  * @enc_mutex: encoder hardware lock
@@ -341,41 +349,41 @@ struct mtk_vcodec_ctx {
  * @enc_capability: used to identify encode capability
  */
 struct mtk_vcodec_dev {
-	struct v4l2_device	v4l2_dev;
-	struct video_device	*vfd_dec;
-	struct video_device	*vfd_enc;
+	struct v4l2_device v4l2_dev;
+	struct video_device *vfd_dec;
+	struct video_device *vfd_enc;
 
-	struct v4l2_m2m_dev	*m2m_dev_dec;
-	struct v4l2_m2m_dev	*m2m_dev_enc;
-	struct platform_device	*plat_dev;
-	struct platform_device	*vpu_plat_dev;
-	struct vb2_alloc_ctx	*alloc_ctx;
-	struct list_head	ctx_list;
+	struct v4l2_m2m_dev *m2m_dev_dec;
+	struct v4l2_m2m_dev *m2m_dev_enc;
+	struct platform_device *plat_dev;
+	struct platform_device *vpu_plat_dev;
+	struct vb2_alloc_ctx *alloc_ctx;
+	struct list_head ctx_list;
+	spinlock_t irqlock;
+	struct mtk_vcodec_ctx *curr_ctx;
+	void __iomem *reg_base[NUM_MAX_VCODEC_REG_BASE];
 
-	int curr_ctx;
-	void __iomem	*reg_base[NUM_MAX_VCODEC_REG_BASE];
-
-	unsigned long	instance_mask;
-	int	num_instances;
+	unsigned long id_counter;
+	int num_instances;
 
 	struct workqueue_struct *decode_workqueue;
 	struct workqueue_struct *encode_workqueue;
 
-	int	int_cond;
-	int	int_type;
-	struct mutex	dev_mutex;
-	wait_queue_head_t	queue;
+	int int_cond;
+	int int_type;
+	struct mutex dev_mutex;
+	wait_queue_head_t queue;
 
-	int	dec_irq;
-	int	enc_irq;
-	int	enc_lt_irq;
+	int dec_irq;
+	int enc_irq;
+	int enc_lt_irq;
 
-	struct mutex	dec_mutex;
-	struct mutex	enc_mutex;
+	struct mutex dec_mutex;
+	struct mutex enc_mutex;
 
-	struct mtk_vcodec_pm	pm;
-	unsigned int	dec_capability;
-	unsigned int	enc_capability;
+	struct mtk_vcodec_pm pm;
+	unsigned int dec_capability;
+	unsigned int enc_capability;
 };
 
 static inline struct mtk_vcodec_ctx *fh_to_ctx(struct v4l2_fh *fh)

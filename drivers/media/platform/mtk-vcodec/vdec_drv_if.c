@@ -1,6 +1,7 @@
 /*
- * Copyright (c) 2015 MediaTek Inc.
+ * Copyright (c) 2016 MediaTek Inc.
  * Author: PC Chen <pc.chen@mediatek.com>
+ *         Tiffany Lin <tiffany.lin@mediatek.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -23,10 +24,9 @@
 #include "mtk_vcodec_util.h"
 #include "mtk_vpu.h"
 
-#include "h264_dec/vdec_h264_if.h"
-#include "vp8_dec/vdec_vp8_if.h"
-#include "vp9_dec/vdec_vp9_if.h"
-
+struct vdec_common_if *get_h264_dec_comm_if(void);
+struct vdec_common_if *get_vp8_dec_comm_if(void);
+struct vdec_common_if *get_vp9_dec_comm_if(void);
 
 int vdec_if_init(struct mtk_vcodec_ctx *ctx, unsigned int fourcc)
 {
@@ -58,6 +58,7 @@ int vdec_if_init(struct mtk_vcodec_ctx *ctx, unsigned int fourcc)
 int vdec_if_decode(struct mtk_vcodec_ctx *ctx, struct mtk_vcodec_mem *bs,
 		   struct vdec_fb *fb, bool *res_chg)
 {
+	unsigned long flags;
 	int ret = 0;
 
 	if (bs) {
@@ -72,11 +73,21 @@ int vdec_if_decode(struct mtk_vcodec_ctx *ctx, struct mtk_vcodec_mem *bs,
 	}
 
 	mtk_vdec_lock(ctx);
+
+	spin_lock_irqsave(&ctx->dev->irqlock, flags);
+	ctx->dev->curr_ctx = ctx;
+	spin_unlock_irqrestore(&ctx->dev->irqlock, flags);
+
 	mtk_vcodec_dec_clock_on(&ctx->dev->pm);
 	enable_irq(ctx->dev->dec_irq);
 	ret = ctx->dec_if->decode(ctx->drv_handle, bs, fb, res_chg);
 	disable_irq(ctx->dev->dec_irq);
 	mtk_vcodec_dec_clock_off(&ctx->dev->pm);
+
+	spin_lock_irqsave(&ctx->dev->irqlock, flags);
+	ctx->dev->curr_ctx = NULL;
+	spin_unlock_irqrestore(&ctx->dev->irqlock, flags);
+
 	mtk_vdec_unlock(ctx);
 
 	return ret;

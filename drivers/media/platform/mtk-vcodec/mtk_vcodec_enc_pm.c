@@ -120,11 +120,11 @@ void mtk_vcodec_enc_clock_on(struct mtk_vcodec_pm *pm)
 
 	ret = mtk_smi_larb_get(pm->larbvenc);
 	if (ret)
-		mtk_v4l2_err("mtk_smi_larb_get larb3 fail %d\n", ret);
+		mtk_v4l2_err("mtk_smi_larb_get larb3 fail %d", ret);
 
 	ret = mtk_smi_larb_get(pm->larbvenclt);
 	if (ret)
-		mtk_v4l2_err("mtk_smi_larb_get larb4 fail %d\n", ret);
+		mtk_v4l2_err("mtk_smi_larb_get larb4 fail %d", ret);
 
 }
 

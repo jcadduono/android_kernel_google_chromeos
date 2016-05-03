@@ -32,6 +32,7 @@
  * related to video codec, scaling and color format converting.
  * VPU interfaces with other blocks by share memory and interrupt.
  **/
+#define VPU_FW_VERSION		"0.2.15"
 
 #define INIT_TIMEOUT_MS		2000U
 #define IPI_TIMEOUT_MS		2000U
@@ -187,6 +188,7 @@ struct share_obj {
  * @send_buf:		VPU DTCM share buffer for sending
  * @dev:		VPU struct device
  * @clk:		VPU clock on/off
+ * @fw_loaded:		indicate VPU firmware loaded
  * @enable_4GB:		VPU 4GB mode on/off
  * @vpu_mutex:		protect mtk_vpu (except recv_buf) and ensure only
  *			one client to use VPU service at a time. For example,
@@ -213,6 +215,7 @@ struct mtk_vpu {
 	struct share_obj *send_buf;
 	struct device *dev;
 	struct clk *clk;
+	bool fw_loaded;
 	bool enable_4GB;
 	struct mutex vpu_mutex; /* for protecting vpu data data structure */
 	u32 wdt_refcnt;
@@ -527,81 +530,19 @@ static int load_requested_vpu(struct mtk_vpu *vpu,
 	return 0;
 }
 
-int vpu_load_firmware(struct platform_device *pdev)
+/**
+ * vpu_compare_version - compare firmware version and expected version
+ *
+ * @vpu:			VPU driver data
+ * @expected_version:	expected version
+ *
+ * Return: < 0 if firmware version is older than expected version
+ *         = 0 if firmware version is equal to expected version
+ *         > 0 if firmware version is newer than expected version
+ **/
+static int vpu_compare_version(struct mtk_vpu *vpu,
+			       const char *expected_version)
 {
-	struct mtk_vpu *vpu = platform_get_drvdata(pdev);
-	struct device *dev = &pdev->dev;
-	struct vpu_run *run = &vpu->run;
-	const struct firmware *vpu_fw;
-	int ret;
-
-	if (!pdev) {
-		dev_err(dev, "VPU platform device is invalid\n");
-		return -EINVAL;
-	}
-
-	ret = vpu_clock_enable(vpu);
-	if (ret) {
-		dev_err(dev, "enable clock failed %d\n", ret);
-		return ret;
-	}
-
-	mutex_lock(&vpu->vpu_mutex);
-
-	if (vpu_running(vpu)) {
-		mutex_unlock(&vpu->vpu_mutex);
-		vpu_clock_disable(vpu);
-		dev_warn(dev, "vpu is running already\n");
-		return 0;
-	}
-
-	run->signaled = false;
-	dev_dbg(vpu->dev, "firmware request\n");
-	/* Downloading program firmware to device*/
-	ret = load_requested_vpu(vpu, vpu_fw, P_FW);
-	if (ret < 0) {
-		dev_err(dev, "Failed to request %s, %d\n", VPU_P_FW, ret);
-		goto OUT_LOAD_FW;
-	}
-
-	/* Downloading data firmware to device */
-	ret = load_requested_vpu(vpu, vpu_fw, D_FW);
-	if (ret < 0) {
-		dev_err(dev, "Failed to request %s, %d\n", VPU_D_FW, ret);
-		goto OUT_LOAD_FW;
-	}
-
-	/* boot up vpu */
-	vpu_cfg_writel(vpu, 0x1, VPU_RESET);
-
-	ret = wait_event_interruptible_timeout(run->wq,
-					       run->signaled,
-					       msecs_to_jiffies(INIT_TIMEOUT_MS)
-					       );
-	if (ret == 0) {
-		ret = -ETIME;
-		dev_err(dev, "wait vpu initialization timout!\n");
-		goto OUT_LOAD_FW;
-	} else if (-ERESTARTSYS == ret) {
-		dev_err(dev, "wait vpu interrupted by a signal!\n");
-		goto OUT_LOAD_FW;
-	}
-
-	ret = 0;
-	dev_info(dev, "vpu is ready. Fw version %s\n", run->fw_ver);
-
-OUT_LOAD_FW:
-	mutex_unlock(&vpu->vpu_mutex);
-	vpu_clock_disable(vpu);
-
-	return ret;
-}
-EXPORT_SYMBOL_GPL(vpu_load_firmware);
-
-int vpu_compare_version(struct platform_device *pdev,
-			const char *expected_version)
-{
-	struct mtk_vpu *vpu = platform_get_drvdata(pdev);
 	int cur_major, cur_minor, cur_build, cur_rel, cur_ver_num;
 	int major, minor, build, rel, ver_num;
 	char *cur_version = vpu->run.fw_ver;
@@ -644,7 +585,84 @@ int vpu_compare_version(struct platform_device *pdev,
 
 	return 0;
 }
-EXPORT_SYMBOL_GPL(vpu_compare_version);
+
+int vpu_load_firmware(struct platform_device *pdev)
+{
+	struct mtk_vpu *vpu = platform_get_drvdata(pdev);
+	struct device *dev = &pdev->dev;
+	struct vpu_run *run = &vpu->run;
+	const struct firmware *vpu_fw;
+	int ret;
+
+	if (!pdev) {
+		dev_err(dev, "VPU platform device is invalid\n");
+		return -EINVAL;
+	}
+
+	if (vpu->fw_loaded)
+		return 0;
+
+	ret = vpu_clock_enable(vpu);
+	if (ret) {
+		dev_err(dev, "enable clock failed %d\n", ret);
+		return ret;
+	}
+
+	mutex_lock(&vpu->vpu_mutex);
+
+	run->signaled = false;
+	dev_dbg(vpu->dev, "firmware request\n");
+	/* Downloading program firmware to device*/
+	ret = load_requested_vpu(vpu, vpu_fw, P_FW);
+	if (ret < 0) {
+		dev_err(dev, "Failed to request %s, %d\n", VPU_P_FW, ret);
+		goto OUT_LOAD_FW;
+	}
+
+	/* Downloading data firmware to device */
+	ret = load_requested_vpu(vpu, vpu_fw, D_FW);
+	if (ret < 0) {
+		dev_err(dev, "Failed to request %s, %d\n", VPU_D_FW, ret);
+		goto OUT_LOAD_FW;
+	}
+
+	/* boot up vpu */
+	vpu_cfg_writel(vpu, 0x1, VPU_RESET);
+
+	ret = wait_event_interruptible_timeout(run->wq,
+					       run->signaled,
+					       msecs_to_jiffies(INIT_TIMEOUT_MS)
+					       );
+	if (ret == 0) {
+		ret = -ETIME;
+		dev_err(dev, "wait vpu initialization timout!\n");
+		goto OUT_LOAD_FW;
+	} else if (-ERESTARTSYS == ret) {
+		dev_err(dev, "wait vpu interrupted by a signal!\n");
+		goto OUT_LOAD_FW;
+	}
+
+	ret = vpu_compare_version(vpu, VPU_FW_VERSION);
+	if (ret < 0) {
+		dev_err(dev, "the current vpu fw version %s\n",
+			vpu->run.fw_ver);
+		dev_err(dev, "the expected vpu fw version %s\n",
+			VPU_FW_VERSION);
+		ret = -EINVAL;
+		goto OUT_LOAD_FW;
+	}
+
+	ret = 0;
+	vpu->fw_loaded = true;
+	dev_info(dev, "vpu is ready. Fw version %s\n", run->fw_ver);
+
+OUT_LOAD_FW:
+	mutex_unlock(&vpu->vpu_mutex);
+	vpu_clock_disable(vpu);
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(vpu_load_firmware);
 
 static void vpu_init_ipi_handler(void *data, unsigned int len, void *priv)
 {
@@ -659,12 +677,6 @@ static void vpu_init_ipi_handler(void *data, unsigned int len, void *priv)
 }
 
 #ifdef CONFIG_DEBUG_FS
-static int vpu_debug_open(struct inode *inode, struct file *file)
-{
-	file->private_data = inode->i_private;
-	return 0;
-}
-
 static ssize_t vpu_debug_read(struct file *file, char __user *user_buf,
 			      size_t count, loff_t *ppos)
 {
@@ -706,7 +718,7 @@ static ssize_t vpu_debug_read(struct file *file, char __user *user_buf,
 }
 
 static const struct file_operations vpu_debug_fops = {
-	.open = vpu_debug_open,
+	.open = simple_open,
 	.read = vpu_debug_read,
 };
 #endif /* CONFIG_DEBUG_FS */
@@ -999,7 +1011,6 @@ static struct platform_driver mtk_vpu_driver = {
 	.remove	= mtk_vpu_remove,
 	.driver	= {
 		.name	= "mtk_vpu",
-		.owner	= THIS_MODULE,
 		.of_match_table = mtk_vpu_match,
 	},
 };

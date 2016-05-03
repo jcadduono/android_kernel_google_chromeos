@@ -16,17 +16,16 @@
 #ifndef __MTK_MDP_IPI_H__
 #define __MTK_MDP_IPI_H__
 
-#define MTK_MDP_VPU_VERSION	"0.2.14"
-#define MTK_MDP_MAX_CTX		14
+#define MTK_MDP_MAX_CTX		30
 
 enum mdp_ipi_msgid {
-	AP_MDP_INIT		= 0xD000,
-	AP_MDP_DEINIT		= 0xD001,
-	AP_MDP_PROCESS		= 0xD002,
+	AP_MDP_INIT		= 0xd000,
+	AP_MDP_DEINIT		= 0xd001,
+	AP_MDP_PROCESS		= 0xd002,
 
-	VPU_MDP_INIT_ACK	= 0xE000,
-	VPU_MDP_DEINIT_ACK	= 0xE001,
-	VPU_MDP_PROCESS_ACK	= 0xE002
+	VPU_MDP_INIT_ACK	= 0xe000,
+	VPU_MDP_DEINIT_ACK	= 0xe001,
+	VPU_MDP_PROCESS_ACK	= 0xe002
 };
 
 enum mdp_ipi_msg_status {

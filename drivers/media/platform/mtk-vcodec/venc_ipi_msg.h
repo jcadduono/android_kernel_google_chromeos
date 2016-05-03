@@ -1,8 +1,8 @@
 /*
  * Copyright (c) 2016 MediaTek Inc.
  * Author: Jungchang Tsao <jungchang.tsao@mediatek.com>
- *		Daniel Hsiao <daniel.hsiao@mediatek.com>
- *		Tiffany Lin <tiffany.lin@mediatek.com>
+ *	   Daniel Hsiao <daniel.hsiao@mediatek.com>
+ *	   Tiffany Lin <tiffany.lin@mediatek.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify
@@ -46,7 +46,7 @@ enum venc_ipi_msg_id {
  *		this reserved field, if kernel run in 64bit. this struct size
  *		will be different between kernel and vpu
  * @venc_inst:	AP encoder instance
- *				(struct venc_vp8_inst/venc_h264_inst *)
+ *		(struct venc_vp8_inst/venc_h264_inst *)
  */
 struct venc_ap_ipi_msg_init {
 	uint32_t msg_id;

@@ -16,22 +16,16 @@
 #ifndef __MTK_MDP_CORE_H__
 #define __MTK_MDP_CORE_H__
 
-#include <linux/interrupt.h>
-#include <linux/io.h>
-#include <linux/delay.h>
-#include <linux/pm_runtime.h>
-#include <linux/sched.h>
 #include <linux/spinlock.h>
-#include <linux/types.h>
 #include <linux/videodev2.h>
 #include <media/v4l2-ctrls.h>
 #include <media/v4l2-device.h>
 #include <media/v4l2-mem2mem.h>
-#include <media/videobuf2-v4l2.h>
+#include <media/videobuf2-core.h>
 #include <media/videobuf2-dma-contig.h>
-#include <media/videobuf2-vmalloc.h>
 
 #include "mtk_mdp_vpu.h"
+#include "mtk_mdp_comp.h"
 
 
 #define MTK_MDP_MODULE_NAME		"mtk-mdp"
@@ -39,6 +33,9 @@
 #define MTK_MDP_SHUTDOWN_TIMEOUT	((100*HZ)/1000)
 #define MTK_MDP_MAX_DEVS		1
 #define MTK_MDP_MAX_CTRL_NUM		10
+
+#define MTK_MDP_FMT_FLAG_OUTPUT		(1 << 0)
+#define MTK_MDP_FMT_FLAG_CAPTURE	(1 << 1)
 
 #define MTK_MDP_PARAMS			(1 << 0)
 #define MTK_MDP_SRC_FMT			(1 << 1)
@@ -143,7 +140,6 @@ struct mtk_mdp_ctx;
 
 /**
  *  struct mtk_mdp_pix_max - image pixel size limits in various IP configurations
- *
  *  @org_scaler_bypass_w: max pixel width when the scaler is disabled
  *  @org_scaler_bypass_h: max pixel height when the scaler is disabled
  *  @org_scaler_input_w: max pixel width when the scaler is enabled
@@ -174,7 +170,6 @@ struct mtk_mdp_pix_max {
 
 /**
  *  struct mtk_mdp_pix_min - image pixel size limits in various IP configurations
- *
  *  @org_w: minimum source pixel width
  *  @org_h: minimum source pixel height
  *  @real_w: minimum input crop pixel width
@@ -220,18 +215,6 @@ struct mtk_mdp_variant {
 	u16				v_sc_down_max;
 };
 
-struct mtk_mdp_hw_clks {
-	struct clk *rdma0_clk;
-	struct clk *rdma1_clk;
-	struct clk *rsz0_clk;
-	struct clk *rsz1_clk;
-	struct clk *rsz2_clk;
-	struct clk *wdma_clk;
-	struct clk *wrot0_clk;
-	struct clk *wrot1_clk;
-	struct clk *mutex_clk;
-};
-
 /**
  * struct mtk_mdp_dev - abstraction for image processor entity
  * @lock:	the mutex protecting this data structure
@@ -239,13 +222,13 @@ struct mtk_mdp_hw_clks {
  * @pdev:	pointer to the image processor platform device
  * @variant:	the IP variant information
  * @id:		image processor device index (0..MTK_MDP_MAX_DEVS)
- * @clks:	clocks required for image processor operation
+ * @comp:	MDP function components
  * @irq_queue:	interrupt handler waitqueue
  * @m2m_dev:	v4l2 memory-to-memory device data
  * @state:	flags used to synchronize m2m and capture mode operation
  * @alloc_ctx:	videobuf2 memory allocator context
- * @vdev:	video device for image processor instance
- * @larb:	clocks required for image processor operation
+ * @vdev:	video device for image processor driver
+ * @v4l2_dev:	V4L2 device to register video devices for.
  * @workqueue:	decode work queue
  * @vpu_dev:	VPU platform device
  * @ctx:	array of driver context
@@ -258,14 +241,13 @@ struct mtk_mdp_dev {
 	struct platform_device		*pdev;
 	struct mtk_mdp_variant		*variant;
 	u16				id;
-	struct mtk_mdp_hw_clks		clks;
+	struct mtk_mdp_comp		*comp[MTK_MDP_COMP_ID_MAX];
 	wait_queue_head_t		irq_queue;
 	struct v4l2_m2m_dev		*m2m_dev;
 	unsigned long			state;
 	struct vb2_alloc_ctx		*alloc_ctx;
 	struct video_device		vdev;
 	struct v4l2_device		v4l2_dev;
-	struct device			*larb[2];
 	struct workqueue_struct		*workqueue;
 	struct platform_device		*vpu_dev;
 	struct mtk_mdp_ctx		*ctx[MTK_MDP_MAX_CTX];
@@ -322,9 +304,9 @@ void mtk_mdp_m2m_job_finish(struct mtk_mdp_ctx *ctx, int vb_state);
 void mtk_mdp_ctx_error(struct mtk_mdp_ctx *ctx);
 
 u32 get_plane_size(struct mtk_mdp_frame *fr, unsigned int plane);
-const struct mtk_mdp_fmt *mtk_mdp_get_format(int index);
-const struct mtk_mdp_fmt *mtk_mdp_find_fmt(u32 *pixelformat, u32 index);
-int mtk_mdp_enum_fmt_mplane(struct v4l2_fmtdesc *f);
+const struct mtk_mdp_fmt *mtk_mdp_find_fmt(u32 *pixelformat, u32 index,
+					   u32 type);
+int mtk_mdp_enum_fmt_mplane(struct v4l2_fmtdesc *f, u32 type);
 int mtk_mdp_try_fmt_mplane(struct mtk_mdp_ctx *ctx, struct v4l2_format *f);
 void mtk_mdp_set_frame_size(struct mtk_mdp_frame *frame, int width, int height);
 int mtk_mdp_g_fmt_mplane(struct mtk_mdp_ctx *ctx, struct v4l2_format *f);

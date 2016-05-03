@@ -13,23 +13,18 @@
  * GNU General Public License for more details.
  */
 
-#include <linux/bug.h>
 #include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/errno.h>
 #include <linux/interrupt.h>
-#include <linux/io.h>
 #include <linux/kernel.h>
-#include <linux/list.h>
 #include <linux/module.h>
 #include <linux/of.h>
 #include <linux/of_address.h>
 #include <linux/of_platform.h>
 #include <linux/platform_device.h>
-#include <linux/slab.h>
-#include <linux/types.h>
+#include <linux/pm_runtime.h>
 #include <linux/workqueue.h>
-#include <media/v4l2-ioctl.h>
 #include <soc/mediatek/smi.h>
 
 #include "mtk_mdp_core.h"
@@ -44,6 +39,7 @@ static const struct mtk_mdp_fmt mtk_mdp_formats[] = {
 		.color		= MTK_MDP_YUV420,
 		.num_planes	= 2,
 		.num_comp	= 2,
+		.flags		= MTK_MDP_FMT_FLAG_OUTPUT,
 	}, {
 		.name		= "YUV 4:2:0 non-contig. 2p, Y/CbCr",
 		.pixelformat	= V4L2_PIX_FMT_NV12M,
@@ -51,6 +47,8 @@ static const struct mtk_mdp_fmt mtk_mdp_formats[] = {
 		.color		= MTK_MDP_YUV420,
 		.num_planes	= 2,
 		.num_comp	= 2,
+		.flags		= MTK_MDP_FMT_FLAG_OUTPUT |
+				  MTK_MDP_FMT_FLAG_CAPTURE,
 	}, {
 		.name		= "YUV 4:2:0 non-contig. 3p, Y/Cb/Cr",
 		.pixelformat	= V4L2_PIX_FMT_YUV420M,
@@ -58,6 +56,8 @@ static const struct mtk_mdp_fmt mtk_mdp_formats[] = {
 		.color		= MTK_MDP_YUV420,
 		.num_planes	= 3,
 		.num_comp	= 3,
+		.flags		= MTK_MDP_FMT_FLAG_OUTPUT |
+				  MTK_MDP_FMT_FLAG_CAPTURE,
 	}
 };
 
@@ -66,28 +66,26 @@ static inline struct mtk_mdp_ctx *ctrl_to_ctx(struct v4l2_ctrl *ctrl)
 	return container_of(ctrl->handler, struct mtk_mdp_ctx, ctrl_handler);
 }
 
-const struct mtk_mdp_fmt *mtk_mdp_get_format(int index)
-{
-	if (index >= ARRAY_SIZE(mtk_mdp_formats))
-		return NULL;
-
-	return (struct mtk_mdp_fmt *)&mtk_mdp_formats[index];
-}
-
-const struct mtk_mdp_fmt *mtk_mdp_find_fmt(u32 *pixelformat, u32 index)
+const struct mtk_mdp_fmt *mtk_mdp_find_fmt(u32 *pixelformat, u32 index,
+					   u32 type)
 {
 	const struct mtk_mdp_fmt *fmt, *def_fmt = NULL;
-	unsigned int i;
+	u32 i, flag, num = 0;
 
 	if (index >= ARRAY_SIZE(mtk_mdp_formats))
 		return NULL;
 
+	flag = V4L2_TYPE_IS_OUTPUT(type) ? MTK_MDP_FMT_FLAG_OUTPUT :
+					   MTK_MDP_FMT_FLAG_CAPTURE;
 	for (i = 0; i < ARRAY_SIZE(mtk_mdp_formats); ++i) {
-		fmt = mtk_mdp_get_format(i);
+		fmt = &mtk_mdp_formats[i];
+		if (!(fmt->flags & flag))
+			continue;
 		if (pixelformat && fmt->pixelformat == *pixelformat)
 			return fmt;
-		if (index == i)
+		if (index == num)
 			def_fmt = fmt;
+		num++;
 	}
 	return def_fmt;
 }
@@ -102,11 +100,11 @@ void mtk_mdp_set_frame_size(struct mtk_mdp_frame *frame, int width, int height)
 	frame->crop.top = 0;
 }
 
-int mtk_mdp_enum_fmt_mplane(struct v4l2_fmtdesc *f)
+int mtk_mdp_enum_fmt_mplane(struct v4l2_fmtdesc *f, u32 type)
 {
 	const struct mtk_mdp_fmt *fmt;
 
-	fmt = mtk_mdp_find_fmt(NULL, f->index);
+	fmt = mtk_mdp_find_fmt(NULL, f->index, type);
 	if (!fmt)
 		return -EINVAL;
 
@@ -145,7 +143,7 @@ int mtk_mdp_try_fmt_mplane(struct mtk_mdp_ctx *ctx, struct v4l2_format *f)
 	u32 min_w, min_h, tmp_w, tmp_h;
 	int i;
 
-	fmt = mtk_mdp_find_fmt(&pix_mp->pixelformat, 0);
+	fmt = mtk_mdp_find_fmt(&pix_mp->pixelformat, 0, f->type);
 	if (!fmt) {
 		dev_err(&ctx->mdp_dev->pdev->dev,
 			"pixelformat format 0x%X invalid\n",
@@ -509,6 +507,8 @@ int mtk_mdp_process_done(void *priv, int vb_state)
 	struct mtk_mdp_ctx *ctx;
 
 	ctx = v4l2_m2m_get_curr_priv(mdp->m2m_dev);
+	if (!ctx)
+		return 0;
 	mutex_lock(&ctx->slock);
 
 	if (test_and_clear_bit(MTK_MDP_M2M_PEND, &mdp->state)) {
@@ -582,150 +582,54 @@ static struct mtk_mdp_variant mtk_mdp_default_variant = {
 	.v_sc_down_max		= 128,
 };
 
-static const struct of_device_id mt_mtk_mdp_match[] = {
+static const struct of_device_id mtk_mdp_comp_dt_ids[] = {
 	{
-		.compatible = "mediatek,mt8173-mdp",
-		.data = NULL,
-	},
-	{},
+		.compatible = "mediatek,mt8173-mdp-rdma",
+		.data = (void *)MTK_MDP_RDMA
+	}, {
+		.compatible = "mediatek,mt8173-mdp-rsz",
+		.data = (void *)MTK_MDP_RSZ
+	}, {
+		.compatible = "mediatek,mt8173-mdp-wdma",
+		.data = (void *)MTK_MDP_WDMA
+	}, {
+		.compatible = "mediatek,mt8173-mdp-wrot",
+		.data = (void *)MTK_MDP_WROT
+	}
 };
-MODULE_DEVICE_TABLE(of, mt_mtk_mdp_match);
 
-static int mtk_mdp_clock_init(struct mtk_mdp_dev *mdp)
-{
-	struct device *dev = &mdp->pdev->dev;
-	struct mtk_mdp_hw_clks *clks = &mdp->clks;
-	struct device_node *node;
-	struct platform_device *pdev;
-	int i;
-
-	for (i = 0; i < 2; i++) {
-		node = of_parse_phandle(dev->of_node, "mediatek,larb", i);
-		if (!node)
-			return -EINVAL;
-		pdev = of_find_device_by_node(node);
-		if (WARN_ON(!pdev)) {
-			of_node_put(node);
-			return -EINVAL;
-		}
-		mdp->larb[i] = &pdev->dev;
-	}
-
-	clks->rdma0_clk = devm_clk_get(dev, "mdp_rdma0_clk");
-	if (IS_ERR(clks->rdma0_clk)) {
-		dev_err(dev, "failed to get mdp_rdma0_clk\n");
-		return -EINVAL;
-	}
-	clks->rdma1_clk = devm_clk_get(dev, "mdp_rdma1_clk");
-	if (IS_ERR(clks->rdma1_clk)) {
-		dev_err(dev, "failed to mdp_rdma1_clk\n");
-		return -EINVAL;
-	}
-	clks->rsz0_clk = devm_clk_get(dev, "mdp_rsz0_clk");
-	if (IS_ERR(clks->rsz0_clk)) {
-		dev_err(dev, "failed to mdp_rsz0_clk\n");
-		return -EINVAL;
-	}
-	clks->rsz1_clk = devm_clk_get(dev, "mdp_rsz1_clk");
-	if (IS_ERR(clks->rsz1_clk)) {
-		dev_err(dev, "failed to mdp_rsz1_clk\n");
-		return -EINVAL;
-	}
-	clks->rsz2_clk = devm_clk_get(dev, "mdp_rsz2_clk");
-	if (IS_ERR(clks->rsz2_clk)) {
-		dev_err(dev, "failed to mdp_rsz2_clk\n");
-		return -EINVAL;
-	}
-	clks->wdma_clk = devm_clk_get(dev, "mdp_wdma_clk");
-	if (IS_ERR(clks->wdma_clk)) {
-		dev_err(dev, "failed to mdp_wmda_clk\n");
-		return -EINVAL;
-	}
-	clks->wrot0_clk = devm_clk_get(dev, "mdp_wrot0_clk");
-	if (IS_ERR(clks->wrot0_clk)) {
-		dev_err(dev, "failed to mdp_wrot0_clk\n");
-		return -EINVAL;
-	}
-	clks->wrot1_clk = devm_clk_get(dev, "mdp_wrot1_clk");
-	if (IS_ERR(clks->wrot1_clk)) {
-		dev_err(dev, "failed to mdp_wrot1_clk\n");
-		return -EINVAL;
-	}
-	clks->mutex_clk = devm_clk_get(dev, "mdp_mutex_clk");
-	if (IS_ERR(clks->mutex_clk)) {
-		dev_err(dev, "failed to mdp_mutex_clk\n");
-		return -EINVAL;
-	}
-
-	return 0;
-}
+static const struct of_device_id mtk_mdp_of_ids[] = {
+	{ .compatible = "mediatek,mt8173-mdp", },
+	{ },
+};
+MODULE_DEVICE_TABLE(of, mtk_mdp_of_ids);
 
 static void mtk_mdp_clock_on(struct mtk_mdp_dev *mdp)
 {
 	struct device *dev = &mdp->pdev->dev;
-	struct mtk_mdp_hw_clks *clks = &mdp->clks;
-	int i, ret;
+	int i;
 
-	for (i = 0; i < 2; i++) {
-		ret = mtk_smi_larb_get(mdp->larb[i]);
-		if (ret)
-			dev_err(dev, "failed to get larb%d, err %d\n", i, ret);
-	}
-
-	ret = clk_prepare_enable(clks->rdma0_clk);
-	if (ret)
-		dev_err(dev, "enable clock rdma0 error\n");
-	ret = clk_prepare_enable(clks->rdma1_clk);
-	if (ret)
-		dev_err(dev, "enable clock rdma1 error\n");
-	ret = clk_prepare_enable(clks->rsz0_clk);
-	if (ret)
-		dev_err(dev, "enable clock rsz0 error\n");
-	ret = clk_prepare_enable(clks->rsz1_clk);
-	if (ret)
-		dev_err(dev, "enable clock rsz1 error\n");
-	ret = clk_prepare_enable(clks->rsz2_clk);
-	if (ret)
-		dev_err(dev, "enable clock rsz2 error\n");
-	ret = clk_prepare_enable(clks->wdma_clk);
-	if (ret)
-		dev_err(dev, "enable clock wdma error\n");
-	ret = clk_prepare_enable(clks->wrot0_clk);
-	if (ret)
-		dev_err(dev, "enable clock wrot0 error\n");
-	ret = clk_prepare_enable(clks->wrot1_clk);
-	if (ret)
-		dev_err(dev, "enable clock wrot1 error\n");
-	ret = clk_prepare_enable(clks->mutex_clk);
-	if (ret)
-		dev_err(dev, "enable clock mutex error\n");
+	for (i = 0; i < ARRAY_SIZE(mdp->comp); i++)
+		mtk_mdp_comp_clock_on(dev, mdp->comp[i]);
 }
 
 static void mtk_mdp_clock_off(struct mtk_mdp_dev *mdp)
 {
-	struct mtk_mdp_hw_clks *clks = &mdp->clks;
+	struct device *dev = &mdp->pdev->dev;
+	int i;
 
-	clk_disable_unprepare(clks->rdma0_clk);
-	clk_disable_unprepare(clks->rdma1_clk);
-	clk_disable_unprepare(clks->rsz0_clk);
-	clk_disable_unprepare(clks->rsz1_clk);
-	clk_disable_unprepare(clks->rsz2_clk);
-	clk_disable_unprepare(clks->wdma_clk);
-	clk_disable_unprepare(clks->wrot0_clk);
-	clk_disable_unprepare(clks->wrot1_clk);
-	clk_disable_unprepare(clks->mutex_clk);
-
-	mtk_smi_larb_put(mdp->larb[0]);
-	mtk_smi_larb_put(mdp->larb[1]);
+	for (i = 0; i < ARRAY_SIZE(mdp->comp); i++)
+		mtk_mdp_comp_clock_off(dev, mdp->comp[i]);
 }
 
 static int mtk_mdp_probe(struct platform_device *pdev)
 {
 	struct mtk_mdp_dev *mdp;
 	struct device *dev = &pdev->dev;
-	int ret = 0;
+	struct device_node *node;
+	int i, ret = 0;
 
-	mdp = devm_kzalloc(dev, sizeof(struct mtk_mdp_dev), GFP_KERNEL);
+	mdp = devm_kzalloc(dev, sizeof(*mdp), GFP_KERNEL);
 	if (!mdp)
 		return -ENOMEM;
 
@@ -737,11 +641,41 @@ static int mtk_mdp_probe(struct platform_device *pdev)
 	mutex_init(&mdp->lock);
 	mutex_init(&mdp->vpulock);
 
-	ret = mtk_mdp_clock_init(mdp);
-	if (ret) {
-		dev_err(&pdev->dev, "Failed to init clk, err %d\n", ret);
-		ret = -EINVAL;
-		goto err_clk;
+	/* Iterate over sibling MDP function blocks */
+	for_each_child_of_node(dev->of_node->parent, node) {
+		const struct of_device_id *of_id;
+		enum mtk_mdp_comp_type comp_type;
+		int comp_id;
+		struct mtk_mdp_comp *comp;
+
+		of_id = of_match_node(mtk_mdp_comp_dt_ids, node);
+		if (!of_id)
+			continue;
+
+		if (!of_device_is_available(node)) {
+			dev_err(dev, "Skipping disabled component %s\n",
+				node->full_name);
+			continue;
+		}
+
+		comp_type = (enum mtk_mdp_comp_type)of_id->data;
+		comp_id = mtk_mdp_comp_get_id(node, comp_type);
+		if (comp_id < 0) {
+			dev_warn(dev, "Skipping unknown component %s\n",
+				 node->full_name);
+			continue;
+		}
+
+		comp = devm_kzalloc(dev, sizeof(*comp), GFP_KERNEL);
+		if (!comp) {
+			ret = -ENOMEM;
+			goto err_comp;
+		}
+		mdp->comp[comp_id] = comp;
+
+		ret = mtk_mdp_comp_init(dev, node, comp, comp_id);
+		if (ret)
+			goto err_comp;
 	}
 
 	mdp->workqueue = create_singlethread_workqueue(MTK_MDP_MODULE_NAME);
@@ -790,7 +724,10 @@ err_dev_register:
 
 err_alloc_workqueue:
 
-err_clk:
+err_comp:
+	for (i = 0; i < ARRAY_SIZE(mdp->comp); i++)
+		mtk_mdp_comp_deinit(dev, mdp->comp[i]);
+
 	dev_dbg(dev, "err %d\n", ret);
 	return ret;
 }
@@ -798,6 +735,7 @@ err_clk:
 static int mtk_mdp_remove(struct platform_device *pdev)
 {
 	struct mtk_mdp_dev *mdp = platform_get_drvdata(pdev);
+	int i;
 
 	pm_runtime_disable(&pdev->dev);
 	mtk_mdp_unregister_m2m_device(mdp);
@@ -806,6 +744,9 @@ static int mtk_mdp_remove(struct platform_device *pdev)
 	vb2_dma_contig_cleanup_ctx(mdp->alloc_ctx);
 	flush_workqueue(mdp->workqueue);
 	destroy_workqueue(mdp->workqueue);
+
+	for (i = 0; i < ARRAY_SIZE(mdp->comp); i++)
+		mtk_mdp_comp_deinit(&pdev->dev, mdp->comp[i]);
 
 	dev_dbg(&pdev->dev, "%s driver unloaded\n", pdev->name);
 	return 0;
@@ -861,7 +802,7 @@ static struct platform_driver mtk_mdp_driver = {
 		.name	= MTK_MDP_MODULE_NAME,
 		.owner	= THIS_MODULE,
 		.pm	= &mtk_mdp_pm_ops,
-		.of_match_table = mt_mtk_mdp_match,
+		.of_match_table = mtk_mdp_of_ids,
 	}
 };
 
@@ -869,4 +810,4 @@ module_platform_driver(mtk_mdp_driver);
 
 MODULE_AUTHOR("Houlong Wei <houlong.wei@mediatek.com>");
 MODULE_DESCRIPTION("Mediatek image processor driver");
-MODULE_LICENSE("GPL");
+MODULE_LICENSE("GPL v2");

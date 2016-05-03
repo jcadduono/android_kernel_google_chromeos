@@ -1,5 +1,5 @@
 /*
- * Copyright (c) 2015 MediaTek Inc.
+ * Copyright (c) 2016 MediaTek Inc.
  * Author: PC Chen <pc.chen@mediatek.com>
  *
  * This program is free software; you can redistribute it and/or
@@ -54,7 +54,7 @@ struct vdec_ap_ipi_cmd {
 struct vdec_vpu_ipi_ack {
 	uint32_t msg_id;
 	int32_t status;
-	uint64_t vdec_inst;
+	uint64_t ap_inst_addr;
 };
 
 /**
@@ -66,20 +66,34 @@ struct vdec_vpu_ipi_ack {
 struct vdec_ap_ipi_init {
 	uint32_t msg_id;
 	uint32_t reserved;
-	uint64_t vdec_inst;
+	uint64_t ap_inst_addr;
+};
+
+/**
+ * struct vdec_ap_ipi_dec_start - for AP_IPIMSG_DEC_START
+ * @msg_id        : AP_IPIMSG_DEC_START
+ * @vpu_inst_addr : VPU decoder instance address
+ * @data          : Header info
+ * @reserved      : Reserved field
+ */
+struct vdec_ap_ipi_dec_start {
+	uint32_t msg_id;
+	uint32_t vpu_inst_addr;
+	uint32_t data[3];
+	uint32_t reserved;
 };
 
 /**
  * struct vdec_vpu_ipi_init_ack - for VPU_IPIMSG_DEC_INIT_ACK
- * @msg_id        : VPU_IPIMSG_DEC_INIT_ACK
- * @status        : VPU exeuction result
- * @vdec_inst     : AP video decoder instance address
- * @vpu_inst_addr : VPU decoder instance address
+ * @msg_id		: VPU_IPIMSG_DEC_INIT_ACK
+ * @status		: VPU exeuction result
+ * @ap_inst_addr	: AP vcodec_vpu_inst instance address
+ * @vpu_inst_addr	: VPU decoder instance address
  */
 struct vdec_vpu_ipi_init_ack {
 	uint32_t msg_id;
 	int32_t status;
-	uint64_t vdec_inst;
+	uint64_t ap_inst_addr;
 	uint32_t vpu_inst_addr;
 };
 

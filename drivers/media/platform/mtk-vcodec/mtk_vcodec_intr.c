@@ -19,14 +19,12 @@
 #include "mtk_vcodec_intr.h"
 #include "mtk_vcodec_util.h"
 
-
-int mtk_vcodec_wait_for_done_ctx(struct mtk_vcodec_ctx  *data, int command,
+int mtk_vcodec_wait_for_done_ctx(struct mtk_vcodec_ctx  *ctx, int command,
 				 unsigned int timeout_ms)
 {
 	wait_queue_head_t *waitqueue;
 	long timeout_jiff, ret;
 	int status = 0;
-	struct mtk_vcodec_ctx *ctx = (struct mtk_vcodec_ctx *)data;
 
 	waitqueue = (wait_queue_head_t *)&ctx->queue;
 	timeout_jiff = msecs_to_jiffies(timeout_ms);
@@ -39,11 +37,11 @@ int mtk_vcodec_wait_for_done_ctx(struct mtk_vcodec_ctx  *data, int command,
 	if (!ret) {
 		status = -1;	/* timeout */
 		mtk_v4l2_err("[%d] cmd=%d, ctx->type=%d, wait_event_interruptible_timeout time=%ums out %d %d!",
-				ctx->idx, ctx->type, command, timeout_ms,
+				ctx->id, ctx->type, command, timeout_ms,
 				ctx->int_cond, ctx->int_type);
 	} else if (-ERESTARTSYS == ret) {
 		mtk_v4l2_err("[%d] cmd=%d, ctx->type=%d, wait_event_interruptible_timeout interrupted by a signal %d %d",
-				ctx->idx, ctx->type, command, ctx->int_cond,
+				ctx->id, ctx->type, command, ctx->int_cond,
 				ctx->int_type);
 		status = -1;
 	}

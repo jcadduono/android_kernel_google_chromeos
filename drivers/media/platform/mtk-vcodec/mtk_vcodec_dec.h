@@ -1,5 +1,5 @@
 /*
-* Copyright (c) 2015 MediaTek Inc.
+* Copyright (c) 2016 MediaTek Inc.
 * Author: PC Chen <pc.chen@mediatek.com>
 *         Tiffany Lin <tiffany.lin@mediatek.com>
 *
@@ -16,6 +16,7 @@
 #ifndef _MTK_VCODEC_DEC_H_
 #define _MTK_VCODEC_DEC_H_
 
+#include <media/videobuf2-core.h>
 #include <media/videobuf2-v4l2.h>
 
 /**
@@ -32,8 +33,8 @@ struct vdec_fb {
 
 /**
  * struct mtk_video_buf - Private data related to each VB2 buffer.
- * @b:			video buffer information for v4l2
- * @list:		link list
+ * @b:			VB2 buffer
+ * @list:			link list
  * @used:		Output buffer contain decoded frame data
  * @ready_to_display:	Output buffer not display yet
  * @nonrealdisplay:	Output buffer is not display frame
@@ -66,7 +67,7 @@ extern const struct v4l2_m2m_ops mtk_vdec_m2m_ops;
  * mtk_vdec_lock/mtk_vdec_unlock are for ctx instance to
  * get/release lock before/after access decoder hw.
  * mtk_vdec_lock get decoder hw lock and set curr_ctx
- * to idx of ctx instance that get lock
+ * to ctx instance that get lock
  */
 int mtk_vdec_unlock(struct mtk_vcodec_ctx *ctx);
 int mtk_vdec_lock(struct mtk_vcodec_ctx *ctx);

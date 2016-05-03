@@ -53,13 +53,13 @@ extern bool mtk_vcodec_dbg;
 	do {								\
 		if (mtk_vcodec_dbg)					\
 			pr_info("[MTK_VCODEC][%d]: %s() " fmt "\n",	\
-				((struct mtk_vcodec_ctx *)h->ctx)->idx, \
+				((struct mtk_vcodec_ctx *)h->ctx)->id, \
 				__func__, ##args);			\
 	} while (0)
 
 #define mtk_vcodec_err(h, fmt, args...)					\
 	pr_err("[MTK_VCODEC][ERROR][%d]: %s() " fmt "\n",		\
-	       ((struct mtk_vcodec_ctx *)h->ctx)->idx, __func__, ##args)
+	       ((struct mtk_vcodec_ctx *)h->ctx)->id, __func__, ##args)
 
 #define mtk_vcodec_debug_enter(h)  mtk_vcodec_debug(h, "+")
 #define mtk_vcodec_debug_leave(h)  mtk_vcodec_debug(h, "-")
@@ -78,8 +78,10 @@ extern bool mtk_vcodec_dbg;
 
 #endif
 
-void __iomem *mtk_vcodec_get_reg_addr(struct mtk_vcodec_ctx *data, unsigned int reg_idx);
-int mtk_vcodec_mem_alloc(struct mtk_vcodec_ctx *data, struct mtk_vcodec_mem *mem);
-void mtk_vcodec_mem_free(struct mtk_vcodec_ctx *data, struct mtk_vcodec_mem *mem);
-struct platform_device *mtk_vcodec_get_plat_dev(struct mtk_vcodec_ctx *data);
+void __iomem *mtk_vcodec_get_reg_addr(struct mtk_vcodec_ctx *data,
+				unsigned int reg_idx);
+int mtk_vcodec_mem_alloc(struct mtk_vcodec_ctx *data,
+				struct mtk_vcodec_mem *mem);
+void mtk_vcodec_mem_free(struct mtk_vcodec_ctx *data,
+				struct mtk_vcodec_mem *mem);
 #endif /* _MTK_VCODEC_UTIL_H_ */

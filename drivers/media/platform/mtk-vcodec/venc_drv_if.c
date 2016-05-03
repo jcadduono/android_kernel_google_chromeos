@@ -1,8 +1,8 @@
 /*
  * Copyright (c) 2016 MediaTek Inc.
  * Author: Daniel Hsiao <daniel.hsiao@mediatek.com>
- *		Jungchang Tsao <jungchang.tsao@mediatek.com>
- *		Tiffany Lin <tiffany.lin@mediatek.com>
+ *	Jungchang Tsao <jungchang.tsao@mediatek.com>
+ *	Tiffany Lin <tiffany.lin@mediatek.com>
  *
  * This program is free software; you can redistribute it and/or
  * modify
@@ -19,14 +19,15 @@
 #include <linux/kernel.h>
 #include <linux/slab.h>
 
+#include "venc_drv_base.h"
 #include "venc_drv_if.h"
+
 #include "mtk_vcodec_enc.h"
 #include "mtk_vcodec_enc_pm.h"
 #include "mtk_vpu.h"
 
-#include "venc_drv_base.h"
-#include "vp8_enc/venc_vp8_if.h"
-#include "h264_enc/venc_h264_if.h"
+struct venc_common_if *get_h264_enc_comm_if(void);
+struct venc_common_if *get_vp8_enc_comm_if(void);
 
 int venc_if_init(struct mtk_vcodec_ctx *ctx, unsigned int fourcc)
 {
@@ -53,7 +54,7 @@ int venc_if_init(struct mtk_vcodec_ctx *ctx, unsigned int fourcc)
 }
 
 int venc_if_set_param(struct mtk_vcodec_ctx *ctx,
-		      enum venc_set_param_type type, struct venc_enc_prm *in)
+		enum venc_set_param_type type, struct venc_enc_param *in)
 {
 	int ret = 0;
 
@@ -72,14 +73,24 @@ int venc_if_encode(struct mtk_vcodec_ctx *ctx,
 		   struct venc_done_result *result)
 {
 	int ret = 0;
+	unsigned long flags;
 
 	mtk_venc_lock(ctx);
+
+	spin_lock_irqsave(&ctx->dev->irqlock, flags);
+	ctx->dev->curr_ctx = ctx;
+	spin_unlock_irqrestore(&ctx->dev->irqlock, flags);
+
 	mtk_vcodec_enc_clock_on(&ctx->dev->pm);
 	ret = ctx->enc_if->encode(ctx->drv_handle, opt, frm_buf,
 				  bs_buf, result);
 	mtk_vcodec_enc_clock_off(&ctx->dev->pm);
-	mtk_venc_unlock(ctx);
 
+	spin_lock_irqsave(&ctx->dev->irqlock, flags);
+	ctx->dev->curr_ctx = NULL;
+	spin_unlock_irqrestore(&ctx->dev->irqlock, flags);
+
+	mtk_venc_unlock(ctx);
 	return ret;
 }
 
@@ -100,4 +111,3 @@ int venc_if_deinit(struct mtk_vcodec_ctx *ctx)
 
 	return ret;
 }
-

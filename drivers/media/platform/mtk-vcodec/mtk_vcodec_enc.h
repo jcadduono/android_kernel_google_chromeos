@@ -16,6 +16,7 @@
 #ifndef _MTK_VCODEC_ENC_H_
 #define _MTK_VCODEC_ENC_H_
 
+#include <media/videobuf2-core.h>
 #include <media/videobuf2-v4l2.h>
 
 #define MTK_VENC_IRQ_STATUS_SPS	0x1
@@ -30,18 +31,17 @@
 
 /**
  * struct mtk_video_enc_buf - Private data related to each VB2 buffer.
- * @vb:	video buffer information for v4l2
+ * @vb: Pointer to related VB2 buffer.
  * @list:	list that buffer link to
  * @param_change: Types of encode parameter change before encoding this
  *				buffer
  * @enc_params: Encode parameters changed before encode this buffer
  */
 struct mtk_video_enc_buf {
-	struct vb2_v4l2_buffer	vb;
-	struct list_head	list;
-
-	u32	param_change;
-	struct mtk_enc_params	enc_params;
+	struct vb2_v4l2_buffer vb;
+	struct list_head list;
+	u32 param_change;
+	struct mtk_enc_params enc_params;
 };
 
 extern const struct v4l2_ioctl_ops mtk_venc_ioctl_ops;
@@ -53,6 +53,6 @@ int mtk_vcodec_enc_queue_init(void *priv, struct vb2_queue *src_vq,
 			      struct vb2_queue *dst_vq);
 void mtk_vcodec_enc_release(struct mtk_vcodec_ctx *ctx);
 int mtk_vcodec_enc_ctrls_setup(struct mtk_vcodec_ctx *ctx);
-void mtk_vcodec_enc_ctx_params_setup(struct mtk_vcodec_ctx *ctx);
+void mtk_vcodec_enc_set_default_params(struct mtk_vcodec_ctx *ctx);
 
 #endif /* _MTK_VCODEC_ENC_H_ */

@@ -177,19 +177,6 @@ unsigned int vpu_get_venc_hw_capa(struct platform_device *pdev);
 int vpu_load_firmware(struct platform_device *pdev);
 
 /**
- * vpu_compare_version - compare firmware version and expected version
- *
- * @pdev:		VPU platform device
- * @expected_version:	expected version
- *
- * Return: < 0 if firmware version is older than expected version
- *         = 0 if firmware version is equal to expected version
- *         > 0 if firmware version is newer than expected version
- **/
-int vpu_compare_version(struct platform_device *pdev,
-			const char *expected_version);
-
-/**
  * vpu_mapping_dm_addr - Mapping DTCM/DMEM to kernel virtual address
  *
  * @pdev:	VPU platform device

@@ -13,18 +13,10 @@
  * GNU General Public License for more details.
  */
 
-#include <linux/bug.h>
-#include <linux/clk.h>
 #include <linux/device.h>
 #include <linux/errno.h>
-#include <linux/interrupt.h>
-#include <linux/io.h>
 #include <linux/kernel.h>
-#include <linux/list.h>
-#include <linux/module.h>
-#include <linux/platform_device.h>
-#include <linux/slab.h>
-#include <linux/types.h>
+#include <linux/pm_runtime.h>
 #include <linux/workqueue.h>
 #include <media/v4l2-ioctl.h>
 
@@ -175,9 +167,9 @@ void mtk_mdp_m2m_job_finish(struct mtk_mdp_ctx *ctx, int vb_state)
 
 	if (src_vb && dst_vb) {
 		src_vb2_v4l2 = container_of(src_vb, struct vb2_v4l2_buffer,
-				vb2_buf);
+						vb2_buf);
 		dst_vb2_v4l2 = container_of(dst_vb, struct vb2_v4l2_buffer,
-				vb2_buf);
+						vb2_buf);
 
 		dst_vb2_v4l2->timestamp = src_vb2_v4l2->timestamp;
 		dst_vb2_v4l2->timecode = src_vb2_v4l2->timecode;
@@ -365,10 +357,16 @@ static int mtk_mdp_m2m_querycap(struct file *file, void *fh,
 	return 0;
 }
 
-static int mtk_mdp_m2m_enum_fmt_mplane(struct file *file, void *priv,
+static int mtk_mdp_m2m_enum_fmt_mplane_vid_cap(struct file *file, void *priv,
 				       struct v4l2_fmtdesc *f)
 {
-	return mtk_mdp_enum_fmt_mplane(f);
+	return mtk_mdp_enum_fmt_mplane(f, V4L2_BUF_TYPE_VIDEO_CAPTURE);
+}
+
+static int mtk_mdp_m2m_enum_fmt_mplane_vid_out(struct file *file, void *priv,
+				       struct v4l2_fmtdesc *f)
+{
+	return mtk_mdp_enum_fmt_mplane(f, V4L2_BUF_TYPE_VIDEO_OUTPUT);
 }
 
 static int mtk_mdp_m2m_g_fmt_mplane(struct file *file, void *fh,
@@ -413,7 +411,7 @@ static int mtk_mdp_m2m_s_fmt_mplane(struct file *file, void *fh,
 		frame = &ctx->d_frame;
 
 	pix = &f->fmt.pix_mp;
-	frame->fmt = mtk_mdp_find_fmt(&pix->pixelformat, 0);
+	frame->fmt = mtk_mdp_find_fmt(&pix->pixelformat, 0, f->type);
 	frame->colorspace = pix->colorspace;
 	if (!frame->fmt)
 		return -EINVAL;
@@ -641,8 +639,8 @@ static int mtk_mdp_m2m_s_selection(struct file *file, void *fh,
 
 static const struct v4l2_ioctl_ops mtk_mdp_m2m_ioctl_ops = {
 	.vidioc_querycap		= mtk_mdp_m2m_querycap,
-	.vidioc_enum_fmt_vid_cap_mplane	= mtk_mdp_m2m_enum_fmt_mplane,
-	.vidioc_enum_fmt_vid_out_mplane	= mtk_mdp_m2m_enum_fmt_mplane,
+	.vidioc_enum_fmt_vid_cap_mplane	= mtk_mdp_m2m_enum_fmt_mplane_vid_cap,
+	.vidioc_enum_fmt_vid_out_mplane	= mtk_mdp_m2m_enum_fmt_mplane_vid_out,
 	.vidioc_g_fmt_vid_cap_mplane	= mtk_mdp_m2m_g_fmt_mplane,
 	.vidioc_g_fmt_vid_out_mplane	= mtk_mdp_m2m_g_fmt_mplane,
 	.vidioc_try_fmt_vid_cap_mplane	= mtk_mdp_m2m_try_fmt_mplane,
@@ -722,8 +720,8 @@ static int mtk_mdp_m2m_open(struct file *file)
 
 	ctx->mdp_dev = mdp;
 	/* Default color format */
-	ctx->s_frame.fmt = mtk_mdp_get_format(0);
-	ctx->d_frame.fmt = mtk_mdp_get_format(0);
+	ctx->s_frame.fmt = mtk_mdp_find_fmt(0, 0, V4L2_BUF_TYPE_VIDEO_OUTPUT);
+	ctx->d_frame.fmt = mtk_mdp_find_fmt(0, 0, V4L2_BUF_TYPE_VIDEO_CAPTURE);
 	/* Setup the device context for mem2mem mode. */
 	ctx->state = MTK_MDP_CTX_M2M;
 	ctx->flags = 0;
@@ -747,15 +745,6 @@ static int mtk_mdp_m2m_open(struct file *file)
 			goto err_load_vpu;
 		}
 
-		ret = vpu_compare_version(mdp->vpu_dev, MTK_MDP_VPU_VERSION);
-		if (ret < 0) {
-			ret = -EINVAL;
-			dev_err(&mdp->pdev->dev,
-			"invalid vpu firmware, should be newer than %s\n",
-				MTK_MDP_VPU_VERSION);
-			goto err_load_vpu;
-		}
-
 		ret = mtk_mdp_vpu_register(mdp->pdev);
 		if (ret < 0) {
 			dev_err(&mdp->pdev->dev, "mdp_vpu register failed\n");
@@ -763,7 +752,12 @@ static int mtk_mdp_m2m_open(struct file *file)
 		}
 	}
 
-	mtk_mdp_vpu_init(&ctx->vpu);
+	ret = mtk_mdp_vpu_init(&ctx->vpu);
+	if (ret < 0) {
+		dev_err(&mdp->pdev->dev, "Failed to initialize vpu\n");
+		ret = -EINVAL;
+		goto err_load_vpu;
+	}
 	set_bit(ctx->idx, &mdp->ctx_mask[0]);
 	mdp->ctx[ctx->idx] = ctx;
 	mutex_unlock(&mdp->lock);
