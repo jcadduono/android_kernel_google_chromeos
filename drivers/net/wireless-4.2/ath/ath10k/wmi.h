@@ -180,6 +180,12 @@ enum wmi_service {
 	WMI_SERVICE_MESH_NON_11S,
 	WMI_SERVICE_PEER_STATS,
 	WMI_SERVICE_RESTRT_CHNL_SUPPORT,
+	WMI_SERVICE_PERIODIC_CHAN_STAT_SUPPORT,
+	WMI_SERVICE_TX_MODE_PUSH_ONLY,
+	WMI_SERVICE_TX_MODE_PUSH_PULL,
+	WMI_SERVICE_TX_MODE_DYNAMIC,
+	WMI_SERVICE_VDEV_RX_FILTER,
+	WMI_SERVICE_BTCOEX,
 
 	/* keep last */
 	WMI_SERVICE_MAX,
@@ -302,6 +308,12 @@ enum wmi_10_4_service {
 	WMI_10_4_SERVICE_RESTRT_CHNL_SUPPORT,
 	WMI_10_4_SERVICE_PEER_STATS,
 	WMI_10_4_SERVICE_MESH_11S,
+	WMI_10_4_SERVICE_PERIODIC_CHAN_STAT_SUPPORT,
+	WMI_10_4_SERVICE_TX_MODE_PUSH_ONLY,
+	WMI_10_4_SERVICE_TX_MODE_PUSH_PULL,
+	WMI_10_4_SERVICE_TX_MODE_DYNAMIC,
+	WMI_10_4_SERVICE_VDEV_RX_FILTER,
+	WMI_10_4_SERVICE_BTCOEX,
 };
 
 static inline char *wmi_service_name(int service_id)
@@ -396,6 +408,7 @@ static inline char *wmi_service_name(int service_id)
 	SVCSTR(WMI_SERVICE_MESH_NON_11S);
 	SVCSTR(WMI_SERVICE_PEER_STATS);
 	SVCSTR(WMI_SERVICE_RESTRT_CHNL_SUPPORT);
+	SVCSTR(WMI_SERVICE_BTCOEX);
 	default:
 		return NULL;
 	}
@@ -643,6 +656,8 @@ static inline void wmi_10_4_svc_map(const __le32 *in, unsigned long *out,
 	       WMI_SERVICE_PEER_STATS, len);
 	SVCMAP(WMI_10_4_SERVICE_MESH_11S,
 	       WMI_SERVICE_MESH_11S, len);
+	SVCMAP(WMI_10_4_SERVICE_BTCOEX,
+	       WMI_SERVICE_BTCOEX, len);
 }
 
 #undef SVCMAP
@@ -818,6 +833,7 @@ struct wmi_cmd_map {
 	u32 pdev_bss_chan_info_request_cmdid;
 	u32 pdev_enable_adaptive_cca_cmdid;
 	u32 ext_resource_cfg_cmdid;
+	u32 set_coex_param_cmdid;
 };
 
 /*
@@ -1627,6 +1643,11 @@ enum wmi_10_4_cmd_id {
 	WMI_10_4_EXT_RESOURCE_CFG_CMDID,
 	WMI_10_4_VDEV_SET_IE_CMDID,
 	WMI_10_4_SET_LTEU_CONFIG_CMDID,
+	WMI_10_4_ATF_SSID_GROUPING_REQUEST_CMDID,
+	WMI_10_4_PEER_ATF_EXT_REQUEST_CMDID,
+	WMI_10_4_SET_PERIODIC_CHANNEL_STATS_CONFIG,
+	WMI_10_4_PEER_BWF_REQUEST_CMDID,
+	WMI_10_4_BTCOEX_CFG_CMDID,
 	WMI_10_4_PDEV_UTF_CMDID = WMI_10_4_END_CMDID - 1,
 };
 
@@ -2699,6 +2720,10 @@ struct wmi_ext_resource_config_10_4_cmd {
 	/* see enum wmi_10_4_feature_mask */
 	__le32 fw_feature_bitmap;
 };
+
+struct wmi_set_coex_param_10_4_cmd {
+	__le32 wlan_traffic_priority;
+} __packed;
 
 /* strucutre describing host memory chunk. */
 struct host_memory_chunk {

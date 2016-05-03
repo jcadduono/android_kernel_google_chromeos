@@ -196,6 +196,8 @@ struct wmi_ops {
 					       u32 fw_feature_bitmap);
 	int (*get_vdev_subtype)(struct ath10k *ar,
 				enum wmi_vdev_subtype subtype);
+	struct sk_buff *(*gen_set_coex_param)(struct ath10k *ar,
+					      u32 wlan_traffic_priority);
 };
 
 int ath10k_wmi_cmd_send(struct ath10k *ar, struct sk_buff *skb, u32 cmd_id);
@@ -1393,6 +1395,23 @@ ath10k_wmi_get_vdev_subtype(struct ath10k *ar, enum wmi_vdev_subtype subtype)
 		return -EOPNOTSUPP;
 
 	return ar->wmi.ops->get_vdev_subtype(ar, subtype);
+}
+
+static inline int
+ath10k_wmi_set_coex_param(struct ath10k *ar, u32 wlan_traffic_priority)
+{
+	struct sk_buff *skb;
+
+	if (!ar->wmi.ops->gen_set_coex_param)
+		return -EOPNOTSUPP;
+
+	skb = ar->wmi.ops->gen_set_coex_param(ar, wlan_traffic_priority);
+
+	if(IS_ERR(skb))
+		return PTR_ERR(skb);
+
+	return ath10k_wmi_cmd_send(ar, skb,
+				   ar->wmi.cmd->set_coex_param_cmdid);
 }
 
 #endif

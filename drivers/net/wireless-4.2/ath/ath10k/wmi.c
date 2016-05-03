@@ -707,6 +707,7 @@ static struct wmi_cmd_map wmi_10_4_cmd_map = {
 	.pdev_bss_chan_info_request_cmdid =
 			WMI_10_4_PDEV_BSS_CHAN_INFO_REQUEST_CMDID,
 	.ext_resource_cfg_cmdid = WMI_10_4_EXT_RESOURCE_CFG_CMDID,
+	.set_coex_param_cmdid = WMI_10_4_BTCOEX_CFG_CMDID,
 };
 
 /* MAIN WMI VDEV param map */
@@ -7735,6 +7736,25 @@ static int ath10k_wmi_10_4_op_get_vdev_subtype(struct ath10k *ar,
 }
 
 static struct sk_buff *
+ath10k_wmi_10_4_op_gen_set_coex_param(struct ath10k *ar,
+				      u32 wlan_traffic_priority)
+{
+	struct wmi_set_coex_param_10_4_cmd *cmd;
+	struct sk_buff *skb;
+
+	skb = ath10k_wmi_alloc_skb(ar, sizeof(*cmd));
+	if (!skb)
+		return ERR_PTR(-ENOMEM);
+
+	cmd = (struct wmi_set_coex_param_10_4_cmd *)skb->data;
+	cmd->wlan_traffic_priority = __cpu_to_le32(wlan_traffic_priority);
+
+	ath10k_dbg(ar, ATH10K_DBG_WMI,
+		   "Wlan_traffic_priority :%u\n", wlan_traffic_priority);
+	return skb;
+}
+
+static struct sk_buff *
 ath10k_wmi_10_4_ext_resource_config(struct ath10k *ar,
 				    enum wmi_host_platform_type type,
 				    u32 fw_feature_bitmap)
@@ -8109,6 +8129,7 @@ static const struct wmi_ops wmi_10_4_ops = {
 	.gen_request_stats = ath10k_wmi_op_gen_request_stats,
 	.gen_pdev_get_temperature = ath10k_wmi_10_2_op_gen_pdev_get_temperature,
 	.get_vdev_subtype = ath10k_wmi_10_4_op_get_vdev_subtype,
+	.gen_set_coex_param = ath10k_wmi_10_4_op_gen_set_coex_param,
 };
 
 int ath10k_wmi_attach(struct ath10k *ar)

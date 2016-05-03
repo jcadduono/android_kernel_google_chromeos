@@ -2126,6 +2126,8 @@ static const struct file_operations fops_quiet_period = {
 	.open = simple_open
 };
 
+#define ATH10K_DEFAULT_WLAN_PRIORITY_OVER_BT 0x38
+
 static ssize_t ath10k_write_btcoex(struct file *file,
 				   const char __user *ubuf,
 				   size_t count, loff_t *ppos)
@@ -2166,6 +2168,9 @@ static ssize_t ath10k_write_btcoex(struct file *file,
 	ath10k_info(ar, "restarting firmware due to btcoex change");
 
 	queue_work(ar->workqueue, &ar->restart_work);
+	ar->debug.wlan_traffic_priority =
+					ATH10K_DEFAULT_WLAN_PRIORITY_OVER_BT;
+
 	ret = count;
 
 exit:
@@ -2192,6 +2197,101 @@ static ssize_t ath10k_read_btcoex(struct file *file, char __user *ubuf,
 static const struct file_operations fops_btcoex = {
 	.read = ath10k_read_btcoex,
 	.write = ath10k_write_btcoex,
+	.open = simple_open
+};
+
+static ssize_t ath10k_write_btcoex_priority(struct file *file,
+					    const char __user *ubuf,
+					    size_t count, loff_t *ppos)
+{
+	struct ath10k *ar = file->private_data;
+	u32 wlan_traffic_priority;
+	int ret;
+
+	if (kstrtou32_from_user(ubuf, count, 0, &wlan_traffic_priority))
+		return -EINVAL;
+
+	if (wlan_traffic_priority > 0x3f)
+		return -E2BIG;
+
+	mutex_lock(&ar->conf_mutex);
+
+	if (!(test_bit(ATH10K_FLAG_BTCOEX, &ar->dev_flags))) {
+		ret = -EOPNOTSUPP;
+		goto exit;
+	}
+
+	if (ar->state != ATH10K_STATE_ON &&
+	    ar->state != ATH10K_STATE_RESTARTED) {
+		ret = -ENETDOWN;
+		goto exit;
+	}
+
+	ret = ath10k_wmi_set_coex_param(ar, wlan_traffic_priority);
+
+	if (ret) {
+		ath10k_warn(ar, "failed to set wlan priority %d\n", ret);
+		goto exit;
+	}
+
+	ar->debug.wlan_traffic_priority = wlan_traffic_priority;
+
+	ret = count;
+exit:
+	mutex_unlock(&ar->conf_mutex);
+	return ret;
+}
+
+#define ATH10K_BE_TRAFFIC_OVER_BT      BIT(0)
+#define ATH10K_BK_TRAFFIC_OVER_BT      BIT(1)
+#define ATH10K_VI_TRAFFIC_OVER_BT      BIT(2)
+#define ATH10K_VO_TRAFFIC_OVER_BT      BIT(3)
+#define ATH10K_BEACON_TRAFFIC_OVER_BT  BIT(4)
+#define ATH10K_MGMT_TRAFFIC_OVER_BT    BIT(5)
+
+static ssize_t ath10k_read_btcoex_priority(struct file *file, char __user *ubuf,
+					   size_t count, loff_t *ppos)
+{
+	char buf[100] = "";
+	struct ath10k *ar = file->private_data;
+
+	mutex_lock(&ar->conf_mutex);
+
+	if (!(test_bit(ATH10K_FLAG_BTCOEX, &ar->dev_flags))) {
+		strcpy (buf, "BTCOEX is disabled\n");
+		goto exit;
+	}
+
+	if (!ar->debug.wlan_traffic_priority) {
+		strcpy(buf, "BT has higher priority than any of the WLAN frames");
+	} else {
+		if (ar->debug.wlan_traffic_priority &
+				ATH10K_BE_TRAFFIC_OVER_BT)
+			strcat(buf, "Best Effort\n");
+		if (ar->debug.wlan_traffic_priority &
+				ATH10K_BK_TRAFFIC_OVER_BT)
+			strcat(buf, "Background\n");
+		if (ar->debug.wlan_traffic_priority &
+				ATH10K_VI_TRAFFIC_OVER_BT)
+			strcat(buf, "Video\n");
+		if (ar->debug.wlan_traffic_priority &
+				ATH10K_VO_TRAFFIC_OVER_BT)
+			strcat(buf, "Voice\n");
+		if (ar->debug.wlan_traffic_priority &
+				ATH10K_BEACON_TRAFFIC_OVER_BT)
+			strcat(buf, "Beacon\n");
+		if (ar->debug.wlan_traffic_priority &
+				ATH10K_MGMT_TRAFFIC_OVER_BT)
+			strcat(buf, "Mgmt\n");
+	}
+exit:
+	mutex_unlock(&ar->conf_mutex);
+	return simple_read_from_buffer(ubuf, count, ppos, buf, strlen(buf));
+}
+
+static const struct file_operations fops_btcoex_priority = {
+	.read = ath10k_read_btcoex_priority,
+	.write = ath10k_write_btcoex_priority,
 	.open = simple_open
 };
 
@@ -2490,9 +2590,14 @@ int ath10k_debug_register(struct ath10k *ar)
 	debugfs_create_file("tpc_stats", S_IRUSR,
 			    ar->debug.debugfs_phy, ar, &fops_tpc_stats);
 
-	if (test_bit(WMI_SERVICE_COEX_GPIO, ar->wmi.svc_map))
+	if (test_bit(WMI_SERVICE_COEX_GPIO, ar->wmi.svc_map)) {
 		debugfs_create_file("btcoex", S_IRUGO | S_IWUSR,
 				    ar->debug.debugfs_phy, ar, &fops_btcoex);
+		if (test_bit(WMI_SERVICE_BTCOEX, ar->wmi.svc_map))
+			debugfs_create_file("btcoex_priority",
+				S_IRUGO | S_IWUSR,
+				ar->debug.debugfs_phy, ar, &fops_btcoex_priority);
+	}
 
 	if (test_bit(WMI_SERVICE_PEER_STATS, ar->wmi.svc_map))
 		debugfs_create_file("disable_peer_stats", S_IRUGO | S_IWUSR,
