@@ -165,12 +165,13 @@ ath10k_debug_get_new_fw_crash_data(struct ath10k *ar)
 #ifdef CONFIG_MAC80211_DEBUGFS
 void ath10k_sta_add_debugfs(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 			    struct ieee80211_sta *sta, struct dentry *dir);
-void ath10k_sta_update_rx_duration(struct ath10k *ar, struct list_head *peer);
+void ath10k_sta_update_rx_duration(struct ath10k *ar,
+				   struct ath10k_fw_stats *stats);
 void ath10k_update_peer_tx_stats(struct ath10k *ar, struct ath10k_sta *sta,
 				 struct ath10k_per_peer_tx_stats *p_tx_stats);
 #else
 static inline void ath10k_sta_update_rx_duration(struct ath10k *ar,
-						 struct list_head *peer)
+						 struct ath10k_fw_stats *stats);
 {
 }
 void ath10k_update_peer_tx_stats(struct ath10k *ar, struct ath10k_sta *sta,
