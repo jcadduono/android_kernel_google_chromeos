@@ -806,32 +806,36 @@ static int qup_i2c_bam_do_xfer(struct qup_i2c_dev *qup, struct i2c_msg *msg,
 		ret = -ETIMEDOUT;
 	}
 
-	if (ret || qup->bus_err || qup->qup_err) {
-		if (qup->bus_err & QUP_I2C_NACK_FLAG) {
-			msg--;
+	if (qup->bus_err || qup->qup_err) {
+		ret = -EIO;
+		msg--;
+
+		if (qup->bus_err & QUP_I2C_NACK_FLAG)
 			dev_err(qup->dev, "NACK from %x\n", msg->addr);
-			ret = -EIO;
+		else
+			dev_err(qup->dev, "Bus Error %08x Qup Error %08x\n",
+					qup->bus_err, qup->qup_err);
 
-			if (qup_i2c_change_state(qup, QUP_RUN_STATE)) {
-				dev_err(qup->dev, "change to run state timed out");
-				return ret;
-			}
+		if (qup_i2c_change_state(qup, QUP_RUN_STATE)) {
+			dev_err(qup->dev, "change to run state timed out");
 
-			if (rx_nents)
-				writel(QUP_BAM_INPUT_EOT,
-				       qup->base + QUP_OUT_FIFO_BASE);
+			return ret;
+		}
 
-			writel(QUP_BAM_FLUSH_STOP,
+		if (rx_nents)
+			writel(QUP_BAM_INPUT_EOT,
 			       qup->base + QUP_OUT_FIFO_BASE);
 
-			qup_i2c_flush(qup);
+		writel(QUP_BAM_FLUSH_STOP,
+		       qup->base + QUP_OUT_FIFO_BASE);
 
-			/* wait for remaining interrupts to occur */
-			if (!wait_for_completion_timeout(&qup->xfer, HZ))
-				dev_err(qup->dev, "flush timed out\n");
+		qup_i2c_flush(qup);
 
-			qup_i2c_rel_dma(qup);
-		}
+		/* wait for remaining interrupts to occur */
+		if (!wait_for_completion_timeout(&qup->xfer, HZ))
+			dev_err(qup->dev, "flush timed out\n");
+
+		qup_i2c_rel_dma(qup);
 	}
 
 	dma_unmap_sg(qup->dev, qup->btx.sg, tx_nents, DMA_TO_DEVICE);
@@ -898,8 +902,11 @@ static int qup_i2c_wait_for_complete(struct qup_i2c_dev *qup,
 	if (qup->bus_err || qup->qup_err) {
 		if (qup->bus_err & QUP_I2C_NACK_FLAG) {
 			dev_err(qup->dev, "NACK from %x\n", msg->addr);
-			ret = -EIO;
+		} else {
+			dev_err(qup->dev, "Bus Error %08x Qup Error %08x\n",
+					qup->bus_err, qup->qup_err);
 		}
+		ret = -EIO;
 	}
 
 	return ret;
