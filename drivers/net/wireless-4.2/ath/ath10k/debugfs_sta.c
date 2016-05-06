@@ -91,7 +91,6 @@ void ath10k_update_peer_tx_stats(struct ath10k *ar,
 		} else {
 			bw = ATH10K_HW_BW(peer_stats->flags[i]);
 			nss = ATH10K_HW_NSS(peer_stats->ratecode[i]) - 1;
-			gi = 0; /*TODO needs to be updated from flags*/
 			mcs = ATH10K_HW_MCS_RATE(peer_stats->ratecode[i]);
 			idx = mcs * 8 + 8 * 10 * (nss);
 			idx += bw * 2 + gi;
