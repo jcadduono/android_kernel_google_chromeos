@@ -374,7 +374,7 @@ PVRSRV_ERROR InitDVFS(PVRSRV_DATA *psPVRSRVData, void *hDevice)
 		return eError;
 	}
 
-	err = of_init_opp_table(psDev);
+	err = of_add_opp_table(psDev);
 	if (err) {
 		PVR_DPF((PVR_DBG_ERROR, "Failed to init opp table from devicetree, %d", err));
 		eError = TO_IMG_ERR(err);
@@ -505,7 +505,7 @@ void DeinitDVFS(PVRSRV_DATA *psPVRSRVData, void *hDevice)
 	kfree(img_devfreq_dev_profile.freq_table);
 #endif
 
-	of_free_opp_table(psDev);
+	of_remove_opp_table(psDev);
 
 	RGXUnregisterGpuUtilStats(psDVFSDevice->hGpuUtilUserDVFS);
 	psDVFSDevice->hGpuUtilUserDVFS = NULL;

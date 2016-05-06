@@ -235,7 +235,7 @@ static int tegra210_cpufreq_init(struct cpufreq_policy *policy)
 	if (!np)
 		return -ENODEV;
 
-	of_init_opp_table(priv.cpu_dev);
+	of_add_opp_table(priv.cpu_dev);
 
 	if (of_property_read_u32(np, "clock-latency", &transition_latency))
 		transition_latency = CPUFREQ_ETERNAL;
