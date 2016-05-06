@@ -900,33 +900,6 @@ static int mtk_dsi_remove(struct platform_device *pdev)
 	return 0;
 }
 
-#ifdef CONFIG_PM
-static int mtk_dsi_suspend(struct device *dev)
-{
-	struct mtk_dsi *dsi;
-
-	dsi = dev_get_drvdata(dev);
-
-	mtk_output_dsi_disable(dsi);
-	DRM_DEBUG_DRIVER("dsi suspend success!\n");
-
-	return 0;
-}
-
-static int mtk_dsi_resume(struct device *dev)
-{
-	struct mtk_dsi *dsi;
-
-	dsi = dev_get_drvdata(dev);
-
-	mtk_output_dsi_enable(dsi);
-	DRM_DEBUG_DRIVER("dsi resume success!\n");
-
-	return 0;
-}
-#endif
-static SIMPLE_DEV_PM_OPS(mtk_dsi_pm_ops, mtk_dsi_suspend, mtk_dsi_resume);
-
 static const struct of_device_id mtk_dsi_of_match[] = {
 	{ .compatible = "mediatek,mt8173-dsi" },
 	{ },
@@ -938,6 +911,5 @@ struct platform_driver mtk_dsi_driver = {
 	.driver = {
 		.name = "mtk-dsi",
 		.of_match_table = mtk_dsi_of_match,
-		.pm = &mtk_dsi_pm_ops,
 	},
 };
