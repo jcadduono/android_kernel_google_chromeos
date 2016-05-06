@@ -835,8 +835,8 @@ out_unlock:
 	return err;
 }
 
-/* When set to 1, allow set/drop master ioctls as normal user */
-u32 drm_master_relax;
+/* When set to true, allow set/drop master ioctls as normal user */
+bool drm_master_relax;
 
 static const struct file_operations drm_stub_fops = {
 	.owner = THIS_MODULE,

@@ -596,7 +596,7 @@ struct iwl_mvm {
 	const struct iwl_fw_bcast_filter *bcast_filters;
 #ifdef CONFIG_IWLWIFI_DEBUGFS
 	struct {
-		u32 override; /* u32 for debugfs_create_bool */
+		bool override;
 		struct iwl_bcast_filter_cmd cmd;
 	} dbgfs_bcast_filtering;
 #endif
@@ -661,7 +661,7 @@ struct iwl_mvm {
 	struct wiphy_wowlan_support wowlan;
 	int gtk_ivlen, gtk_icvlen, ptk_ivlen, ptk_icvlen;
 #ifdef CONFIG_IWLWIFI_DEBUGFS
-	u32 d3_wake_sysassert; /* must be u32 for debugfs_create_bool */
+	bool d3_wake_sysassert;
 	bool d3_test_active;
 	bool store_d3_resume_sram;
 	void *d3_resume_sram;

@@ -122,7 +122,7 @@ struct acpi_ec {
 	unsigned long gpe;
 	unsigned long command_addr;
 	unsigned long data_addr;
-	unsigned long global_lock;
+	bool global_lock;
 	unsigned long flags;
 	struct mutex mutex;
 	wait_queue_head_t wait;
