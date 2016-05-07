@@ -194,6 +194,11 @@ struct platform_freeze_ops {
 	void (*end)(void);
 };
 
+struct timed_freeze_ops {
+	int (*enter_freeze)(void *);
+	int (*callback)(void *);
+};
+
 #ifdef CONFIG_SUSPEND
 /**
  * suspend_set_ops - set platform dependent suspend operations
@@ -246,6 +251,9 @@ static inline bool idle_should_freeze(void)
 	return unlikely(suspend_freeze_state == FREEZE_STATE_ENTER);
 }
 
+extern int timed_freeze(struct timed_freeze_ops *ops, void *data,
+			ktime_t delta);
+
 extern void freeze_set_ops(const struct platform_freeze_ops *ops);
 extern void freeze_wake(void);
 
@@ -280,6 +288,8 @@ static inline bool pm_resume_via_firmware(void) { return false; }
 static inline void suspend_set_ops(const struct platform_suspend_ops *ops) {}
 static inline int pm_suspend(suspend_state_t state) { return -ENOSYS; }
 static inline bool idle_should_freeze(void) { return false; }
+static inline int timed_freeze(struct timed_freeze_ops *ops, void *data,
+			       ktime_t delta) { return -ENOSYS; }
 static inline void freeze_set_ops(const struct platform_freeze_ops *ops) {}
 static inline void freeze_wake(void) {}
 #endif /* !CONFIG_SUSPEND */

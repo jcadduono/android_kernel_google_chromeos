@@ -67,12 +67,20 @@ enum clock_event_mode {
  */
 #define CLOCK_EVT_FEAT_HRTIMER		0x000080
 
+/*
+ * Clockevent device may run during freeze
+ */
+#define CLOCK_EVT_FEAT_FREEZE		0x000100
+
 /**
  * struct clock_event_device - clock event device descriptor
  * @event_handler:	Assigned by the framework to be called by the low
  *			level handler of the event source
  * @set_next_event:	set next event function using a clocksource delta
  * @set_next_ktime:	set next event function using a direct ktime value
+ * @event_pending:	check if the programmed event is still pending. Used
+ *			for freeze events when timekeeping is suspended and
+ *			irqs are disabled.
  * @next_event:		local storage for the next event in oneshot mode
  * @max_delta_ns:	maximum delta value in ns
  * @min_delta_ns:	minimum delta value in ns
@@ -99,7 +107,9 @@ struct clock_event_device {
 						  struct clock_event_device *);
 	int			(*set_next_ktime)(ktime_t expires,
 						  struct clock_event_device *);
+	bool			(*event_expired)(struct clock_event_device *);
 	ktime_t			next_event;
+	bool			freeze_event_programmed;
 	u64			max_delta_ns;
 	u64			min_delta_ns;
 	u32			mult;

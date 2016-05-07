@@ -17,6 +17,7 @@
 #include <linux/module.h>
 #include <linux/smp.h>
 #include <linux/device.h>
+#include <linux/suspend.h>
 
 #include "tick-internal.h"
 
@@ -271,6 +272,122 @@ int clockevents_program_event(struct clock_event_device *dev, ktime_t expires,
 
 	return (rc && force) ? clockevents_program_min_delta(dev) : rc;
 }
+
+static int clockevents_program_freeze_event(struct clock_event_device *dev,
+					    ktime_t delta)
+{
+	int64_t delta_ns = ktime_to_ns(delta);
+	unsigned long long clc;
+	int ret;
+
+	if (delta_ns > (int64_t) dev->max_delta_ns) {
+		printk_deferred(KERN_WARNING
+				"Freeze event time longer than max delta\n");
+		delta_ns = (int64_t) dev->max_delta_ns;
+	}
+
+	clockevents_set_mode(dev, CLOCK_EVT_MODE_RESUME);
+	clockevents_set_mode(dev, CLOCK_EVT_MODE_ONESHOT);
+	delta_ns = max_t(int64_t, delta_ns, dev->min_delta_ns);
+	clc = ((unsigned long long) delta_ns * dev->mult) >> dev->shift;
+	ret = dev->set_next_event((unsigned long) clc, dev);
+	if (ret < 0) {
+		printk_deferred(KERN_WARNING
+				"Failed to program freeze event\n");
+		clockevents_set_mode(dev, CLOCK_EVT_MODE_SHUTDOWN);
+	} else {
+		dev->freeze_event_programmed = true;
+	}
+
+	return ret;
+}
+
+static bool clockevents_freeze_event_expired(struct clock_event_device *dev)
+{
+	if (dev->freeze_event_programmed)
+		return dev->event_expired(dev);
+
+	return false;
+}
+
+static void clockevents_cleanup_freeze_event(struct clock_event_device *dev)
+{
+	if (!(dev->features & CLOCK_EVT_FEAT_FREEZE))
+		return;
+
+	clockevents_set_mode(dev, CLOCK_EVT_MODE_SHUTDOWN);
+	dev->freeze_event_programmed = false;
+}
+
+/**
+ * timed_freeze - Enter freeze on a CPU for a timed duration
+ * @ops:	Pointers for enter freeze and callback functions.
+ * @data:	Pointer to pass arguments to the function pointers.
+ * @delta:	Time to freeze for. If this amount of time passes in freeze, the
+ *		callback in ops will be called.
+ *
+ * Returns the value from ops->enter_freeze or ops->callback on success, -EERROR
+ * otherwise. If an error is encountered while setting up the clock event,
+ * freeze with still be entered, but it will not be timed nor will the callback
+ * function be run.
+ */
+int timed_freeze(struct timed_freeze_ops *ops, void *data, ktime_t delta)
+{
+	int cpu = smp_processor_id();
+	struct tick_device *td = tick_get_device(cpu);
+	struct clock_event_device *dev;
+	int ret;
+
+	if (!ops || !ops->enter_freeze) {
+		printk_deferred(KERN_ERR
+				"[%s] called with invalid ops\n", __func__);
+		return -EINVAL;
+	}
+
+	if (!td || !td->evtdev ||
+	    !(td->evtdev->features & CLOCK_EVT_FEAT_FREEZE)) {
+		printk_deferred(KERN_WARNING
+				"[%s] called with invalid clock event device\n",
+				__func__);
+		ret = -ENOSYS;
+		goto freeze_no_check;
+	}
+
+	dev = td->evtdev;
+	if (dev->mode != CLOCK_EVT_MODE_SHUTDOWN) {
+		printk_deferred(KERN_WARNING
+				"[%s] called while clock event device in use\n",
+				__func__);
+		ret = -EBUSY;
+		goto freeze_no_check;
+	}
+
+	ret = clockevents_program_freeze_event(dev, delta);
+	if (ret < 0)
+		goto freeze_no_check;
+
+	ret = ops->enter_freeze(data);
+	if (ret < 0)
+		goto out;
+
+	if (ops->callback && clockevents_freeze_event_expired(dev))
+		ret = ops->callback(data);
+
+out:
+	clockevents_cleanup_freeze_event(dev);
+	return ret;
+
+freeze_no_check:
+	/*
+	 * If an error happens before enter_freeze, enter freeze normally and
+	 * return an error. The called can't tell if freeze should be entered on
+	 * an error (since errors can happen after returning from freeze), so
+	 * just handle it here.
+	 */
+	ops->enter_freeze(data);
+	return ret;
+}
+EXPORT_SYMBOL_GPL(timed_freeze);
 
 /*
  * Called after a notify add to make devices available which were
