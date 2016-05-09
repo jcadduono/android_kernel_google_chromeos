@@ -1358,7 +1358,7 @@ struct ieee80211_local {
 		struct dentry *keys;
 	} debugfs;
 
-	u32 rx_stats_enabled;
+	bool rx_stats_enabled;
 #endif
 
 	/*
