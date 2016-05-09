@@ -37,7 +37,6 @@ enum {
 	P_FEPLLWCSS2G,
 	P_FEPLLWCSS5G,
 	P_FEPLL125DLY,
-	P_DDRPLLAPSS,
 };
 
 static struct parent_map gcc_xo_200_500_map[] = {
@@ -118,7 +117,7 @@ static struct parent_map gcc_xo_ddr_500_200_map[] = {
 	{  P_XO, 0 },
 	{  P_FEPLL200, 3 },
 	{  P_FEPLL500, 2 },
-	{  P_DDRPLLAPSS, 1 },
+	{  P_DDRPLL, 1 },
 };
 
 static const char * const gcc_xo_ddr_500_200[] = {
@@ -528,11 +527,14 @@ static const struct freq_tbl ftbl_gcc_apps_clk[] = {
 	F(48000000, P_XO,	   1, 0, 0),
 	F(200000000, P_FEPLL200,   1, 0, 0),
 	F(500000000, P_FEPLL500,   1, 0, 0),
-	F(626000000, P_DDRPLLAPSS, 1, 0, 0),
+	F(710000000, P_DDRPLL,     2, 0, 0),
 	{ }
 };
 
-static struct clk_rcg2 apps_clk_src = {
+static struct clk_cdiv_rcg2 apps_clk_src = {
+	.cdiv.offset = 0x2e020,
+	.cdiv.shift = 4,
+	.cdiv.mask = 0xf,
 	.cmd_rcgr = 0x1900c,
 	.hid_width = 5,
 	.freq_tbl = ftbl_gcc_apps_clk,
@@ -541,7 +543,7 @@ static struct clk_rcg2 apps_clk_src = {
 		.name = "apps_clk_src",
 		.parent_names = gcc_xo_ddr_500_200,
 		.num_parents = 4,
-		.ops = &clk_rcg2_ops,
+		.ops = &clk_cpu_rcg2_ops,
 	},
 };
 
@@ -1296,7 +1298,7 @@ static const struct regmap_config gcc_ipq4019_regmap_config = {
 	.reg_bits	= 32,
 	.reg_stride	= 4,
 	.val_bits	= 32,
-	.max_register	= 0x2dfff,
+	.max_register	= 0x2ffff,
 	.fast_io	= true,
 };
 
