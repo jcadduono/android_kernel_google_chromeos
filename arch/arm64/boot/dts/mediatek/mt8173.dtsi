@@ -51,6 +51,80 @@
 		mdp_wrot1 = &mdp_wrot1;
 	};
 
+	cluster0_opp: opp_table0 {
+		compatible = "operating-points-v2";
+		opp-shared;
+		opp@507000000 {
+			opp-hz = /bits/ 64 <507000000>;
+			opp-microvolt = <859000>;
+		};
+		opp@702000000 {
+			opp-hz = /bits/ 64 <702000000>;
+			opp-microvolt = <908000>;
+		};
+		opp@1001000000 {
+			opp-hz = /bits/ 64 <1001000000>;
+			opp-microvolt = <983000>;
+		};
+		opp@1105000000 {
+			opp-hz = /bits/ 64 <1105000000>;
+			opp-microvolt = <1009000>;
+		};
+		opp@1209000000 {
+			opp-hz = /bits/ 64 <1209000000>;
+			opp-microvolt = <1034000>;
+		};
+		opp@1300000000 {
+			opp-hz = /bits/ 64 <1300000000>;
+			opp-microvolt = <1057000>;
+		};
+		opp@1508000000 {
+			opp-hz = /bits/ 64 <1508000000>;
+			opp-microvolt = <1109000>;
+		};
+		opp@1703000000 {
+			opp-hz = /bits/ 64 <1703000000>;
+			opp-microvolt = <1125000>;
+		};
+	};
+
+	cluster1_opp: opp_table1 {
+		compatible = "operating-points-v2";
+		opp-shared;
+		opp@507000000 {
+			opp-hz = /bits/ 64 <507000000>;
+			opp-microvolt = <828000>;
+		};
+		opp@702000000 {
+			opp-hz = /bits/ 64 <702000000>;
+			opp-microvolt = <867000>;
+		};
+		opp@1001000000 {
+			opp-hz = /bits/ 64 <1001000000>;
+			opp-microvolt = <927000>;
+		};
+		opp@1209000000 {
+			opp-hz = /bits/ 64 <1209000000>;
+			opp-microvolt = <968000>;
+		};
+		opp@1404000000 {
+			opp-hz = /bits/ 64 <1404000000>;
+			opp-microvolt = <1007000>;
+		};
+		opp@1612000000 {
+			opp-hz = /bits/ 64 <1612000000>;
+			opp-microvolt = <1049000>;
+		};
+		opp@1807000000 {
+			opp-hz = /bits/ 64 <1807000000>;
+			opp-microvolt = <1089000>;
+		};
+		opp@2106000000 {
+			opp-hz = /bits/ 64 <2106000000>;
+			opp-microvolt = <1125000>;
+		};
+	};
+
 	cpus {
 		#address-cells = <1>;
 		#size-cells = <0>;
@@ -84,16 +158,7 @@
 			clocks = <&infracfg CLK_INFRA_CA53SEL>,
 				 <&apmixedsys CLK_APMIXED_MAINPLL>;
 			clock-names = "cpu", "intermediate";
-			operating-points = <
-				507000  859000
-				702000  908000
-				1001000 983000
-				1105000 1009000
-				1209000 1034000
-				1300000 1057000
-				1508000 1109000
-				1703000 1125000
-			>;
+			operating-points-v2 = <&cluster0_opp>;
 			#cooling-cells = <2>;
 			#cooling-min-level = <0>;
 			#cooling-max-level = <7>;
@@ -111,16 +176,7 @@
 			clocks = <&infracfg CLK_INFRA_CA53SEL>,
 				 <&apmixedsys CLK_APMIXED_MAINPLL>;
 			clock-names = "cpu", "intermediate";
-			operating-points = <
-				507000  859000
-				702000  908000
-				1001000 983000
-				1105000 1009000
-				1209000 1034000
-				1300000 1057000
-				1508000 1109000
-				1703000 1125000
-			>;
+			operating-points-v2 = <&cluster0_opp>;
 			#cooling-cells = <2>;
 			#cooling-min-level = <0>;
 			#cooling-max-level = <7>;
@@ -138,16 +194,7 @@
 			clocks = <&infracfg CLK_INFRA_CA57SEL>,
 				 <&apmixedsys CLK_APMIXED_MAINPLL>;
 			clock-names = "cpu", "intermediate";
-			operating-points = <
-				507000  828000
-				702000  867000
-				1001000 927000
-				1209000 968000
-				1404000 1007000
-				1612000 1049000
-				1807000 1089000
-				2106000 1125000
-			>;
+			operating-points-v2 = <&cluster1_opp>;
 			#cooling-cells = <2>;
 			#cooling-min-level = <0>;
 			#cooling-max-level = <7>;
@@ -165,16 +212,7 @@
 			clocks = <&infracfg CLK_INFRA_CA57SEL>,
 				 <&apmixedsys CLK_APMIXED_MAINPLL>;
 			clock-names = "cpu", "intermediate";
-			operating-points = <
-				507000  828000
-				702000  867000
-				1001000 927000
-				1209000 968000
-				1404000 1007000
-				1612000 1049000
-				1807000 1089000
-				2106000 1125000
-			>;
+			operating-points-v2 = <&cluster1_opp>;
 			#cooling-cells = <2>;
 			#cooling-min-level = <0>;
 			#cooling-max-level = <7>;
