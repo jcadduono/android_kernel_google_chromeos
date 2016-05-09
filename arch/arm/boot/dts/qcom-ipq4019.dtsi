@@ -544,5 +544,9 @@
                        qca,msi_base = <0x50>;
                        qcom,ath10k-pre-calibration-data = [00];
                };
+
+                qcom,restart_reason {
+                        compatible = "qca,scm_restart_reason";
+                };
 	};
 };
