@@ -266,8 +266,8 @@ static void qcom_scm_inv_range(unsigned long start, unsigned long end)
  * and response buffers is taken care of by qcom_scm_call; however, callers are
  * responsible for any other cached buffers passed over to the secure world.
  */
-static int qcom_scm_call(u32 svc_id, u32 cmd_id, const void *cmd_buf,
-			size_t cmd_len, void *resp_buf, size_t resp_len)
+int qcom_scm_call(u32 svc_id, u32 cmd_id, const void *cmd_buf,
+		  size_t cmd_len, void *resp_buf, size_t resp_len)
 {
 	int ret;
 	struct qcom_scm_command *cmd;
