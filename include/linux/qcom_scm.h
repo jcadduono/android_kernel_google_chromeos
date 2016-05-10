@@ -36,4 +36,9 @@ extern void qcom_scm_cpu_power_down(u32 flags);
 
 extern u32 qcom_scm_get_version(void);
 
+#define SCM_SVC_UTIL		0x3
+#define SCM_CMD_SET_REGSAVE	0x2
+
+extern int qcom_scm_regsave(u32 svc_id, u32 cmd_id);
+
 #endif

@@ -94,3 +94,9 @@ int qcom_scm_hdcp_req(struct qcom_scm_hdcp_req *req, u32 req_cnt, u32 *resp)
 	return __qcom_scm_hdcp_req(req, req_cnt, resp);
 }
 EXPORT_SYMBOL(qcom_scm_hdcp_req);
+
+int qcom_scm_regsave(u32 svc_id, u32 cmd_id)
+{
+	return __qcom_scm_regsave(svc_id, cmd_id);
+}
+EXPORT_SYMBOL(qcom_scm_regsave);

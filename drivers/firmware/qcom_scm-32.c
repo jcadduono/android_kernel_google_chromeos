@@ -501,3 +501,26 @@ int __qcom_scm_hdcp_req(struct qcom_scm_hdcp_req *req, u32 req_cnt, u32 *resp)
 	return qcom_scm_call(QCOM_SCM_SVC_HDCP, QCOM_SCM_CMD_HDCP,
 		req, req_cnt * sizeof(*req), resp, sizeof(*resp));
 }
+
+int __qcom_scm_regsave(u32 svc_id, u32 cmd_id)
+{
+	int ret = -ENOMEM;
+
+	struct {
+		unsigned addr;
+		int len;
+	} scm_cmd_buf;
+
+	void *scm_regsave;
+
+	scm_regsave = (void *)__get_free_page(GFP_KERNEL);
+
+	if (scm_regsave) {
+		scm_cmd_buf.addr = virt_to_phys(scm_regsave);
+		scm_cmd_buf.len  = PAGE_SIZE;
+		ret = qcom_scm_call(svc_id, cmd_id,
+				&scm_cmd_buf, sizeof(scm_cmd_buf), NULL, 0);
+	}
+
+	return ret;
+}

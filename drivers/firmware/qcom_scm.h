@@ -44,7 +44,9 @@ extern int __qcom_scm_hdcp_req(struct qcom_scm_hdcp_req *req, u32 req_cnt,
 #define QCOM_SCM_ERROR		-1
 #define QCOM_SCM_INTERRUPTED	1
 
+extern int __qcom_scm_regsave(u32 svc_id, u32 cmd_id);
+
 int qcom_scm_call(u32 svc_id, u32 cmd_id, const void *cmd_buf,
-		  size_t cmd_len, void *resp_buf, size_t resp_len);
+				  size_t cmd_len, void *resp_buf, size_t resp_len);
 
 #endif
