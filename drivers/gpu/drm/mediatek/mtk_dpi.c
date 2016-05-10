@@ -20,10 +20,68 @@
 #include <linux/of.h>
 #include <linux/of_graph.h>
 #include <linux/interrupt.h>
+#include <linux/types.h>
 #include <linux/clk.h>
 
-#include "mtk_dpi.h"
 #include "mtk_dpi_regs.h"
+#include "mtk_drm_ddp_comp.h"
+
+enum mtk_dpi_out_bit_num {
+	MTK_DPI_OUT_BIT_NUM_8BITS,
+	MTK_DPI_OUT_BIT_NUM_10BITS,
+	MTK_DPI_OUT_BIT_NUM_12BITS,
+	MTK_DPI_OUT_BIT_NUM_16BITS
+};
+
+enum mtk_dpi_out_yc_map {
+	MTK_DPI_OUT_YC_MAP_RGB,
+	MTK_DPI_OUT_YC_MAP_CYCY,
+	MTK_DPI_OUT_YC_MAP_YCYC,
+	MTK_DPI_OUT_YC_MAP_CY,
+	MTK_DPI_OUT_YC_MAP_YC
+};
+
+enum mtk_dpi_out_channel_swap {
+	MTK_DPI_OUT_CHANNEL_SWAP_RGB,
+	MTK_DPI_OUT_CHANNEL_SWAP_GBR,
+	MTK_DPI_OUT_CHANNEL_SWAP_BRG,
+	MTK_DPI_OUT_CHANNEL_SWAP_RBG,
+	MTK_DPI_OUT_CHANNEL_SWAP_GRB,
+	MTK_DPI_OUT_CHANNEL_SWAP_BGR
+};
+
+enum mtk_dpi_out_color_format {
+	MTK_DPI_COLOR_FORMAT_RGB,
+	MTK_DPI_COLOR_FORMAT_RGB_FULL,
+	MTK_DPI_COLOR_FORMAT_YCBCR_444,
+	MTK_DPI_COLOR_FORMAT_YCBCR_422,
+	MTK_DPI_COLOR_FORMAT_XV_YCC,
+	MTK_DPI_COLOR_FORMAT_YCBCR_444_FULL,
+	MTK_DPI_COLOR_FORMAT_YCBCR_422_FULL
+};
+
+struct mtk_dpi {
+	struct mtk_ddp_comp ddp_comp;
+	struct drm_encoder encoder;
+	void __iomem *regs;
+	struct device *dev;
+	struct clk *engine_clk;
+	struct clk *pixel_clk;
+	struct clk *tvd_clk;
+	int irq;
+	struct drm_display_mode mode;
+	enum mtk_dpi_out_color_format color_format;
+	enum mtk_dpi_out_yc_map yc_map;
+	enum mtk_dpi_out_bit_num bit_num;
+	enum mtk_dpi_out_channel_swap channel_swap;
+	bool power_sta;
+	u8 power_ctl;
+};
+
+static inline struct mtk_dpi *mtk_dpi_from_encoder(struct drm_encoder *e)
+{
+	return container_of(e, struct mtk_dpi, encoder);
+}
 
 enum mtk_dpi_polarity {
 	MTK_DPI_POLARITY_RISING,
@@ -33,7 +91,6 @@ enum mtk_dpi_polarity {
 enum mtk_dpi_power_ctl {
 	DPI_POWER_START = BIT(0),
 	DPI_POWER_ENABLE = BIT(1),
-	DPI_POWER_RESUME = BIT(2),
 };
 
 struct mtk_dpi_polarities {
@@ -313,8 +370,7 @@ static void mtk_dpi_power_off(struct mtk_dpi *dpi, enum mtk_dpi_power_ctl pctl)
 	dpi->power_ctl &= ~pctl;
 
 	if ((dpi->power_ctl & DPI_POWER_START) ||
-	    ((dpi->power_ctl & DPI_POWER_ENABLE) &&
-	     (dpi->power_ctl & DPI_POWER_RESUME)))
+	    (dpi->power_ctl & DPI_POWER_ENABLE))
 		return;
 
 	if (!dpi->power_sta)
@@ -333,8 +389,7 @@ static int mtk_dpi_power_on(struct mtk_dpi *dpi, enum mtk_dpi_power_ctl pctl)
 	dpi->power_ctl |= pctl;
 
 	if (!(dpi->power_ctl & DPI_POWER_START) &&
-	    !((dpi->power_ctl & DPI_POWER_ENABLE) &&
-	      ((dpi->power_ctl & DPI_POWER_RESUME))))
+	    !(dpi->power_ctl & DPI_POWER_ENABLE))
 		return 0;
 
 	if (dpi->power_sta)
@@ -363,7 +418,8 @@ err_eng:
 	return ret;
 }
 
-int mtk_dpi_set_display_mode(struct mtk_dpi *dpi, struct drm_display_mode *mode)
+static int mtk_dpi_set_display_mode(struct mtk_dpi *dpi,
+				    struct drm_display_mode *mode)
 {
 	struct mtk_dpi_yc_limit limit;
 	struct mtk_dpi_polarities dpi_pol;
@@ -656,8 +712,8 @@ static int mtk_dpi_probe(struct platform_device *pdev)
 		of_node_put(ep);
 	}
 	if (!bridge_node) {
-		dev_err(dev, "Failed to find bridge node: %d\n", ret);
-		return ret;
+		dev_err(dev, "Failed to find bridge node\n");
+		return -ENODEV;
 	}
 
 	dev_info(dev, "Found bridge node: %s\n", bridge_node->full_name);
@@ -688,8 +744,6 @@ static int mtk_dpi_probe(struct platform_device *pdev)
 		return ret;
 	}
 
-	dpi->power_ctl |= DPI_POWER_RESUME;
-
 	return 0;
 }
 
@@ -699,47 +753,6 @@ static int mtk_dpi_remove(struct platform_device *pdev)
 
 	return 0;
 }
-
-#ifdef CONFIG_PM_SLEEP
-static int mtk_dpi_suspend(struct device *dev)
-{
-	struct mtk_dpi *dpi = dev_get_drvdata(dev);
-
-	if (IS_ERR(dpi)) {
-		dev_info(dev, "dpi suspend failed!\n");
-		return PTR_ERR(dpi);
-	}
-
-	mtk_dpi_power_off(dpi, DPI_POWER_RESUME);
-
-	dev_info(dev, "dpi suspend success!\n");
-
-	return 0;
-}
-
-static int mtk_dpi_resume(struct device *dev)
-{
-	struct mtk_dpi *dpi = dev_get_drvdata(dev);
-	int ret;
-
-	if (IS_ERR(dpi)) {
-		dev_err(dev, "dpi resume failed!\n");
-		return PTR_ERR(dpi);
-	}
-
-	ret = mtk_dpi_power_on(dpi, DPI_POWER_RESUME);
-	if (ret) {
-		dev_err(dev, "dpi resume failed!\n");
-		return ret;
-	}
-
-	dev_info(dev, "dpi resume success!\n");
-
-	return 0;
-}
-#endif
-
-static SIMPLE_DEV_PM_OPS(mtk_dpi_pm_ops, mtk_dpi_suspend, mtk_dpi_resume);
 
 static const struct of_device_id mtk_dpi_of_ids[] = {
 	{ .compatible = "mediatek,mt8173-dpi", },
@@ -752,6 +765,5 @@ struct platform_driver mtk_dpi_driver = {
 	.driver = {
 		.name = "mediatek-dpi",
 		.of_match_table = mtk_dpi_of_ids,
-		.pm = &mtk_dpi_pm_ops,
 	},
 };
