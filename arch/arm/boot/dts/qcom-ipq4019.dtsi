@@ -131,6 +131,17 @@
 			reg = <0x1800000 0x60000>;
 		};
 
+
+		timer {
+			compatible = "arm,armv7-timer";
+			interrupts = <1 2 0xf08>,
+				     <1 3 0xf08>,
+				     <1 4 0xf08>,
+				     <1 1 0xf08>;
+			clock-frequency = <48000000>;
+		};
+
+
 		tlmm: pinctrl@0x01000000 {
 			compatible = "qcom,ipq4019-pinctrl";
 			reg = <0x01000000 0x300000>;
