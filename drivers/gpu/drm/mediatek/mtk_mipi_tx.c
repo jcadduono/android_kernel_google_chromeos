@@ -29,54 +29,18 @@
 #define RG_DSI_LPTX_CLMP_EN		BIT(11)
 
 #define MIPITX_DSI_CLOCK_LANE	0x04
-#define RG_DSI_LNTC_LDOOUT_EN		BIT(0)
-#define RG_DSI_LNTC_CKLANE_EN		BIT(1)
-#define RG_DSI_LNTC_LPTX_IPLUS1		BIT(2)
-#define RG_DSI_LNTC_LPTX_IPLUS2		BIT(3)
-#define RG_DSI_LNTC_LPTX_IMINUS		BIT(4)
-#define RG_DSI_LNTC_LPCD_IPLUS		BIT(5)
-#define RG_DSI_LNTC_LPCD_IMLUS		BIT(6)
-#define RG_DSI_LNTC_RT_CODE		(0xf << 8)
-
 #define MIPITX_DSI_DATA_LANE0	0x08
-#define RG_DSI_LNT0_LDOOUT_EN		BIT(0)
-#define RG_DSI_LNT0_CKLANE_EN		BIT(1)
-#define RG_DSI_LNT0_LPTX_IPLUS1		BIT(2)
-#define RG_DSI_LNT0_LPTX_IPLUS2		BIT(3)
-#define RG_DSI_LNT0_LPTX_IMINUS		BIT(4)
-#define RG_DSI_LNT0_LPCD_IPLUS		BIT(5)
-#define RG_DSI_LNT0_LPCD_IMINUS		BIT(6)
-#define RG_DSI_LNT0_RT_CODE		(0xf << 8)
-
 #define MIPITX_DSI_DATA_LANE1	0x0c
-#define RG_DSI_LNT1_LDOOUT_EN		BIT(0)
-#define RG_DSI_LNT1_CKLANE_EN		BIT(1)
-#define RG_DSI_LNT1_LPTX_IPLUS1		BIT(2)
-#define RG_DSI_LNT1_LPTX_IPLUS2		BIT(3)
-#define RG_DSI_LNT1_LPTX_IMINUS		BIT(4)
-#define RG_DSI_LNT1_LPCD_IPLUS		BIT(5)
-#define RG_DSI_LNT1_LPCD_IMINUS		BIT(6)
-#define RG_DSI_LNT1_RT_CODE		(0xf << 8)
-
 #define MIPITX_DSI_DATA_LANE2	0x10
-#define RG_DSI_LNT2_LDOOUT_EN		BIT(0)
-#define RG_DSI_LNT2_CKLANE_EN		BIT(1)
-#define RG_DSI_LNT2_LPTX_IPLUS1		BIT(2)
-#define RG_DSI_LNT2_LPTX_IPLUS2		BIT(3)
-#define RG_DSI_LNT2_LPTX_IMINUS		BIT(4)
-#define RG_DSI_LNT2_LPCD_IPLUS		BIT(5)
-#define RG_DSI_LNT2_LPCD_IMINUS		BIT(6)
-#define RG_DSI_LNT2_RT_CODE		(0xf << 8)
-
 #define MIPITX_DSI_DATA_LANE3	0x14
-#define RG_DSI_LNT3_LDOOUT_EN		BIT(0)
-#define RG_DSI_LNT3_CKLANE_EN		BIT(1)
-#define RG_DSI_LNT3_LPTX_IPLUS1		BIT(2)
-#define RG_DSI_LNT3_LPTX_IPLUS2		BIT(3)
-#define RG_DSI_LNT3_LPTX_IMINUS		BIT(4)
-#define RG_DSI_LNT3_LPCD_IPLUS		BIT(5)
-#define RG_DSI_LNT3_LPCD_IMINUS		BIT(6)
-#define RG_DSI_LNT3_RT_CODE		(0xf << 8)
+#define RG_DSI_LNTx_LDOOUT_EN		BIT(0)
+#define RG_DSI_LNTx_CKLANE_EN		BIT(1)
+#define RG_DSI_LNTx_LPTX_IPLUS1		BIT(2)
+#define RG_DSI_LNTx_LPTX_IPLUS2		BIT(3)
+#define RG_DSI_LNTx_LPTX_IMINUS		BIT(4)
+#define RG_DSI_LNTx_LPCD_IPLUS		BIT(5)
+#define RG_DSI_LNTx_LPCD_IMINUS		BIT(6)
+#define RG_DSI_LNTx_RT_CODE		(0xf << 8)
 
 #define MIPITX_DSI_TOP_CON	0x40
 #define RG_DSI_LNT_INTR_EN		BIT(0)
@@ -167,8 +131,29 @@ struct mtk_mipi_tx {
 	struct clk *pll;
 };
 
-static void mtk_mipi_tx_mask(struct mtk_mipi_tx *mipi_tx, u32 offset, u32 mask,
-			     u32 data)
+static inline struct mtk_mipi_tx *mtk_mipi_tx_from_clk_hw(struct clk_hw *hw)
+{
+	return container_of(hw, struct mtk_mipi_tx, pll_hw);
+}
+
+static void mtk_mipi_tx_clear_bits(struct mtk_mipi_tx *mipi_tx, u32 offset,
+				   u32 bits)
+{
+	u32 temp = readl(mipi_tx->regs + offset);
+
+	writel(temp & ~bits, mipi_tx->regs + offset);
+}
+
+static void mtk_mipi_tx_set_bits(struct mtk_mipi_tx *mipi_tx, u32 offset,
+				 u32 bits)
+{
+	u32 temp = readl(mipi_tx->regs + offset);
+
+	writel(temp | bits, mipi_tx->regs + offset);
+}
+
+static void mtk_mipi_tx_update_bits(struct mtk_mipi_tx *mipi_tx, u32 offset,
+				    u32 mask, u32 data)
 {
 	u32 temp = readl(mipi_tx->regs + offset);
 
@@ -177,8 +162,7 @@ static void mtk_mipi_tx_mask(struct mtk_mipi_tx *mipi_tx, u32 offset, u32 mask,
 
 static int mtk_mipi_tx_pll_prepare(struct clk_hw *hw)
 {
-	struct mtk_mipi_tx *mipi_tx = container_of(hw, struct mtk_mipi_tx,
-						   pll_hw);
+	struct mtk_mipi_tx *mipi_tx = mtk_mipi_tx_from_clk_hw(hw);
 	unsigned int txdiv, txdiv0, txdiv1;
 	u64 pcw;
 
@@ -208,32 +192,34 @@ static int mtk_mipi_tx_pll_prepare(struct clk_hw *hw)
 		return -EINVAL;
 	}
 
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_BG_CON,
-			 RG_DSI_VOUT_MSK | RG_DSI_BG_CKEN | RG_DSI_BG_CORE_EN,
-			 (4 << 20) | (4 << 17) | (4 << 14) |
-			 (4 << 11) | (4 << 8) | (4 << 5) |
-			 RG_DSI_BG_CKEN | RG_DSI_BG_CORE_EN);
+	mtk_mipi_tx_update_bits(mipi_tx, MIPITX_DSI_BG_CON,
+				RG_DSI_VOUT_MSK |
+				RG_DSI_BG_CKEN | RG_DSI_BG_CORE_EN,
+				(4 << 20) | (4 << 17) | (4 << 14) |
+				(4 << 11) | (4 << 8) | (4 << 5) |
+				RG_DSI_BG_CKEN | RG_DSI_BG_CORE_EN);
 
 	usleep_range(30, 100);
 
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_TOP_CON,
-			 RG_DSI_LNT_IMP_CAL_CODE | RG_DSI_LNT_HS_BIAS_EN,
-			 (8 << 4) | RG_DSI_LNT_HS_BIAS_EN);
+	mtk_mipi_tx_update_bits(mipi_tx, MIPITX_DSI_TOP_CON,
+				RG_DSI_LNT_IMP_CAL_CODE | RG_DSI_LNT_HS_BIAS_EN,
+				(8 << 4) | RG_DSI_LNT_HS_BIAS_EN);
 
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_CON,
-			 RG_DSI_CKG_LDOOUT_EN | RG_DSI_LDOCORE_EN,
-			 RG_DSI_CKG_LDOOUT_EN | RG_DSI_LDOCORE_EN);
+	mtk_mipi_tx_set_bits(mipi_tx, MIPITX_DSI_CON,
+			     RG_DSI_CKG_LDOOUT_EN | RG_DSI_LDOCORE_EN);
 
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_PLL_PWR,
-			 RG_DSI_MPPLL_SDM_PWR_ON | RG_DSI_MPPLL_SDM_ISO_EN,
-			 RG_DSI_MPPLL_SDM_PWR_ON);
+	mtk_mipi_tx_update_bits(mipi_tx, MIPITX_DSI_PLL_PWR,
+				RG_DSI_MPPLL_SDM_PWR_ON |
+				RG_DSI_MPPLL_SDM_ISO_EN,
+				RG_DSI_MPPLL_SDM_PWR_ON);
 
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_PLL_CON0, RG_DSI_MPPLL_PLL_EN, 0);
+	mtk_mipi_tx_clear_bits(mipi_tx, MIPITX_DSI_PLL_CON0,
+			       RG_DSI_MPPLL_PLL_EN);
 
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_PLL_CON0,
-			 RG_DSI_MPPLL_TXDIV0 | RG_DSI_MPPLL_TXDIV1 |
-			 RG_DSI_MPPLL_PREDIV,
-			 (txdiv0 << 3) | (txdiv1 << 5));
+	mtk_mipi_tx_update_bits(mipi_tx, MIPITX_DSI_PLL_CON0,
+				RG_DSI_MPPLL_TXDIV0 | RG_DSI_MPPLL_TXDIV1 |
+				RG_DSI_MPPLL_PREDIV,
+				(txdiv0 << 3) | (txdiv1 << 5));
 
 	/*
 	 * PLL PCW config
@@ -243,46 +229,48 @@ static int mtk_mipi_tx_pll_prepare(struct clk_hw *hw)
 	 * Post DIV =4, so need data_Rate*4
 	 * Ref_clk is 26MHz
 	 */
-	pcw = ((u64)mipi_tx->data_rate * 2 * txdiv) << 24;
-	pcw /= 26000000;
+	pcw = div_u64(((u64)mipi_tx->data_rate * 2 * txdiv) << 24,
+		      26000000);
 	writel(pcw, mipi_tx->regs + MIPITX_DSI_PLL_CON2);
 
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_PLL_CON1,
-			 RG_DSI_MPPLL_SDM_FRA_EN, RG_DSI_MPPLL_SDM_FRA_EN);
+	mtk_mipi_tx_set_bits(mipi_tx, MIPITX_DSI_PLL_CON1,
+			     RG_DSI_MPPLL_SDM_FRA_EN);
 
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_PLL_CON0,
-			 RG_DSI_MPPLL_PLL_EN, RG_DSI_MPPLL_PLL_EN);
+	mtk_mipi_tx_set_bits(mipi_tx, MIPITX_DSI_PLL_CON0, RG_DSI_MPPLL_PLL_EN);
 
 	usleep_range(20, 100);
 
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_PLL_CON1,
-			 RG_DSI_MPPLL_SDM_SSC_EN, 0);
+	mtk_mipi_tx_clear_bits(mipi_tx, MIPITX_DSI_PLL_CON1,
+			       RG_DSI_MPPLL_SDM_SSC_EN);
 
 	return 0;
 }
 
 static void mtk_mipi_tx_pll_unprepare(struct clk_hw *hw)
 {
-	struct mtk_mipi_tx *mipi_tx = container_of(hw, struct mtk_mipi_tx,
-						   pll_hw);
+	struct mtk_mipi_tx *mipi_tx = mtk_mipi_tx_from_clk_hw(hw);
 
 	dev_dbg(mipi_tx->dev, "unprepare\n");
 
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_PLL_CON0, RG_DSI_MPPLL_PLL_EN, 0);
+	mtk_mipi_tx_clear_bits(mipi_tx, MIPITX_DSI_PLL_CON0,
+			       RG_DSI_MPPLL_PLL_EN);
 
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_PLL_PWR,
-			 RG_DSI_MPPLL_SDM_ISO_EN | RG_DSI_MPPLL_SDM_PWR_ON,
-			 RG_DSI_MPPLL_SDM_ISO_EN);
+	mtk_mipi_tx_update_bits(mipi_tx, MIPITX_DSI_PLL_PWR,
+				RG_DSI_MPPLL_SDM_ISO_EN |
+				RG_DSI_MPPLL_SDM_PWR_ON,
+				RG_DSI_MPPLL_SDM_ISO_EN);
 
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_TOP_CON, RG_DSI_LNT_HS_BIAS_EN, 0);
+	mtk_mipi_tx_clear_bits(mipi_tx, MIPITX_DSI_TOP_CON,
+			       RG_DSI_LNT_HS_BIAS_EN);
 
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_CON,
-			 RG_DSI_CKG_LDOOUT_EN | RG_DSI_LDOCORE_EN, 0);
+	mtk_mipi_tx_clear_bits(mipi_tx, MIPITX_DSI_CON,
+			       RG_DSI_CKG_LDOOUT_EN | RG_DSI_LDOCORE_EN);
 
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_BG_CON,
-			 RG_DSI_BG_CKEN | RG_DSI_BG_CORE_EN, 0);
+	mtk_mipi_tx_clear_bits(mipi_tx, MIPITX_DSI_BG_CON,
+			       RG_DSI_BG_CKEN | RG_DSI_BG_CORE_EN);
 
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_PLL_CON0, RG_DSI_MPPLL_DIV_MSK, 0);
+	mtk_mipi_tx_clear_bits(mipi_tx, MIPITX_DSI_PLL_CON0,
+			       RG_DSI_MPPLL_DIV_MSK);
 }
 
 static long mtk_mipi_tx_pll_round_rate(struct clk_hw *hw, unsigned long rate,
@@ -294,8 +282,7 @@ static long mtk_mipi_tx_pll_round_rate(struct clk_hw *hw, unsigned long rate,
 static int mtk_mipi_tx_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 				    unsigned long parent_rate)
 {
-	struct mtk_mipi_tx *mipi_tx = container_of(hw, struct mtk_mipi_tx,
-						   pll_hw);
+	struct mtk_mipi_tx *mipi_tx = mtk_mipi_tx_from_clk_hw(hw);
 
 	dev_dbg(mipi_tx->dev, "set rate: %lu Hz\n", rate);
 
@@ -307,8 +294,8 @@ static int mtk_mipi_tx_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 static unsigned long mtk_mipi_tx_pll_recalc_rate(struct clk_hw *hw,
 						 unsigned long parent_rate)
 {
-	struct mtk_mipi_tx *mipi_tx = container_of(hw, struct mtk_mipi_tx,
-						   pll_hw);
+	struct mtk_mipi_tx *mipi_tx = mtk_mipi_tx_from_clk_hw(hw);
+
 	return mipi_tx->data_rate;
 }
 
@@ -323,19 +310,14 @@ static const struct clk_ops mtk_mipi_tx_pll_ops = {
 static int mtk_mipi_tx_power_on_signal(struct phy *phy)
 {
 	struct mtk_mipi_tx *mipi_tx = phy_get_drvdata(phy);
+	unsigned int reg;
 
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_CLOCK_LANE,
-			 RG_DSI_LNTC_LDOOUT_EN, RG_DSI_LNTC_LDOOUT_EN);
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_DATA_LANE0,
-			 RG_DSI_LNT0_LDOOUT_EN, RG_DSI_LNT0_LDOOUT_EN);
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_DATA_LANE1,
-			 RG_DSI_LNT1_LDOOUT_EN, RG_DSI_LNT1_LDOOUT_EN);
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_DATA_LANE2,
-			 RG_DSI_LNT2_LDOOUT_EN, RG_DSI_LNT2_LDOOUT_EN);
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_DATA_LANE3,
-			 RG_DSI_LNT3_LDOOUT_EN, RG_DSI_LNT3_LDOOUT_EN);
+	for (reg = MIPITX_DSI_CLOCK_LANE;
+	     reg <= MIPITX_DSI_DATA_LANE3; reg += 4)
+		mtk_mipi_tx_set_bits(mipi_tx, reg, RG_DSI_LNTx_LDOOUT_EN);
 
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_TOP_CON, RG_DSI_PAD_TIE_LOW_EN, 0);
+	mtk_mipi_tx_clear_bits(mipi_tx, MIPITX_DSI_TOP_CON,
+			       RG_DSI_PAD_TIE_LOW_EN);
 
 	return 0;
 }
@@ -359,20 +341,14 @@ static int mtk_mipi_tx_power_on(struct phy *phy)
 static void mtk_mipi_tx_power_off_signal(struct phy *phy)
 {
 	struct mtk_mipi_tx *mipi_tx = phy_get_drvdata(phy);
+	unsigned int reg;
 
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_TOP_CON, RG_DSI_PAD_TIE_LOW_EN,
-			 RG_DSI_PAD_TIE_LOW_EN);
+	mtk_mipi_tx_set_bits(mipi_tx, MIPITX_DSI_TOP_CON,
+			     RG_DSI_PAD_TIE_LOW_EN);
 
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_CLOCK_LANE,
-			 RG_DSI_LNTC_LDOOUT_EN, 0);
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_DATA_LANE0,
-			 RG_DSI_LNT0_LDOOUT_EN, 0);
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_DATA_LANE1,
-			 RG_DSI_LNT1_LDOOUT_EN, 0);
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_DATA_LANE2,
-			 RG_DSI_LNT2_LDOOUT_EN, 0);
-	mtk_mipi_tx_mask(mipi_tx, MIPITX_DSI_DATA_LANE3,
-			 RG_DSI_LNT3_LDOOUT_EN, 0);
+	for (reg = MIPITX_DSI_CLOCK_LANE;
+	     reg <= MIPITX_DSI_DATA_LANE3; reg += 4)
+		mtk_mipi_tx_clear_bits(mipi_tx, reg, RG_DSI_LNTx_LDOOUT_EN);
 }
 
 static int mtk_mipi_tx_power_off(struct phy *phy)

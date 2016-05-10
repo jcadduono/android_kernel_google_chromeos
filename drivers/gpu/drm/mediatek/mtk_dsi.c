@@ -632,34 +632,15 @@ static int mtk_drm_attach_bridge(struct drm_bridge *bridge,
 	return ret;
 }
 
-static int mtk_dsi_create_conn_enc(struct drm_device *drm, struct mtk_dsi *dsi)
+static int mtk_dsi_create_connector(struct drm_device *drm, struct mtk_dsi *dsi)
 {
 	int ret;
-
-	ret = drm_encoder_init(drm, &dsi->encoder, &mtk_dsi_encoder_funcs,
-			       DRM_MODE_ENCODER_DSI, NULL);
-	if (ret) {
-		DRM_ERROR("Failed to encoder init to drm\n");
-		return ret;
-	}
-	drm_encoder_helper_add(&dsi->encoder, &mtk_dsi_encoder_helper_funcs);
-
-	/*
-	 * Currently display data paths are statically assigned to a crtc each.
-	 * crtc 0 is OVL0 -> COLOR0 -> AAL -> OD -> RDMA0 -> UFOE -> DSI0
-	 */
-	dsi->encoder.possible_crtcs = 1;
-
-	/* Pre-empt DP connector creation if there's a bridge */
-	ret = mtk_drm_attach_bridge(dsi->bridge, &dsi->encoder);
-	if (!ret)
-		return 0;
 
 	ret = drm_connector_init(drm, &dsi->conn, &mtk_dsi_connector_funcs,
 				 DRM_MODE_CONNECTOR_DSI);
 	if (ret) {
 		DRM_ERROR("Failed to connector init to drm\n");
-		goto err_encoder_cleanup;
+		return ret;
 	}
 
 	drm_connector_helper_add(&dsi->conn, &mtk_dsi_connector_helper_funcs);
@@ -680,15 +661,47 @@ static int mtk_dsi_create_conn_enc(struct drm_device *drm, struct mtk_dsi *dsi)
 			goto err_connector_unregister;
 		}
 	}
+
 	return 0;
 
 err_connector_unregister:
 	drm_connector_unregister(&dsi->conn);
 err_connector_cleanup:
 	drm_connector_cleanup(&dsi->conn);
+	return ret;
+}
+
+static int mtk_dsi_create_conn_enc(struct drm_device *drm, struct mtk_dsi *dsi)
+{
+	int ret;
+
+	ret = drm_encoder_init(drm, &dsi->encoder, &mtk_dsi_encoder_funcs,
+			       DRM_MODE_ENCODER_DSI, NULL);
+	if (ret) {
+		DRM_ERROR("Failed to encoder init to drm\n");
+		return ret;
+	}
+	drm_encoder_helper_add(&dsi->encoder, &mtk_dsi_encoder_helper_funcs);
+
+	/*
+	 * Currently display data paths are statically assigned to a crtc each.
+	 * crtc 0 is OVL0 -> COLOR0 -> AAL -> OD -> RDMA0 -> UFOE -> DSI0
+	 */
+	dsi->encoder.possible_crtcs = 1;
+
+	/* If there's a bridge, attach to it and let it create the connector */
+	ret = mtk_drm_attach_bridge(dsi->bridge, &dsi->encoder);
+	if (ret) {
+		/* Otherwise create our own connector and attach to a panel */
+		ret = mtk_dsi_create_connector(drm, dsi);
+		if (ret)
+			goto err_encoder_cleanup;
+	}
+
+	return 0;
+
 err_encoder_cleanup:
 	drm_encoder_cleanup(&dsi->encoder);
-
 	return ret;
 }
 
