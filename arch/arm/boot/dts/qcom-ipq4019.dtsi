@@ -174,29 +174,35 @@
 			status = "disabled";
 		};
 
-		i2c_0: i2c@78b7000 {
+		i2c_0: i2c@78b7000 { /* BLSP1 QUP3 */
 			compatible = "qcom,i2c-qup-v2.2.1";
+			#address-cells = <1>;
+			#size-cells = <0>;
 			reg = <0x78b7000 0x600>;
 			interrupts = <GIC_SPI 97 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&gcc GCC_BLSP1_AHB_CLK>,
 				 <&gcc GCC_BLSP1_QUP1_I2C_APPS_CLK>;
 			clock-names = "iface", "core";
+			clock-frequency  = <100000>;
+			dmas = <&blsp_dma 9>, <&blsp_dma 8>;
+			dma-names = "rx", "tx";
+			status = "disabled";
+                };
+
+		i2c_1: i2c@78b8000 { /* BLSP1 QUP4 */
+			compatible = "qcom,i2c-qup-v2.2.1";
 			#address-cells = <1>;
 			#size-cells = <0>;
-			status = "disabled";
-		};
-
-		i2c_1: i2c@78b8000 {
-			compatible = "qcom,i2c-qup-v2.2.1";
 			reg = <0x78b8000 0x600>;
 			interrupts = <GIC_SPI 98 IRQ_TYPE_LEVEL_HIGH>;
 			clocks = <&gcc GCC_BLSP1_AHB_CLK>,
 				 <&gcc GCC_BLSP1_QUP2_I2C_APPS_CLK>;
 			clock-names = "iface", "core";
-			#address-cells = <1>;
-			#size-cells = <0>;
+			clock-frequency  = <100000>;
+			dmas = <&blsp_dma 11>, <&blsp_dma 10>;
+			dma-names = "rx", "tx";
 			status = "disabled";
-		};
+                };
 
 		cryptobam: dma@8e04000 {
 			compatible = "qcom,bam-v1.7.0";

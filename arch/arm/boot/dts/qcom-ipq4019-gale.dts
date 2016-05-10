@@ -297,7 +297,7 @@
 			};
 		};
 
-		i2c_0: i2c@78b7000 { /* BLSP1 QUP3 */
+		i2c_0: i2c@78b7000 { /* BLSP1 QUP2 */
 			pinctrl-0 = <&i2c_0_pins>;
 			pinctrl-names = "default";
 			status = "ok";
@@ -308,7 +308,7 @@
 			};
 		};
 
-		i2c_1: i2c@78b8000 { /* BLSP1 QUP4 */
+		i2c_1: i2c@78b8000 { /* BLSP1 QUP3 */
 			pinctrl-0 = <&i2c_1_pins>;
 			pinctrl-names = "default";
 			status = "ok";
