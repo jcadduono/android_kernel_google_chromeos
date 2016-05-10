@@ -342,7 +342,7 @@ static const struct of_device_id ddp_driver_dt_match[] = {
 };
 MODULE_DEVICE_TABLE(of, ddp_driver_dt_match);
 
-static struct platform_driver mtk_ddp_driver = {
+struct platform_driver mtk_ddp_driver = {
 	.probe		= mtk_ddp_probe,
 	.remove		= mtk_ddp_remove,
 	.driver		= {
@@ -351,5 +351,3 @@ static struct platform_driver mtk_ddp_driver = {
 		.of_match_table = ddp_driver_dt_match,
 	},
 };
-
-module_platform_driver(mtk_ddp_driver);

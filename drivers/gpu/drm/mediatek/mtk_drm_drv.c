@@ -17,6 +17,7 @@
 #include <drm/drm_atomic_helper.h>
 #include <drm/drm_crtc_helper.h>
 #include <drm/drm_gem.h>
+#include <drm/drm_gem_cma_helper.h>
 #include <linux/component.h>
 #include <linux/iommu.h>
 #include <linux/of_address.h>
@@ -24,7 +25,6 @@
 #include <linux/pm_runtime.h>
 #include <drm/mediatek_drm.h>
 
-#include "mtk_cec.h"
 #include "mtk_drm_crtc.h"
 #include "mtk_drm_ddp.h"
 #include "mtk_drm_ddp_comp.h"
@@ -144,6 +144,7 @@ static int mtk_drm_kms_init(struct drm_device *drm)
 {
 	struct mtk_drm_private *private = drm->dev_private;
 	struct platform_device *pdev;
+	struct device_node *np;
 	int ret;
 
 	if (!iommu_present(&platform_bus_type))
@@ -182,12 +183,24 @@ static int mtk_drm_kms_init(struct drm_device *drm)
 	 * OVL0 -> COLOR0 -> AAL -> OD -> RDMA0 -> UFOE -> DSI0 ...
 	 */
 	ret = mtk_drm_crtc_create(drm, mtk_ddp_main, ARRAY_SIZE(mtk_ddp_main));
-	if (ret < 0 && ret != -ENOENT)
+	if (ret < 0)
 		goto err_component_unbind;
 	/* ... and OVL1 -> COLOR1 -> GAMMA -> RDMA1 -> DPI0. */
 	ret = mtk_drm_crtc_create(drm, mtk_ddp_ext, ARRAY_SIZE(mtk_ddp_ext));
-	if (ret < 0 && ret != -ENOENT)
+	if (ret < 0)
 		goto err_component_unbind;
+
+	/* Use OVL device for all DMA memory allocations */
+	np = private->comp_node[mtk_ddp_main[0]] ?:
+	     private->comp_node[mtk_ddp_ext[0]];
+	pdev = of_find_device_by_node(np);
+	if (!pdev) {
+		ret = -ENODEV;
+		dev_err(drm->dev, "Need at least one OVL device\n");
+		goto err_component_unbind;
+	}
+
+	private->dma_dev = &pdev->dev;
 
 	/*
 	 * We don't use the drm_irq_install() helpers provided by the DRM
@@ -228,14 +241,6 @@ static void mtk_drm_kms_deinit(struct drm_device *drm)
 	drm_mode_config_cleanup(drm);
 }
 
-static int mtk_drm_unload(struct drm_device *drm)
-{
-	mtk_drm_kms_deinit(drm);
-	drm->dev_private = NULL;
-
-	return 0;
-}
-
 static const struct vm_operations_struct mtk_drm_gem_vm_ops = {
 	.open = drm_gem_vm_open,
 	.close = drm_gem_vm_close,
@@ -265,14 +270,13 @@ static const struct file_operations mtk_drm_fops = {
 static struct drm_driver mtk_drm_driver = {
 	.driver_features = DRIVER_MODESET | DRIVER_GEM | DRIVER_PRIME |
 			   DRIVER_ATOMIC | DRIVER_RENDER,
-	.unload = mtk_drm_unload,
 
 	.get_vblank_counter = drm_vblank_count,
 	.enable_vblank = mtk_drm_crtc_enable_vblank,
 	.disable_vblank = mtk_drm_crtc_disable_vblank,
 
 	.gem_free_object = mtk_drm_gem_free_object,
-	.gem_vm_ops = &mtk_drm_gem_vm_ops,
+	.gem_vm_ops = &drm_gem_cma_vm_ops,
 	.dumb_create = mtk_drm_gem_dumb_create,
 	.dumb_map_offset = mtk_drm_gem_dumb_map_offset,
 	.dumb_destroy = drm_gem_dumb_destroy,
@@ -489,7 +493,13 @@ err_node:
 static int mtk_drm_remove(struct platform_device *pdev)
 {
 	struct mtk_drm_private *private = platform_get_drvdata(pdev);
+	struct drm_device *drm = private->drm;
 	int i;
+
+	drm_connector_unregister_all(drm);
+	drm_dev_unregister(drm);
+	mtk_drm_kms_deinit(drm);
+	drm_dev_unref(drm);
 
 	component_master_del(&pdev->dev, &mtk_drm_ops);
 	pm_runtime_disable(&pdev->dev);
@@ -505,21 +515,14 @@ static int mtk_drm_sys_suspend(struct device *dev)
 {
 	struct mtk_drm_private *private = dev_get_drvdata(dev);
 	struct drm_device *drm = private->drm;
-	struct drm_connector *conn;
 
 	drm_kms_helper_poll_disable(drm);
 
-	drm_modeset_lock_all(drm);
-	list_for_each_entry(conn, &drm->mode_config.connector_list, head) {
-		int old_dpms = conn->dpms;
-
-		if (conn->funcs->dpms)
-			conn->funcs->dpms(conn, DRM_MODE_DPMS_OFF);
-
-		/* Set the old mode back to the connector for resume */
-		conn->dpms = old_dpms;
+	private->suspend_state = drm_atomic_helper_suspend(drm);
+	if (IS_ERR(private->suspend_state)) {
+		drm_kms_helper_poll_enable(drm);
+		return PTR_ERR(private->suspend_state);
 	}
-	drm_modeset_unlock_all(drm);
 
 	DRM_DEBUG_DRIVER("mtk_drm_sys_suspend\n");
 	return 0;
@@ -529,29 +532,8 @@ static int mtk_drm_sys_resume(struct device *dev)
 {
 	struct mtk_drm_private *private = dev_get_drvdata(dev);
 	struct drm_device *drm = private->drm;
-	struct drm_connector *conn;
 
-	drm_modeset_lock_all(drm);
-	list_for_each_entry(conn, &drm->mode_config.connector_list, head) {
-		int desired_mode = conn->dpms;
-
-		/*
-		 * at suspend time, we save dpms to connector->dpms,
-		 * restore the old_dpms, and at current time, the connector
-		 * dpms status must be DRM_MODE_DPMS_OFF.
-		 */
-		conn->dpms = DRM_MODE_DPMS_OFF;
-
-		/*
-		 * If the connector has been disconnected during suspend,
-		 * disconnect it from the encoder and leave it off. We'll notify
-		 * userspace at the end.
-		 */
-		if (conn->funcs->dpms)
-			conn->funcs->dpms(conn, desired_mode);
-	}
-	drm_modeset_unlock_all(drm);
-
+	drm_atomic_helper_resume(drm, private->suspend_state);
 	drm_kms_helper_poll_enable(drm);
 
 	DRM_DEBUG_DRIVER("mtk_drm_sys_resume\n");
@@ -578,12 +560,13 @@ static struct platform_driver mtk_drm_platform_driver = {
 };
 
 static struct platform_driver * const mtk_drm_drivers[] = {
-	&mtk_drm_platform_driver,
+	&mtk_ddp_driver,
 	&mtk_disp_ovl_driver,
 	&mtk_disp_rdma_driver,
+	&mtk_dpi_driver,
+	&mtk_drm_platform_driver,
 	&mtk_dsi_driver,
 	&mtk_mipi_tx_driver,
-	&mtk_dpi_driver,
 };
 
 static int __init mtk_drm_init(void)

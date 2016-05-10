@@ -102,8 +102,7 @@ static void mtk_drm_crtc_finish_page_flip(struct mtk_drm_crtc *mtk_crtc)
 	unsigned long flags;
 
 	spin_lock_irqsave(&crtc->dev->event_lock, flags);
-	drm_send_vblank_event(crtc->dev, mtk_crtc->cmdq_vblank_event->pipe,
-			      mtk_crtc->cmdq_vblank_event);
+	drm_crtc_send_vblank_event(crtc, mtk_crtc->cmdq_vblank_event);
 	drm_crtc_vblank_put(crtc);
 	mtk_crtc->cmdq_vblank_event = NULL;
 	spin_unlock_irqrestore(&crtc->dev->event_lock, flags);
@@ -308,7 +307,7 @@ static int mtk_crtc_ddp_hw_init(struct mtk_drm_crtc *mtk_crtc)
 		mtk_ddp_comp_start(comp, cmdq_handle);
 	}
 
-	/* Initially disable all planes, keep the pending plane state */
+	/* Initially configure all planes */
 	for (i = 0; i < OVL_LAYER_NR; i++) {
 		bool enable = mtk_crtc->cmdq_pending[i].enable;
 
@@ -666,9 +665,10 @@ int mtk_drm_crtc_create(struct drm_device *drm_dev,
 
 		node = priv->comp_node[comp_id];
 		if (!node) {
-			dev_info(dev, "Component %d is disabled or missing\n",
-				 comp_id);
-			return -ENOENT;
+			dev_info(dev,
+				 "Not creating crtc %d because component %d is disabled or missing\n",
+				 pipe, comp_id);
+			return 0;
 		}
 	}
 
