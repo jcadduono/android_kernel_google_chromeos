@@ -779,7 +779,7 @@
 				regulator-ramp-delay-scale = <350>;
 				regulator-always-on;
 				regulator-boot-on;
-				maxim,fps-source = <FPS_SRC_NONE>;
+				maxim,fps-source = <FPS_SRC_0>;
 				maxim,fps-power-up-period = <2>;
 				maxim,fps-power-down-period = <5>;
 			};
