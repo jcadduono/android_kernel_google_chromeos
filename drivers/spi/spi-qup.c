@@ -122,6 +122,8 @@
 
 #define SPI_MAX_XFER			(SZ_64K - 64)
 
+#define SPI_DMA_MAX_XFER		(SZ_32K - 8)
+
 /* high speed mode is when bus rate is greater then 26MHz */
 #define SPI_HS_MIN_RATE			26000000
 #define SPI_MAX_RATE			50000000
@@ -597,7 +599,7 @@ unsigned long timeout)
 		int rx_nents = 0, tx_nents = 0;
 
 		if (rx_sgl) {
-			rx_nents = sg_nents_for_len(rx_sgl, SPI_MAX_XFER);
+			rx_nents = sg_nents_for_len(rx_sgl, SPI_DMA_MAX_XFER);
 			if (rx_nents < 0)
 				rx_nents = sg_nents(rx_sgl);
 
@@ -606,7 +608,7 @@ unsigned long timeout)
 		}
 
 		if (tx_sgl) {
-			tx_nents = sg_nents_for_len(tx_sgl, SPI_MAX_XFER);
+			tx_nents = sg_nents_for_len(tx_sgl, SPI_DMA_MAX_XFER);
 			if (tx_nents < 0)
 				tx_nents = sg_nents(tx_sgl);
 
@@ -1058,7 +1060,7 @@ static int spi_qup_probe(struct platform_device *pdev)
 	master->dev.of_node = pdev->dev.of_node;
 	master->auto_runtime_pm = true;
 	master->dma_alignment = dma_get_cache_alignment();
-	master->max_dma_len = SPI_MAX_XFER;
+	master->max_dma_len = SPI_DMA_MAX_XFER;
 
 	platform_set_drvdata(pdev, master);
 
