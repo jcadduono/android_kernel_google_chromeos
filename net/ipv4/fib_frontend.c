@@ -35,6 +35,7 @@
 #include <linux/init.h>
 #include <linux/list.h>
 #include <linux/slab.h>
+#include <linux/uidgid.h>
 
 #include <net/ip.h>
 #include <net/protocol.h>
@@ -255,6 +256,7 @@ static int __fib_validate_source(struct sk_buff *skb, __be32 src, __be32 dst,
 	fl4.saddr = dst;
 	fl4.flowi4_tos = tos;
 	fl4.flowi4_scope = RT_SCOPE_UNIVERSE;
+	fl4.flowi4_uid = INVALID_UID;
 
 	no_addr = idev->ifa_list == NULL;
 
