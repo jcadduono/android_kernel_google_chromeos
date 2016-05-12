@@ -22,6 +22,8 @@ config SND_QCA_SOC_IPQ4019
 	tristate "SoC Audio support for IPQ40xx (Dakota) based platforms"
 	depends on ARCH_QCOM && SND_QCA_SOC
 	select SND_IPQ4019_SOC_ADSS
+	select SND_IPQ4019_SOC_CPU_DAI
+	select SND_IPQ4019_SOC_STEREO
 	help
 	  Say Y or M to support Sound Cards on IPQ4019 board.
 
@@ -29,3 +31,10 @@ config SND_IPQ4019_SOC_ADSS
 	tristate
 	depends on SND_QCA_SOC
 
+config SND_IPQ4019_SOC_CPU_DAI
+	tristate
+	depends on SND_QCA_SOC
+
+config SND_IPQ4019_SOC_STEREO
+	tristate
+	depends on SND_QCA_SOC
