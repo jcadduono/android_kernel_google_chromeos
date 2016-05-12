@@ -4480,6 +4480,16 @@ static int ath10k_start(struct ieee80211_hw *hw)
 		}
 	}
 
+	param = ar->wmi.pdev_param->enable_btcoex;
+	if (QCA_REV_40XX(ar)) {
+		ret = ath10k_wmi_pdev_set_param(ar, param, 0);
+		if (ret) {
+			ath10k_warn(ar, "failed to disable btcoex by default: %d\n", ret);
+			goto err_core_stop;
+		}
+		clear_bit(ATH10K_FLAG_BTCOEX, &ar->dev_flags);
+	}
+
 	ar->num_started_vdevs = 0;
 	ath10k_regd_update(ar);
 

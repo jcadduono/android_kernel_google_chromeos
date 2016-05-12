@@ -2137,6 +2137,7 @@ static ssize_t ath10k_write_btcoex(struct file *file,
 	size_t buf_size;
 	int ret;
 	bool val;
+	u32 pdev_param;
 
 	buf_size = min(count, (sizeof(buf) - 1));
 	if (copy_from_user(buf, ubuf, buf_size))
@@ -2160,14 +2161,23 @@ static ssize_t ath10k_write_btcoex(struct file *file,
 		goto exit;
 	}
 
+	pdev_param = ar->wmi.pdev_param->enable_btcoex;
+	if (pdev_param != WMI_PDEV_PARAM_UNSUPPORTED) {
+		ret = ath10k_wmi_pdev_set_param(ar, pdev_param, val);
+		if (ret) {
+			ath10k_warn(ar, "failed to enable btcoex: %d\n", ret);
+			goto exit;
+		}
+	} else {
+		ath10k_info(ar, "restarting firmware due to btcoex change");
+		queue_work(ar->workqueue, &ar->restart_work);
+	}
+
 	if (val)
 		set_bit(ATH10K_FLAG_BTCOEX, &ar->dev_flags);
 	else
 		clear_bit(ATH10K_FLAG_BTCOEX, &ar->dev_flags);
 
-	ath10k_info(ar, "restarting firmware due to btcoex change");
-
-	queue_work(ar->workqueue, &ar->restart_work);
 	ar->debug.wlan_traffic_priority =
 					ATH10K_DEFAULT_WLAN_PRIORITY_OVER_BT;
 
