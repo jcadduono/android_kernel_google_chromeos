@@ -215,6 +215,45 @@
 					bias-disable;
 				};
 			};
+
+			audio_pins: audio_pinmux {
+				mux_1 {
+					pins = "gpio53";
+					function = "i2s_tx_bclk";
+					bias-pull,up;
+				};
+				mux_2 {
+					pins = "gpio54";
+					function = "i2s_txd";
+					bias-pull,up;
+				};
+				mux_3 {
+					pins = "gpio57";
+					function = "i2s_tx_fsync";
+					bias-pull,up;
+				};
+				mux_4 {
+					pins = "gpio60";
+					function = "i2s_rx_bclk";
+					bias-pull,up;
+				};
+				mux_5 {
+					pins = "gpio61";
+					function = "i2s_rx_fsync";
+					bias-pull,up;
+				};
+				mux_6 {
+					pins = "gpio63";
+					function = "i2s_rxd";
+					bias-pull,up;
+				};
+				mux_7 {
+					pins = "gpio59";
+					function = "gpio";
+					bias-pull,up;
+					output-high;
+				};
+			};
 		};
 
 		blsp_dma: dma@7884000 {
@@ -474,9 +513,28 @@
 			};
 		};
 
+		/* Enable Audio Interfaces */
 		adau7002: adau7002@0 {
 			compatible = "adi,adau7002";
 			status = "ok";
+		};
+
+		adcc: clock-controller@7700038 {
+			status = "ok";
+		};
+
+		i2s: ipq4019-pcm-i2s@0 {
+			status = "ok";
+		};
+
+		i2splatform: qca-pcm-i2s@7709000 {
+			status = "ok";
+		};
+
+		sound: sound@0 {
+			status = "ok";
+			pinctrl-0 = <&audio_pins>;
+			pinctrl-names = "default";
 		};
 	};
 };

@@ -15,6 +15,8 @@
 
 #include "skeleton.dtsi"
 #include <dt-bindings/clock/qcom,gcc-ipq4019.h>
+#include <dt-bindings/clock/qcom,adcc-ipq4019.h>
+#include <dt-bindings/sound/ipq40xx-audio.h>
 #include <dt-bindings/interrupt-controller/arm-gic.h>
 #include <dt-bindings/interrupt-controller/irq.h>
 
@@ -553,5 +555,78 @@
                 qcom,restart_reason {
                         compatible = "qca,scm_restart_reason";
                 };
+
+		adcc: clock-controller@7700038 {
+			compatible = "qcom,adcc-ipq4019";
+			#clock-cells = <1>;
+			#reset-cells = <1>;
+			reg = <0x7700038 0x1DC>;
+		};
+
+		audio: audio@7700000 {
+			compatible = "qca,ipq4019-audio-adss";
+			reg = <0x7700000 0x34>;
+			resets = <&gcc AUDIO_BLK_ARES>;
+			reset-names = "blk_rst";
+		};
+
+		mbox0: mbox@7708000 {
+			dma-index = <0>;
+			compatible = "qca,ipq4019-mbox";
+			reg = <0x7708000 0x1000>;
+			interrupts = <0 156 0>;
+			tx-channel = <MBOX0_TX_ID>;
+			rx-channel = <MBOX0_RX_ID>;
+		};
+
+		mbox3: mbox@770e000 {
+			dma-index = <3>;
+			compatible = "qca,ipq4019-mbox";
+			reg = <0x770E000 0x1000>;
+			interrupts = <0 159 0>;
+			tx-channel = <MBOX3_TX_ID>;
+			rx-channel = <MBOX3_RX_ID>;
+		};
+
+		stereo0: stereo@7709000 {
+			stereo-index = <STEREO0_ID>;
+			compatible = "qca,ipq4019-stereo";
+			reg = <0x7709000 0x1000>;
+		};
+
+		stereo3: stereo@770f000 {
+			stereo-index = <STEREO3_ID>;
+			compatible = "qca,ipq4019-stereo";
+			reg = <0x770F000 0x1000>;
+		};
+
+		i2s: ipq4019-pcm-i2s@0 {
+			compatible = "qca,ipq4019-i2s";
+			dma-tx-channel = <MBOX0_TX_ID>;
+			stereo-tx-port = <STEREO0_ID>;
+			dma-rx-channel = <MBOX3_RX_ID>;
+			stereo-rx-port = <STEREO3_ID>;
+			clocks = <&adcc ADCC_TXB_CLK_SRC>,
+				<&adcc ADCC_TXM_CLK_SRC>,
+				<&adcc ADCC_RXB_CLK_SRC>,
+				<&adcc ADCC_RXM_CLK_SRC>;
+			clock-names = "audio_tx_bclk",
+				"audio_tx_mclk",
+				"audio_rx_bclk",
+				"audio_rx_mclk";
+			status = "disabled";
+		};
+
+		i2splatform: qca-pcm-i2s@7709000 {
+			compatible = "qca,ipq4019-pcm-i2s";
+			reg = <0x7709000 0x1000>;
+			status = "disabled";
+		};
+
+		sound: sound@0 {
+			compatible = "qca,ipq4019-audio";
+			status = "disabled";
+		};
+
 	};
 };
