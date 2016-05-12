@@ -13163,7 +13163,7 @@ static int intel_modeset_checks(struct drm_atomic_state *state)
  * phase.  The code here should be run after the per-crtc and per-plane 'check'
  * handlers to ensure that all derived state has been updated.
  */
-static void calc_watermark_data(struct drm_atomic_state *state)
+static int calc_watermark_data(struct drm_atomic_state *state)
 {
 	struct drm_device *dev = state->dev;
 	struct drm_i915_private *dev_priv = to_i915(dev);
@@ -13199,7 +13199,9 @@ static void calc_watermark_data(struct drm_atomic_state *state)
 
 	/* Is there platform-specific watermark information to calculate? */
 	if (dev_priv->display.compute_global_watermarks)
-		dev_priv->display.compute_global_watermarks(state);
+		return dev_priv->display.compute_global_watermarks(state);
+
+	return 0;
 }
 
 /**
@@ -13282,9 +13284,7 @@ static int intel_atomic_check(struct drm_device *dev,
 	if (ret)
 		return ret;
 
-	calc_watermark_data(state);
-
-	return 0;
+	return calc_watermark_data(state);
 }
 
 static int intel_atomic_prepare_commit(struct drm_device *dev,
