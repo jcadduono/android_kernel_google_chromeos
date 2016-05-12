@@ -152,7 +152,7 @@ static int cros_ec_get_host_command_version_mask(struct cros_ec_device *ec_dev,
 	int ret;
 
 	pver.cmd = cmd;
-	ret = cros_ec_cmd_xfer(ec_dev, &msg);
+	ret = send_command(ec_dev, &msg);
 	if (ret > 0)
 		*mask = rver.version_mask;
 	return ret;
