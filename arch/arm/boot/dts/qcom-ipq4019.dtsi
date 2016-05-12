@@ -529,10 +529,6 @@
                                 phy-names = "usb2-phy", "usb3-phy";
                                 tx-fifo-resize;
                                 dr_mode = "host";
-                                usb2-susphy-quirk;
-                                usb2-host-discon-quirk;
-                                usb2-host-discon-phy-misc-reg = <0x24>;
-                                usb2-host-discon-mask = <0x100>;
                         };
                 };
 
@@ -560,10 +556,6 @@
                                 phy-names = "usb2-phy", "usb3-phy";
                                 tx-fifo-resize;
                                 dr_mode = "host";
-                                usb2-susphy-quirk;
-                                usb2-host-discon-quirk;
-                                usb2-host-discon-phy-misc-reg = <0x24>;
-                                usb2-host-discon-mask = <0x100>;
                         };
                 };
 
