@@ -25,6 +25,7 @@ config SND_QCA_SOC_IPQ4019
 	select SND_IPQ4019_SOC_CPU_DAI
 	select SND_IPQ4019_SOC_STEREO
 	select SND_IPQ4019_SOC_MBOX
+	select SND_IPQ4019_SOC_PCM_I2S
 	help
 	  Say Y or M to support Sound Cards on IPQ4019 board.
 
@@ -41,5 +42,9 @@ config SND_IPQ4019_SOC_STEREO
 	depends on SND_QCA_SOC
 
 config SND_IPQ4019_SOC_MBOX
+	tristate
+	depends on SND_QCA_SOC
+
+config SND_IPQ4019_SOC_PCM_I2S
 	tristate
 	depends on SND_QCA_SOC
