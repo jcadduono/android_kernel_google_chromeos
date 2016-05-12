@@ -301,6 +301,12 @@ enum ipq4019_functions {
 	qca_mux_sdio5,
 	qca_mux_sdio6,
 	qca_mux_sdio7,
+	qca_mux_i2s_rx_bclk,
+	qca_mux_i2s_rx_fsync,
+	qca_mux_i2s_rxd,
+	qca_mux_i2s_tx_bclk,
+	qca_mux_i2s_tx_fsync,
+	qca_mux_i2s_txd,
 	qca_mux_NA,
 };
 
@@ -322,6 +328,15 @@ static const char * const gpio_groups[] = {
 	"gpio99",
 };
 
+static const char * const i2s_rx_bclk_groups[] = {
+	"gpio60",
+};
+static const char * const i2s_rx_fsync_groups[] = {
+	"gpio61",
+};
+static const char * const i2s_rxd_groups[] = {
+	"gpio63",
+};
 static const char * const blsp_uart1_groups[] = {
 	"gpio8", "gpio9", "gpio10", "gpio11",
 };
@@ -375,15 +390,27 @@ static const char * const sdio0_groups[] = {
 static const char * const sdio_cmd_groups[] = {
 	"gpio28",
 };
+static const char * const i2s_tx_fsync_groups[] = {
+	"gpio57",
+};
+static const char * const i2s_txd_groups[] = {
+	"gpio54",
+};
+static const char * const i2s_tx_bclk_groups[] = {
+	"gpio53",
+};
 
 static const struct msm_function ipq4019_functions[] = {
 	FUNCTION(gpio),
+	FUNCTION(i2s_rx_bclk),
+	FUNCTION(i2s_rx_fsync),
 	FUNCTION(blsp_uart1),
 	FUNCTION(blsp_i2c0),
 	FUNCTION(blsp_i2c1),
 	FUNCTION(blsp_uart0),
 	FUNCTION(blsp_spi1),
 	FUNCTION(blsp_spi0),
+	FUNCTION(i2s_tx_fsync),
 	FUNCTION(sdio1),
 	FUNCTION(sdio2),
 	FUNCTION(sdio3),
@@ -395,6 +422,9 @@ static const struct msm_function ipq4019_functions[] = {
 	FUNCTION(sdio5),
 	FUNCTION(sdio6),
 	FUNCTION(sdio7),
+	FUNCTION(i2s_rxd),
+	FUNCTION(i2s_txd),
+	FUNCTION(i2s_tx_bclk),
 };
 
 static const struct msm_pingroup ipq4019_groups[] = {
@@ -451,17 +481,17 @@ static const struct msm_pingroup ipq4019_groups[] = {
 	PINGROUP(50, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
 	PINGROUP(51, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
 	PINGROUP(52, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	PINGROUP(53, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	PINGROUP(54, NA, blsp_spi0, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
+	PINGROUP(53, NA, NA, i2s_tx_bclk, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
+	PINGROUP(54, NA, blsp_spi0, i2s_txd, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
 	PINGROUP(55, NA, blsp_spi0, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
 	PINGROUP(56, NA, blsp_spi0, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	PINGROUP(57, NA, blsp_spi0, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
+	PINGROUP(57, NA, blsp_spi0, i2s_tx_fsync, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
 	PINGROUP(58, NA, NA, blsp_i2c0, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
 	PINGROUP(59, NA, blsp_i2c0, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	PINGROUP(60, NA, blsp_uart0, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	PINGROUP(61, NA, blsp_uart0, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
+	PINGROUP(60, NA, blsp_uart0, NA, NA, NA, NA, i2s_rx_bclk, NA, NA, NA, NA, NA, NA, NA),
+	PINGROUP(61, NA, blsp_uart0, NA, NA, NA, NA, i2s_rx_fsync, NA, NA, NA, NA, NA, NA, NA),
 	PINGROUP(62, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	PINGROUP(63, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
+	PINGROUP(63, NA, NA, NA, NA, NA, i2s_rxd, NA, NA, NA, NA, NA, NA, NA, NA),
 	PINGROUP(64, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
 	PINGROUP(65, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
 	PINGROUP(66, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
