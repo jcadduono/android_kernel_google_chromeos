@@ -24,6 +24,7 @@ static void handle_init_ack_msg(struct vdec_vpu_ipi_init_ack *msg)
 	mtk_vcodec_debug(vpu, "+ ap_inst_addr = 0x%llx", msg->ap_inst_addr);
 
 	/* mapping VPU address to kernel virtual address */
+	/* the content in vsi is initialized to 0 in VPU */
 	vpu->vsi = vpu_mapping_dm_addr(vpu->dev, msg->vpu_inst_addr);
 	vpu->inst_addr = msg->vpu_inst_addr;
 
@@ -31,7 +32,7 @@ static void handle_init_ack_msg(struct vdec_vpu_ipi_init_ack *msg)
 }
 
 /*
- * This function runs in interrupt context and it means there's a IPI MSG
+ * This function runs in interrupt context and it means there's an IPI MSG
  * from VPU.
  */
 void vpu_dec_ipi_handler(void *data, unsigned int len, void *priv)
@@ -40,8 +41,6 @@ void vpu_dec_ipi_handler(void *data, unsigned int len, void *priv)
 	struct vdec_vpu_inst *vpu = (struct vdec_vpu_inst *)msg->ap_inst_addr;
 
 	mtk_vcodec_debug(vpu, "+ id=%X", msg->msg_id);
-
-	vpu->failure = msg->status;
 
 	if (msg->status == 0) {
 		switch (msg->msg_id) {
@@ -62,21 +61,24 @@ void vpu_dec_ipi_handler(void *data, unsigned int len, void *priv)
 	}
 
 	mtk_vcodec_debug(vpu, "- id=%X", msg->msg_id);
+	vpu->failure = msg->status;
 	vpu->signaled = 1;
 }
 
 static int vcodec_vpu_send_msg(struct vdec_vpu_inst *vpu, void *msg, int len)
 {
 	int err;
+	uint32_t msg_id = *(uint32_t *)msg;
 
-	mtk_vcodec_debug(vpu, "id=%X", *(unsigned int *)msg);
+	mtk_vcodec_debug(vpu, "id=%X", msg_id);
 
 	vpu->failure = 0;
 	vpu->signaled = 0;
 
 	err = vpu_ipi_send(vpu->dev, vpu->id, msg, len);
 	if (err) {
-		mtk_vcodec_err(vpu, "vpu_ipi_send fail status=%d", err);
+		mtk_vcodec_err(vpu, "send fail vpu_id=%d msg_id=%X status=%d",
+			       vpu->id, msg_id, err);
 		return err;
 	}
 
@@ -107,10 +109,8 @@ int vpu_dec_init(struct vdec_vpu_inst *vpu)
 	mtk_vcodec_debug_enter(vpu);
 
 	init_waitqueue_head(&vpu->wq);
-	vpu->signaled = 0;
-	vpu->failure = 0;
 
-	err = vpu_ipi_register(vpu->dev, vpu->id, vpu->handler, NULL, NULL);
+	err = vpu_ipi_register(vpu->dev, vpu->id, vpu->handler, "vdec", NULL);
 	if (err != 0) {
 		mtk_vcodec_err(vpu, "vpu_ipi_register fail status=%d", err);
 		return err;
@@ -127,8 +127,7 @@ int vpu_dec_init(struct vdec_vpu_inst *vpu)
 	return err;
 }
 
-int vpu_dec_start(struct vdec_vpu_inst *vpu, unsigned int *data,
-		  unsigned int length)
+int vpu_dec_start(struct vdec_vpu_inst *vpu, uint32_t *data, unsigned int len)
 {
 	struct vdec_ap_ipi_dec_start msg;
 	int i;
@@ -136,11 +135,16 @@ int vpu_dec_start(struct vdec_vpu_inst *vpu, unsigned int *data,
 
 	mtk_vcodec_debug_enter(vpu);
 
+	if (len > ARRAY_SIZE(msg.data)) {
+		mtk_vcodec_err(vpu, "invalid len = %d\n", len);
+		return -EINVAL;
+	}
+
 	memset(&msg, 0, sizeof(msg));
 	msg.msg_id = AP_IPIMSG_DEC_START;
 	msg.vpu_inst_addr = vpu->inst_addr;
 
-	for (i = 0; i < length; i++)
+	for (i = 0; i < len; i++)
 		msg.data[i] = data[i];
 
 	err = vcodec_vpu_send_msg(vpu, (void *)&msg, sizeof(msg));

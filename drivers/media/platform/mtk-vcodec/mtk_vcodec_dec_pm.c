@@ -79,6 +79,24 @@ int mtk_vcodec_init_dec_pm(struct mtk_vcodec_dev *mtkdev)
 		ret = -1;
 	}
 
+	pm->vencpll = devm_clk_get(&pdev->dev, "vencpll");
+	if (pm->vencpll == NULL) {
+		mtk_v4l2_err("devm_clk_get vencpll fail");
+		ret = -1;
+	}
+
+	pm->venc_lt_sel = devm_clk_get(&pdev->dev, "venc_lt_sel");
+	if (pm->venc_lt_sel == NULL) {
+		mtk_v4l2_err("devm_clk_get venc_lt_sel fail");
+		ret = -1;
+	}
+
+	pm->vcodecpll_370p5_ck = devm_clk_get(&pdev->dev, "vcodecpll_370p5_ck");
+	if (pm->vcodecpll_370p5_ck == NULL) {
+		mtk_v4l2_err("devm_clk_get vcodecpll_370p5_ck fail");
+		ret = -1;
+	}
+
 	return ret;
 }
 
@@ -110,6 +128,23 @@ void mtk_vcodec_dec_clock_on(struct mtk_vcodec_pm *pm)
 	int ret;
 
 	clk_set_rate(pm->vcodecpll, 1482 * 1000000);
+
+
+	clk_set_rate(pm->vencpll, 800 * 1000000);
+
+	ret = clk_prepare_enable(pm->vcodecpll_370p5_ck);
+	if (ret)
+		mtk_v4l2_err("vcodecpll_370p5_ck fail %d", ret);
+
+	ret = clk_prepare_enable(pm->venc_lt_sel);
+	if (ret)
+		mtk_v4l2_err("venc_lt_sel fail %d", ret);
+
+	ret = clk_set_parent(pm->venc_lt_sel, pm->vcodecpll_370p5_ck);
+	if (ret)
+		mtk_v4l2_err("clk_set_parent fail %d", ret);
+
+
 
 	ret = clk_prepare_enable(pm->vcodecpll);
 	if (ret)
@@ -151,3 +186,4 @@ void mtk_vcodec_dec_clock_off(struct mtk_vcodec_pm *pm)
 	clk_disable_unprepare(pm->vdec_sel);
 	clk_disable_unprepare(pm->vdecpll);
 }
+

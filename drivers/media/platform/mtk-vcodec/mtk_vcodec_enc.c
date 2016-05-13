@@ -16,6 +16,7 @@
 #include <media/v4l2-event.h>
 #include <media/v4l2-mem2mem.h>
 #include <media/videobuf2-dma-contig.h>
+#include <soc/mediatek/smi.h>
 
 #include "mtk_vcodec_drv.h"
 #include "mtk_vcodec_enc.h"
@@ -224,9 +225,6 @@ static int vidioc_venc_querycap(struct file *file, void *priv,
 	strlcpy(cap->driver, MTK_VCODEC_ENC_NAME, sizeof(cap->driver));
 	strlcpy(cap->bus_info, MTK_PLATFORM_STR, sizeof(cap->bus_info));
 	strlcpy(cap->card, MTK_PLATFORM_STR, sizeof(cap->card));
-
-	cap->device_caps  = V4L2_CAP_VIDEO_M2M_MPLANE | V4L2_CAP_STREAMING;
-	cap->capabilities = cap->device_caps | V4L2_CAP_DEVICE_CAPS;
 
 	return 0;
 }
@@ -542,6 +540,9 @@ static int vidioc_venc_s_fmt_out(struct file *file, void *priv,
 
 	q_data->field = f->fmt.pix_mp.field;
 	ctx->colorspace = f->fmt.pix_mp.colorspace;
+	ctx->ycbcr_enc = f->fmt.pix_mp.ycbcr_enc;
+	ctx->quantization = f->fmt.pix_mp.quantization;
+	ctx->xfer_func = f->fmt.pix_mp.xfer_func;
 
 	for (i = 0; i < f->fmt.pix_mp.num_planes; i++) {
 		struct v4l2_plane_pix_format *plane_fmt;
@@ -583,6 +584,9 @@ static int vidioc_venc_g_fmt(struct file *file, void *priv,
 
 	pix->flags = 0;
 	pix->colorspace = ctx->colorspace;
+	pix->ycbcr_enc = ctx->ycbcr_enc;
+	pix->quantization = ctx->quantization;
+	pix->xfer_func = ctx->xfer_func;
 
 	return 0;
 }
@@ -599,6 +603,9 @@ static int vidioc_try_fmt_vid_cap_mplane(struct file *file, void *priv,
 		fmt = mtk_venc_find_format(f);
 	}
 	f->fmt.pix_mp.colorspace = ctx->colorspace;
+	f->fmt.pix_mp.ycbcr_enc = ctx->ycbcr_enc;
+	f->fmt.pix_mp.quantization = ctx->quantization;
+	f->fmt.pix_mp.xfer_func = ctx->xfer_func;
 
 	return vidioc_try_fmt(f, fmt);
 }
@@ -613,8 +620,12 @@ static int vidioc_try_fmt_vid_out_mplane(struct file *file, void *priv,
 		f->fmt.pix.pixelformat = mtk_video_formats[OUT_FMT_IDX].fourcc;
 		fmt = mtk_venc_find_format(f);
 	}
-	if (!f->fmt.pix_mp.colorspace)
+	if (!f->fmt.pix_mp.colorspace) {
 		f->fmt.pix_mp.colorspace = V4L2_COLORSPACE_REC709;
+		f->fmt.pix_mp.ycbcr_enc = V4L2_YCBCR_ENC_DEFAULT;
+		f->fmt.pix_mp.quantization = V4L2_QUANTIZATION_DEFAULT;
+		f->fmt.pix_mp.xfer_func = V4L2_XFER_FUNC_DEFAULT;
+	}
 
 	return vidioc_try_fmt(f, fmt);
 }
@@ -844,7 +855,7 @@ static int vb2ops_venc_start_streaming(struct vb2_queue *q, unsigned int count)
 				V4L2_MPEG_VIDEO_HEADER_MODE_SEPARATE)) {
 		ret = venc_if_set_param(ctx,
 					VENC_SET_PARAM_PREPEND_HEADER,
-					0);
+					NULL);
 		if (ret) {
 			mtk_v4l2_err("venc_if_set_param failed=%d", ret);
 			ctx->state = MTK_STATE_ABORT;
@@ -945,7 +956,7 @@ static int mtk_venc_encode_header(void *priv)
 
 	ret = venc_if_encode(ctx,
 			VENC_START_OPT_ENCODE_SEQUENCE_HEADER,
-			0, &bs_buf, &enc_result);
+			NULL, &bs_buf, &enc_result);
 
 	if (ret) {
 		dst_buf->planes[0].bytesused = 0;
@@ -960,20 +971,6 @@ static int mtk_venc_encode_header(void *priv)
 	dst_buf->planes[0].bytesused = enc_result.bs_size;
 	v4l2_m2m_buf_done(to_vb2_v4l2_buffer(dst_buf), VB2_BUF_STATE_DONE);
 
-#if defined(DEBUG)
-{
-	int i;
-
-	mtk_v4l2_debug(1, "[%d] venc_if_encode header len=%d",
-		       ctx->id,
-		       enc_result.bs_size);
-	for (i = 0; i < enc_result.bs_size; i++) {
-		unsigned char *p = (unsigned char *)bs_buf.va;
-
-		mtk_v4l2_debug(1, "[%d] buf[%d]=0x%2x", ctx->id, i, p[i]);
-	}
-}
-#endif
 	return 0;
 }
 
@@ -1029,7 +1026,7 @@ static int mtk_venc_param_change(struct mtk_vcodec_ctx *ctx)
 		if (mtk_buf->enc_params.force_intra)
 			ret |= venc_if_set_param(ctx,
 						 VENC_SET_PARAM_FORCE_INTRA,
-						 0);
+						 NULL);
 	}
 
 	mtk_buf->param_change = MTK_ENCODE_PARAM_NONE;
@@ -1087,7 +1084,7 @@ static void mtk_venc_worker(struct work_struct *work)
 	bs_buf.size = (size_t)dst_buf->planes[0].length;
 
 	mtk_v4l2_debug(2,
-			"Framebuf VA=%p PA=%llx Size=0x%lx;VA=%p PA=0x%llx Size=0x%lx;VA=%p PA=0x%llx Size=0x%lx",
+			"Framebuf VA=%p PA=%llx Size=0x%lx;VA=%p PA=0x%llx Size=0x%lx;VA=%p PA=0x%llx Size=%zu",
 			frm_buf.fb_addr[0].va,
 			(u64)frm_buf.fb_addr[0].dma_addr,
 			frm_buf.fb_addr[0].size,
@@ -1197,6 +1194,9 @@ void mtk_vcodec_enc_set_default_params(struct mtk_vcodec_ctx *ctx)
 	INIT_WORK(&ctx->encode_work, mtk_venc_worker);
 
 	ctx->colorspace = V4L2_COLORSPACE_REC709;
+	ctx->ycbcr_enc = V4L2_YCBCR_ENC_DEFAULT;
+	ctx->quantization = V4L2_QUANTIZATION_DEFAULT;
+	ctx->xfer_func = V4L2_XFER_FUNC_DEFAULT;
 
 	q_data = &ctx->q_data[MTK_Q_DATA_SRC];
 	memset(q_data, 0, sizeof(struct mtk_q_data));

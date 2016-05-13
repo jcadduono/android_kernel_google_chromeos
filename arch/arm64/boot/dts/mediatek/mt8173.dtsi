@@ -1338,12 +1338,18 @@
 				 <&topckgen CLK_TOP_UNIVPLL_D2>,
 				 <&topckgen CLK_TOP_CCI400_SEL>,
 				 <&topckgen CLK_TOP_VDEC_SEL>,
-				 <&topckgen CLK_TOP_VCODECPLL>;
+				 <&topckgen CLK_TOP_VCODECPLL>,
+				 <&apmixedsys CLK_APMIXED_VENCPLL>,
+				 <&topckgen CLK_TOP_VENC_LT_SEL>,
+				 <&topckgen CLK_TOP_VCODECPLL_370P5>;
 			clock-names = "vcodecpll",
 				      "univpll_d2",
 				      "clk_cci400_sel",
 				      "vdec_sel",
-				      "vdecpll";
+				      "vdecpll",
+				      "vencpll",
+				      "venc_lt_sel",
+				      "vcodecpll_370p5_ck";
 		};
 
 		larb1: larb@16010000 {

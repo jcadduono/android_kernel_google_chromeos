@@ -166,10 +166,8 @@ void mtk_mdp_m2m_job_finish(struct mtk_mdp_ctx *ctx, int vb_state)
 	dst_vb = v4l2_m2m_dst_buf_remove(ctx->m2m_ctx);
 
 	if (src_vb && dst_vb) {
-		src_vb2_v4l2 = container_of(src_vb, struct vb2_v4l2_buffer,
-						vb2_buf);
-		dst_vb2_v4l2 = container_of(dst_vb, struct vb2_v4l2_buffer,
-						vb2_buf);
+		src_vb2_v4l2 = container_of(src_vb, struct vb2_v4l2_buffer, vb2_buf);
+		dst_vb2_v4l2 = container_of(dst_vb, struct vb2_v4l2_buffer, vb2_buf);
 
 		dst_vb2_v4l2->timestamp = src_vb2_v4l2->timestamp;
 		dst_vb2_v4l2->timecode = src_vb2_v4l2->timecode;
@@ -394,6 +392,8 @@ static int mtk_mdp_m2m_s_fmt_mplane(struct file *file, void *fh,
 	struct v4l2_pix_format_mplane *pix;
 	int i, ret = 0;
 
+	mtk_mdp_dbg(2, "[%d]", ctx->idx);
+
 	ret = mtk_mdp_m2m_try_fmt_mplane(file, fh, f);
 	if (ret)
 		return ret;
@@ -413,8 +413,10 @@ static int mtk_mdp_m2m_s_fmt_mplane(struct file *file, void *fh,
 	pix = &f->fmt.pix_mp;
 	frame->fmt = mtk_mdp_find_fmt(&pix->pixelformat, 0, f->type);
 	frame->colorspace = pix->colorspace;
-	if (!frame->fmt)
+	if (!frame->fmt) {
+		mtk_mdp_err("find_fmt failed");
 		return -EINVAL;
+	}
 
 	for (i = 0; i < frame->fmt->num_planes; i++) {
 		frame->payload[i] = pix->plane_fmt[i].sizeimage;
@@ -429,6 +431,7 @@ static int mtk_mdp_m2m_s_fmt_mplane(struct file *file, void *fh,
 	else
 		mtk_mdp_ctx_state_lock_set(MTK_MDP_PARAMS | MTK_MDP_SRC_FMT,
 					   ctx);
+	mtk_mdp_dbg(2, "frame:%dx%d", frame->f_width, frame->f_height);
 
 	return 0;
 }
@@ -761,6 +764,8 @@ static int mtk_mdp_m2m_open(struct file *file)
 	set_bit(ctx->idx, &mdp->ctx_mask[0]);
 	mdp->ctx[ctx->idx] = ctx;
 	mutex_unlock(&mdp->lock);
+
+	mtk_mdp_dbg(0, "%s [%d]", dev_name(&mdp->pdev->dev), ctx->idx);
 
 	return 0;
 

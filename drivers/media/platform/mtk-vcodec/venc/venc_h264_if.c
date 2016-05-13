@@ -67,9 +67,9 @@ enum venc_h264_bs_mode {
  *         to be used for display purposes; must be smaller or equal to buffer
  *         size.
  * @pic_h: picture height
- * @buf_w: buffer width. Buffer size is stream resolution in pixels aligned to
- *         hardware requirements.
- * @buf_h: buffer height
+ * @buf_w: buffer width (with 16 alignment). Buffer size is stream resolution
+ *         in pixels aligned to hardware requirements.
+ * @buf_h: buffer height (with 16 alignment)
  * @gop_size: group of picture size (idr frame)
  * @intra_period: intra frame period
  * @framerate: frame rate in fps
@@ -94,13 +94,11 @@ struct venc_h264_vpu_config {
 
 /*
  * struct venc_h264_vpu_buf - Structure for buffer information
- * @align: buffer alignment (in bytes)
  * @iova: IO virtual address
  * @vpua: VPU side memory addr which is used by RC_CODE
  * @size: buffer size (in bytes)
  */
 struct venc_h264_vpu_buf {
-	u32 align;
 	u32 iova;
 	u32 vpua;
 	u32 size;

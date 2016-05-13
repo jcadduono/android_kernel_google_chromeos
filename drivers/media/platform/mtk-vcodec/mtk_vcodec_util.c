@@ -81,14 +81,14 @@ void mtk_vcodec_mem_free(struct mtk_vcodec_ctx *data,
 		return;
 	}
 
-	dma_free_coherent(dev, size, mem->va, mem->dma_addr);
-	mem->va = NULL;
-	mem->dma_addr = 0;
-	mem->size = 0;
-
 	mtk_v4l2_debug(3, "[%d]  - va      = %p", ctx->id, mem->va);
 	mtk_v4l2_debug(3, "[%d]  - dma     = 0x%lx", ctx->id,
 		       (unsigned long)mem->dma_addr);
 	mtk_v4l2_debug(3, "[%d]    size = 0x%lx", ctx->id, size);
+
+	dma_free_coherent(dev, size, mem->va, mem->dma_addr);
+	mem->va = NULL;
+	mem->dma_addr = 0;
+	mem->size = 0;
 }
 EXPORT_SYMBOL(mtk_vcodec_mem_free);

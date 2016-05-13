@@ -298,6 +298,36 @@ struct mtk_mdp_ctx {
 	struct work_struct		work;
 };
 
+extern int mtk_mdp_dbg_level;
+
+#define DEBUG	1
+
+#if defined(DEBUG)
+
+#define mtk_mdp_dbg(level, fmt, args...)				 \
+	do {								 \
+		if (mtk_mdp_dbg_level >= level)				 \
+			pr_info("[MTK_MDP] level=%d %s(),%d: " fmt "\n", \
+				level, __func__, __LINE__, ##args);	 \
+	} while (0)
+
+#define mtk_mdp_err(fmt, args...)					\
+	pr_err("[MTK_MDP][ERROR] %s:%d: " fmt "\n", __func__, __LINE__, \
+	       ##args)
+
+
+#define mtk_mdp_dbg_enter()  mtk_mdp_dbg(3, "+")
+#define mtk_mdp_dbg_leave()  mtk_mdp_dbg(3, "-")
+
+#else
+
+#define mtk_mdp_dbg(level, fmt, args...)
+#define mtk_mdp_err(fmt, args...)
+#define mtk_mdp_dbg_enter()
+#define mtk_mdp_dbg_leave()
+
+#endif
+
 int mtk_mdp_register_m2m_device(struct mtk_mdp_dev *mdp);
 void mtk_mdp_unregister_m2m_device(struct mtk_mdp_dev *mdp);
 void mtk_mdp_m2m_job_finish(struct mtk_mdp_ctx *ctx, int vb_state);

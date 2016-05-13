@@ -180,6 +180,9 @@ struct mtk_enc_params {
  * struct mtk_vcodec_pm - Power management data structure
  */
 struct mtk_vcodec_pm {
+	struct clk	*vcodecpll_370p5_ck;
+	struct clk	*vencpll;
+
 	struct clk	*vcodecpll;
 	struct clk	*univpll_d2;
 	struct clk	*clk_cci400_sel;
@@ -287,6 +290,9 @@ struct mtk_vcodec_ctx {
 	struct vdec_pic_info last_decoded_picinfo;
 
 	enum v4l2_colorspace colorspace;
+	enum v4l2_ycbcr_encoding ycbcr_enc;
+	enum v4l2_quantization quantization;
+	enum v4l2_xfer_func xfer_func;
 
 	int decoded_frame_cnt;
 };
@@ -302,12 +308,13 @@ struct mtk_vcodec_ctx {
  * @alloc_ctx: VB2 allocator context
  *	       (for allocations without kernel mapping).
  * @ctx_list: list of struct mtk_vcodec_ctx
- * @irqlock: protect data access by irq handler and work thread
- * @curr_ctx: The context that is waiting for codec hardware
+ * @irqlock: protect data access by irq handler and work thread -- curr_ctx
+ * @curr_ctx: The context that is waiting for codec hardware. Protected by
+ *		irqlock and dec_mutex or enc_mutex.
  *
  * @reg_base: Mapped address of MTK Vcodec registers.
  *
- * @id_counter: used to identify current opened instance
+ * @id_counter:  An integer id given to the next opened instance
  * @num_instances: counter of active MTK Vcodec instances
  *
  * @encode_workqueue: encode work queue
@@ -352,7 +359,7 @@ struct mtk_vcodec_dev {
 	struct v4l2_device v4l2_dev;
 	struct video_device *vfd_dec;
 	struct video_device *vfd_enc;
-
+	
 	struct v4l2_m2m_dev *m2m_dev_dec;
 	struct v4l2_m2m_dev *m2m_dev_enc;
 	struct platform_device *plat_dev;

@@ -1,13 +1,12 @@
 /*
  * Copyright (c) 2016 MediaTek Inc.
  * Author: Daniel Hsiao <daniel.hsiao@mediatek.com>
- *             Kai-Sean Yang <kai-sean.yang@mediatek.com>
- *		  Tiffany Lin <tiffany.lin@mediatek.com>
+ *		Kai-Sean Yang <kai-sean.yang@mediatek.com>
+ *		Tiffany Lin <tiffany.lin@mediatek.com>
  *
  * This program is free software; you can redistribute it and/or
- * modify
- * it under the terms of the GNU General Public License version 2 as
- * published by the Free Software Foundation.
+ * modify it under the terms of the GNU General Public License
+ * version 2 as published by the Free Software Foundation.
  *
  * This program is distributed in the hope that it will be useful,
  * but WITHOUT ANY WARRANTY; without even the implied warranty of
@@ -26,30 +25,26 @@
 #include "../vdec_vpu_if.h"
 
 #define VP9_SUPER_FRAME_BS_SZ 64
+#define MAX_VP9_DPB_SIZE	9
 
 #define REFS_PER_FRAME 3
-#define REF_FRAMES_LOG2 3
-#define REF_FRAMES (1 << REF_FRAMES_LOG2)
-#define VP9_MAX_FRM_BUFF_NUM (9 + 0)
-#define VP9_MAX_FRM_BUFF_NODE_NUM (9 + 9)
+#define MAX_NUM_REF_FRAMES 8
+#define VP9_MAX_FRM_BUF_NUM 9
+#define VP9_MAX_FRM_BUF_NODE_NUM (VP9_MAX_FRM_BUF_NUM * 2)
+#define MAX_CODED_WIDTH		4096U
+#define MAX_CODED_HEIGHT	2304U
 
 
 struct vdec_vp9_frm_hdr {
 	unsigned int width;
 	unsigned int height;
 	unsigned char show_frame;
-	unsigned char resolution_changed;
 };
 
 struct vdec_vp9_work_buf {
-	unsigned int frmbuf_width;
-	unsigned int frmbuf_height;
-	struct mtk_vcodec_mem seg_id_buf;
-	struct mtk_vcodec_mem tile_buf;
-	struct mtk_vcodec_mem count_tbl_buf;
-	struct mtk_vcodec_mem prob_tbl_buf;
+	unsigned int buf_w;
+	unsigned int buf_h;
 	struct mtk_vcodec_mem mv_buf;
-	struct vdec_fb sf_ref_buf[VP9_MAX_FRM_BUFF_NUM-1];
 };
 
 struct vp9_input_ctx {
@@ -116,17 +111,16 @@ struct vp9_sf_ref_fb {
 	int idx;
 };
 
-
 /*
- * struct vdec_vp9_vsi - shared buffer between host and VPU driver
+ * struct vdec_vp9_vsi - shared buffer between host and VPU firmware
  */
 struct vdec_vp9_vsi {
 	unsigned char sf_bs_buf[VP9_SUPER_FRAME_BS_SZ];
-	struct vp9_sf_ref_fb sf_ref_fb[VP9_MAX_FRM_BUFF_NUM-1];
+	struct vp9_sf_ref_fb sf_ref_fb[VP9_MAX_FRM_BUF_NUM-1];
 	int sf_next_ref_fb_idx;
 	unsigned int sf_frm_cnt;
-	unsigned int sf_frm_offset[VP9_MAX_FRM_BUFF_NUM-1];
-	unsigned int sf_frm_sz[VP9_MAX_FRM_BUFF_NUM-1];
+	unsigned int sf_frm_offset[VP9_MAX_FRM_BUF_NUM-1];
+	unsigned int sf_frm_sz[VP9_MAX_FRM_BUF_NUM-1];
 	unsigned int sf_frm_idx;
 	unsigned int sf_init;
 	struct vdec_fb fb;
@@ -141,30 +135,31 @@ struct vdec_vp9_vsi {
 	unsigned int buf_len_sz_y;
 	unsigned int buf_len_sz_c;
 	unsigned int profile;
-	unsigned int show_frm;
-	unsigned int show_exist;
+	unsigned int show_frame;
+	unsigned int show_existing_frame;
 	unsigned int frm_to_show;
 	unsigned int refresh_frm_flags;
 	unsigned int resolution_changed;
 
 	struct vp9_input_ctx input_ctx;
-	struct vp9_ref_cnt_buf frm_bufs[VP9_MAX_FRM_BUFF_NUM];
-	int ref_frm_map[REF_FRAMES];
+	struct vp9_ref_cnt_buf frm_bufs[VP9_MAX_FRM_BUF_NUM];
+	int ref_frm_map[MAX_NUM_REF_FRAMES];
+
 	unsigned int new_fb_idx;
 	unsigned int frm_num;
+
 	struct vp9_dram_buf seg_id_buf;
 	struct vp9_dram_buf tile_buf;
 	struct vp9_dram_buf count_tbl_buf;
 	struct vp9_dram_buf prob_tbl_buf;
 	struct vp9_dram_buf mv_buf;
 	struct vp9_ref_buf frm_refs[REFS_PER_FRAME];
-
 };
 
 struct vdec_vp9_inst {
 	struct vdec_vp9_work_buf work_buf;
 	struct vdec_vp9_frm_hdr frm_hdr;
-	struct vdec_fb_node dec_fb[VP9_MAX_FRM_BUFF_NODE_NUM];
+	struct vdec_fb_node dec_fb[VP9_MAX_FRM_BUF_NODE_NUM];
 	struct list_head available_fb_node_list;
 	struct list_head fb_use_list;
 	struct list_head fb_free_list;
@@ -176,47 +171,25 @@ struct vdec_vp9_inst {
 	struct vdec_vpu_inst vpu;
 	struct vdec_vp9_vsi *vsi;
 	unsigned int show_reg;
-	struct file *log;
 	struct mtk_vcodec_mem mem;
 };
-
-static int vp9_setup_buf(struct vdec_vp9_inst *inst)
-{
-	struct vdec_vp9_vsi *vsi = inst->vpu.vsi;
-
-	vsi->mv_buf.va = (unsigned long)inst->work_buf.mv_buf.va;
-	vsi->mv_buf.pa = (unsigned long)inst->work_buf.mv_buf.dma_addr;
-	vsi->mv_buf.sz = (unsigned long)inst->work_buf.mv_buf.size;
-
-	if ((vsi->mv_buf.va == 0) || (vsi->mv_buf.pa == 0) ||
-		(vsi->mv_buf.sz == 0))
-		return -EINVAL;
-
-	mtk_vcodec_debug(inst, "VP9_MV_BUF_Addr: 0x%lX (0x%lX)",
-		     vsi->mv_buf.va, vsi->mv_buf.pa);
-	return 0;
-}
 
 static bool vp9_is_sf_ref_fb(struct vdec_vp9_inst *inst, struct vdec_fb *fb)
 {
 	int i;
 	struct vdec_vp9_vsi *vsi = inst->vsi;
 
-	for (i = 0; i < VP9_MAX_FRM_BUFF_NUM - 1; i++) {
+	for (i = 0; i < ARRAY_SIZE(vsi->sf_ref_fb); i++) {
 		if (fb == &vsi->sf_ref_fb[i].fb)
-			break;
+			return true;
 	}
-
-	if (i == VP9_MAX_FRM_BUFF_NUM - 1)
-		return false;
-
-	return true;
+	return false;
 }
 
 static struct vdec_fb *vp9_rm_from_fb_use_list(struct vdec_vp9_inst
 					*inst, void *addr)
 {
-	struct vdec_fb *fb;
+	struct vdec_fb *fb = NULL;
 	struct vdec_fb_node *node;
 
 	list_for_each_entry(node, &inst->fb_use_list, list) {
@@ -227,11 +200,10 @@ static struct vdec_fb *vp9_rm_from_fb_use_list(struct vdec_vp9_inst
 			break;
 		}
 	}
-
 	return fb;
 }
 
-static bool vp9_add_to_fb_free_list(struct vdec_vp9_inst *inst,
+static void vp9_add_to_fb_free_list(struct vdec_vp9_inst *inst,
 			     struct vdec_fb *fb)
 {
 	struct vdec_fb_node *node;
@@ -239,24 +211,22 @@ static bool vp9_add_to_fb_free_list(struct vdec_vp9_inst *inst,
 	if (fb) {
 		node = list_first_entry_or_null(&inst->available_fb_node_list,
 					struct vdec_fb_node, list);
+
 		if (node) {
 			node->fb = fb;
 			list_move_tail(&node->list, &inst->fb_free_list);
-		} else
-			mtk_vcodec_debug(inst, "No free fb node");
+		}
+	} else {
+		mtk_vcodec_debug(inst, "No free fb node");
 	}
-
-	return true;
 }
 
-static bool vp9_free_sf_ref_fb(struct vdec_vp9_inst *inst, struct vdec_fb *fb)
+static void vp9_free_sf_ref_fb(struct vdec_fb *fb)
 {
 	struct vp9_sf_ref_fb *sf_ref_fb =
 		container_of(fb, struct vp9_sf_ref_fb, fb);
 
 	sf_ref_fb->used = 0;
-
-	return true;
 }
 
 static void vp9_ref_cnt_fb(struct vdec_vp9_inst *inst, int *idx,
@@ -277,8 +247,7 @@ static void vp9_ref_cnt_fb(struct vdec_vp9_inst *inst, int *idx,
 				     vsi->frm_bufs[ref_idx].buf.fb->base_y.va);
 				vp9_add_to_fb_free_list(inst, fb);
 			} else
-				vp9_free_sf_ref_fb(
-					inst, vsi->frm_bufs[ref_idx].buf.fb);
+				vp9_free_sf_ref_fb(vsi->frm_bufs[ref_idx].buf.fb);
 		}
 	}
 
@@ -291,146 +260,128 @@ static void vp9_free_all_sf_ref_fb(struct vdec_vp9_inst *inst)
 	int i;
 	struct vdec_vp9_vsi *vsi = inst->vsi;
 
-	for (i = 0; i < VP9_MAX_FRM_BUFF_NUM - 1; i++) {
-		if (inst->work_buf.sf_ref_buf[i].base_y.va) {
+	for (i = 0; i < ARRAY_SIZE(vsi->sf_ref_fb); i++) {
+		if (vsi->sf_ref_fb[i].fb.base_y.va) {
 			mtk_vcodec_mem_free(inst->ctx,
-				    &inst->work_buf.sf_ref_buf[i].base_y);
+				&vsi->sf_ref_fb[i].fb.base_y);
 			mtk_vcodec_mem_free(inst->ctx,
-				    &inst->work_buf.sf_ref_buf[i].base_c);
+				&vsi->sf_ref_fb[i].fb.base_c);
 			vsi->sf_ref_fb[i].used = 0;
 		}
 	}
 }
 
+/* For each sub-frame except the last one, the driver will dynamically
+ * allocate reference buffer by calling vp9_get_sf_ref_fb()
+ * The last sub-frame will use the original fb provided by the
+ * vp9_dec_decode() interface
+ */
 static int vp9_get_sf_ref_fb(struct vdec_vp9_inst *inst)
 {
-	int i;
-	struct mtk_vcodec_mem *mem;
+	int idx;
+	struct mtk_vcodec_mem *mem_basy_y;
+	struct mtk_vcodec_mem *mem_basy_c;
 	struct vdec_vp9_vsi *vsi = inst->vsi;
-	struct vdec_fb *fb_dst_ptr, *fb_src_ptr;
 
-	for (i = 0; i < VP9_MAX_FRM_BUFF_NUM - 1; i++) {
-		if (inst->work_buf.sf_ref_buf[i].base_y.va &&
-		    vsi->sf_ref_fb[i].used == 0) {
-			return i;
+	if ((inst->frm_hdr.width > MAX_CODED_WIDTH) ||
+		(inst->frm_hdr.height > MAX_CODED_HEIGHT)) {
+		mtk_vcodec_err(inst, "Invalid w/h %d/%d",
+									inst->frm_hdr.width,
+									inst->frm_hdr.height);
+		return -1;
+	}
+
+	for (idx = 0;
+			idx < ARRAY_SIZE(vsi->sf_ref_fb);
+			idx++) {
+		if (vsi->sf_ref_fb[idx].fb.base_y.va &&
+		    vsi->sf_ref_fb[idx].used == 0) {
+			return idx;
 		}
 	}
 
-	for (i = 0; i < VP9_MAX_FRM_BUFF_NUM - 1; i++) {
-		if (inst->work_buf.sf_ref_buf[i].base_y.va == NULL)
+	for (idx = 0;
+			idx < ARRAY_SIZE(vsi->sf_ref_fb);
+			idx++) {
+		if (vsi->sf_ref_fb[idx].fb.base_y.va == NULL)
 			break;
 	}
 
-	if (i == VP9_MAX_FRM_BUFF_NUM - 1) {
+	if (idx == ARRAY_SIZE(vsi->sf_ref_fb)) {
 		mtk_vcodec_err(inst, "List Full");
 		return -1;
 	}
 
-	mem = &inst->work_buf.sf_ref_buf[i].base_y;
-	mem->size = vsi->buf_sz_y_bs +
+	mem_basy_y = &vsi->sf_ref_fb[idx].fb.base_y;
+	mem_basy_y->size = vsi->buf_sz_y_bs +
 		    vsi->buf_len_sz_y;
 
-	if ((inst->frm_hdr.width > 4096) ||
-		(inst->frm_hdr.height > 2304)) {
-		mtk_vcodec_err(inst, "Invalid w/h %d/%d",
-			inst->frm_hdr.width,
-			inst->frm_hdr.height);
-		return -1;
-	}
-
-	if (mtk_vcodec_mem_alloc(inst->ctx, mem)) {
+	if (mtk_vcodec_mem_alloc(inst->ctx, mem_basy_y)) {
 		mtk_vcodec_err(inst, "Cannot allocate sf_ref_buf y_buf");
 		return -1;
 	}
 
-	mtk_vcodec_debug(inst, "allocate sf_ref_buf y_buf = 0x%lx, %d",
-			mem->size,
-			inst->work_buf.frmbuf_width *
-			inst->work_buf.frmbuf_height);
-
-	fb_dst_ptr = &vsi->sf_ref_fb[i].fb;
-	fb_src_ptr = &inst->work_buf.sf_ref_buf[i];
-	fb_dst_ptr->base_y.va = fb_src_ptr->base_y.va;
-	fb_dst_ptr->base_y.dma_addr = fb_src_ptr->base_y.dma_addr;
-	fb_dst_ptr->base_y.size = fb_src_ptr->base_y.size;
-
-	mem = &inst->work_buf.sf_ref_buf[i].base_c;
-	mem->size = vsi->buf_sz_c_bs +
+	mem_basy_c = &vsi->sf_ref_fb[idx].fb.base_c;
+	mem_basy_c->size = vsi->buf_sz_c_bs +
 		    vsi->buf_len_sz_c;
 
-	if (mtk_vcodec_mem_alloc(inst->ctx, mem)) {
-		mtk_vcodec_err(inst, "Cannot allocate sf_ref_buf c_buf");
+	if (mtk_vcodec_mem_alloc(inst->ctx, mem_basy_c)) {
+		mtk_vcodec_err(inst, "Cannot allocate sf_ref_fb c_buf");
 		return -1;
 	}
+	vsi->sf_ref_fb[idx].used = 0;
+	vsi->sf_ref_fb[idx].idx = idx;
 
-	mtk_vcodec_debug(inst, "allocate sf_ref_buf c_buf = 0x%lx, %d",
-			mem->size,
-			inst->work_buf.frmbuf_width *
-			inst->work_buf.frmbuf_height / 2);
-
-	fb_dst_ptr->base_c.va = fb_src_ptr->base_c.va;
-	fb_dst_ptr->base_c.dma_addr = fb_src_ptr->base_c.dma_addr;
-	fb_dst_ptr->base_c.size = fb_src_ptr->base_c.size;
-
-	vsi->sf_ref_fb[i].used = 0;
-	vsi->sf_ref_fb[i].idx = i;
-
-	return i;
+	return idx;
 }
 
-bool vp9_realloc_work_buf(struct vdec_vp9_inst *inst)
+static bool vp9_alloc_work_buf(struct vdec_vp9_inst *inst)
 {
 	struct vdec_vp9_vsi *vsi = inst->vsi;
 	int result;
 	struct mtk_vcodec_mem *mem;
 
-	inst->frm_hdr.width = vsi->pic_w;
-	inst->frm_hdr.height = vsi->pic_h;
-	inst->work_buf.frmbuf_width = vsi->buf_w;
-	inst->work_buf.frmbuf_height = vsi->buf_h;
-
-	mtk_vcodec_debug(inst, "BUF CHG(%d): w/h/sb_w/sb_h=%d/%d/%d/%d",
-		     inst->frm_hdr.resolution_changed,
-		     inst->frm_hdr.width,
-		     inst->frm_hdr.height,
-		     inst->work_buf.frmbuf_width,
-		     inst->work_buf.frmbuf_height);
-
-	if ((inst->frm_hdr.width > 4096) ||
-		(inst->frm_hdr.height > 2304)) {
+	if ((vsi->pic_w > MAX_CODED_WIDTH) ||
+			(vsi->pic_h > MAX_CODED_HEIGHT)) {
 		mtk_vcodec_err(inst, "Invalid w/h %d/%d",
-			inst->frm_hdr.width,
-			inst->frm_hdr.height);
+									inst->frm_hdr.width,
+									inst->frm_hdr.height);
 		return false;
 	}
 
+	inst->frm_hdr.width = vsi->pic_w;
+	inst->frm_hdr.height = vsi->pic_h;
+	inst->work_buf.buf_w = vsi->buf_w;
+	inst->work_buf.buf_h = vsi->buf_h;
+
+	mtk_vcodec_debug(inst, "BUF CHG(%d): w/h/sb_w/sb_h=%d/%d/%d/%d",
+		     vsi->resolution_changed,
+		     inst->frm_hdr.width,
+		     inst->frm_hdr.height,
+		     inst->work_buf.buf_w,
+		     inst->work_buf.buf_h);
+
 	mem = &inst->work_buf.mv_buf;
-	/* Free First */
+
 	if (mem->va)
 		mtk_vcodec_mem_free(inst->ctx, mem);
-	/* Alloc Later */
-	mem->size = ((inst->work_buf.frmbuf_width / 64) *
-		    (inst->work_buf.frmbuf_height / 64) + 2) * 36 * 16;
+
+	mem->size = ((inst->work_buf.buf_w / 64) *
+		    (inst->work_buf.buf_h / 64) + 2) * 36 * 16;
 
 	result = mtk_vcodec_mem_alloc(inst->ctx, mem);
 	if (result) {
+		mem->size = 0;
 		mtk_vcodec_err(inst, "Cannot allocate mv_buf");
 		return false;
 	}
 	/* Set the va again */
-	vsi->mv_buf.va = (unsigned long)inst->work_buf.mv_buf.va;
-	vsi->mv_buf.pa = (unsigned long)inst->work_buf.mv_buf.dma_addr;
-	vsi->mv_buf.sz = (unsigned long)inst->work_buf.mv_buf.size;
+	vsi->mv_buf.va = (unsigned long)mem->va;
+	vsi->mv_buf.pa = (unsigned long)mem->dma_addr;
+	vsi->mv_buf.sz = (unsigned int)mem->size;
 
 	vp9_free_all_sf_ref_fb(inst);
 	vsi->sf_next_ref_fb_idx = vp9_get_sf_ref_fb(inst);
-	result = vp9_setup_buf(inst);
-	if (result) {
-		mtk_vcodec_err(inst, "Cannot vp9_setup_buf");
-		return false;
-	}
-
-	inst->frm_hdr.resolution_changed = true;
 
 	return true;
 }
@@ -440,8 +391,10 @@ static bool vp9_add_to_fb_disp_list(struct vdec_vp9_inst *inst,
 {
 	struct vdec_fb_node *node;
 
-	if (!fb)
+	if (!fb) {
+		mtk_vcodec_err(inst, "fb == NULL");
 		return false;
+	}
 
 	node = list_first_entry_or_null(&inst->available_fb_node_list,
 					struct vdec_fb_node, list);
@@ -449,15 +402,14 @@ static bool vp9_add_to_fb_disp_list(struct vdec_vp9_inst *inst,
 		node->fb = fb;
 		list_move_tail(&node->list, &inst->fb_disp_list);
 	} else {
-		mtk_vcodec_debug(inst, "List Full");
+		mtk_vcodec_err(inst, "No available fb node");
 		return false;
 	}
-
-	mtk_vcodec_debug_leave(inst);
 
 	return true;
 }
 
+/* If any buffer updating is signaled it should be done here. */
 static void vp9_swap_frm_bufs(struct vdec_vp9_inst *inst)
 {
 	struct vdec_vp9_vsi *vsi = inst->vsi;
@@ -475,22 +427,31 @@ static void vp9_swap_frm_bufs(struct vdec_vp9_inst *inst)
 	vsi->frm_bufs[vsi->new_fb_idx].ref_cnt--;
 
 	if (frm_to_show->fb != inst->cur_fb) {
+		/* This frame is show exist frame and no decode output
+		  * copy frame data from frm_to_show to current CAPTURE
+		  * buffer
+		  */
 		if ((frm_to_show->fb != NULL) &&
-			(inst->cur_fb->base_y.size >=
+				(inst->cur_fb->base_y.size >=
 				frm_to_show->fb->base_y.size)) {
 			memcpy((void *)inst->cur_fb->base_y.va,
-				(void *)frm_to_show->fb->base_y.va,
-				inst->work_buf.frmbuf_width *
-				inst->work_buf.frmbuf_height);
+					(void *)frm_to_show->fb->base_y.va,
+					inst->work_buf.buf_w *
+					inst->work_buf.buf_h);
 			memcpy((void *)inst->cur_fb->base_c.va,
-				(void *)frm_to_show->fb->base_c.va,
-				inst->work_buf.frmbuf_width *
-				inst->work_buf.frmbuf_height / 2);
+					(void *)frm_to_show->fb->base_c.va,
+					inst->work_buf.buf_w *
+					inst->work_buf.buf_h / 2);
 		} else {
-			mtk_vcodec_debug(inst,
-				"inst->cur_fb->base_y.size=%lx, frm_to_show->fb.base_y.size=%lx",
-				inst->cur_fb->base_y.size,
-				frm_to_show->fb->base_y.size);
+			/* After resolution change case, current CAPTURE buffer
+			  * may have less buffer size than frm_to_show buffer
+			  * size
+			  */
+			if (frm_to_show->fb != NULL)
+				mtk_vcodec_err(inst,
+					"inst->cur_fb->base_y.size=%lx, frm_to_show->fb.base_y.size=%lx",
+					inst->cur_fb->base_y.size,
+					frm_to_show->fb->base_y.size);
 		}
 		if (!vp9_is_sf_ref_fb(inst, inst->cur_fb)) {
 			if (inst->frm_hdr.show_frame)
@@ -503,6 +464,9 @@ static void vp9_swap_frm_bufs(struct vdec_vp9_inst *inst)
 		}
 	}
 
+	/* when ref_cnt ==0, move this fb to fb_free_list. v4l2 driver will
+	 * clean fb_free_list
+	 */
 	if (vsi->frm_bufs[vsi->new_fb_idx].ref_cnt == 0) {
 		if (!vp9_is_sf_ref_fb(
 			inst, vsi->frm_bufs[vsi->new_fb_idx].buf.fb)) {
@@ -512,11 +476,14 @@ static void vp9_swap_frm_bufs(struct vdec_vp9_inst *inst)
 			     vsi->frm_bufs[vsi->new_fb_idx].buf.fb->base_y.va);
 
 			vp9_add_to_fb_free_list(inst, fb);
-		} else
-			vp9_free_sf_ref_fb(
-				inst, vsi->frm_bufs[vsi->new_fb_idx].buf.fb);
+		} else {
+			vp9_free_sf_ref_fb(vsi->frm_bufs[vsi->new_fb_idx].buf.fb);
+		}
 	}
 
+	/* if this super frame and it is not last sub-frame, get next fb for
+	 * sub-frame decode
+	 */
 	if (vsi->sf_frm_cnt > 0 && vsi->sf_frm_idx != vsi->sf_frm_cnt - 1)
 		vsi->sf_next_ref_fb_idx = vp9_get_sf_ref_fb(inst);
 }
@@ -524,28 +491,25 @@ static void vp9_swap_frm_bufs(struct vdec_vp9_inst *inst)
 static bool vp9_wait_dec_end(struct vdec_vp9_inst *inst)
 {
 	struct mtk_vcodec_ctx *ctx = inst->ctx;
-	unsigned int irq_status;
 
 	mtk_vcodec_wait_for_done_ctx(inst->ctx,
 						MTK_INST_IRQ_RECEIVED,
 						WAIT_INTR_TIMEOUT_MS);
 
-	irq_status = ctx->irq_status;
-	mtk_vcodec_debug(inst, "isr return %x", irq_status);
-
-	if (irq_status & 0x10000)
+	if (ctx->irq_status & MTK_VDEC_IRQ_STATUS_DEC_SUCCESS)
 		return true;
 	else
 		return false;
 }
 
-struct vdec_vp9_inst *vp9_alloc_inst(void *ctx)
+static struct vdec_vp9_inst *vp9_alloc_inst(struct mtk_vcodec_ctx *ctx)
 {
 	int result;
 	struct mtk_vcodec_mem mem;
 	struct vdec_vp9_inst *inst;
 
-	mem.size = sizeof(struct vdec_vp9_inst) * 2;
+	memset(&mem, 0, sizeof(mem));
+	mem.size = sizeof(struct vdec_vp9_inst);
 	result = mtk_vcodec_mem_alloc(ctx, &mem);
 	if (result)
 		return NULL;
@@ -556,7 +520,7 @@ struct vdec_vp9_inst *vp9_alloc_inst(void *ctx)
 	return inst;
 }
 
-void vp9_free_handle(struct vdec_vp9_inst *inst)
+static void vp9_free_inst(struct vdec_vp9_inst *inst)
 {
 	struct mtk_vcodec_mem mem;
 
@@ -565,91 +529,36 @@ void vp9_free_handle(struct vdec_vp9_inst *inst)
 		mtk_vcodec_mem_free(inst->ctx, &mem);
 }
 
-bool vp9_init_proc(struct vdec_vp9_inst *inst,
-		   struct vdec_pic_info *pic_info)
-{
-	struct vdec_vp9_vsi *vsi = inst->vsi;
-
-	pic_info->pic_w = vsi->pic_w;
-	pic_info->pic_h = vsi->pic_h;
-	pic_info->buf_w = vsi->buf_w;
-	pic_info->buf_h = vsi->buf_h;
-
-	mtk_vcodec_debug(inst,
-			"(PicW,PicH,BufW,BufH) = (%d,%d,%d,%d) profile=%d",
-			pic_info->pic_w, pic_info->pic_h,
-			pic_info->buf_w, pic_info->buf_h, vsi->profile);
-
-	inst->frm_hdr.width = vsi->pic_w;
-	inst->frm_hdr.height = vsi->pic_h;
-	inst->work_buf.frmbuf_width = vsi->buf_w;
-	inst->work_buf.frmbuf_height = vsi->buf_h;
-
-	/* ----> HW limitation */
-	if ((inst->frm_hdr.width > 4096) ||
-		(inst->frm_hdr.height > 2304)) {
-		mtk_vcodec_err(inst, "Invalid w/h %d/%d",
-			inst->frm_hdr.width,
-			inst->frm_hdr.height);
-		return false;
-	}
-
-	if (vsi->profile > 0) {
-		mtk_vcodec_err(inst, "vp9_dec DO NOT support profile(%d) > 0",
-			     vsi->profile);
-		return false;
-	}
-	if ((inst->work_buf.frmbuf_width > 4096) ||
-	    (inst->work_buf.frmbuf_height > 2304)) {
-		mtk_vcodec_err(inst, "vp9_dec DO NOT support (W,H) = (%d,%d)",
-			     inst->work_buf.frmbuf_width,
-			     inst->work_buf.frmbuf_height);
-		return false;
-	}
-	/* <---- HW limitation */
-
-	return true;
-}
-
-bool vp9_check_proc(struct vdec_vp9_inst *inst)
+static bool vp9_decode_end_proc(struct vdec_vp9_inst *inst)
 {
 	struct vdec_vp9_vsi *vsi = inst->vsi;
 	bool ret = false;
 
-	mtk_vcodec_debug_enter(inst);
+	if (!vsi->show_existing_frame) {
+		ret = vp9_wait_dec_end(inst);
+		if (!ret) {
+			mtk_vcodec_err(inst, "Decode failed, Decode Timeout @[%d]",
+					   vsi->frm_num);
+			return false;
+		}
 
-	if (vsi->show_exist) {
-		vp9_swap_frm_bufs(inst);
-		mtk_vcodec_debug(inst, "Decode Ok @%d (show_exist)",
-				 vsi->frm_num);
-		vsi->frm_num++;
-		return true;
-	}
-
-	ret = vp9_wait_dec_end(inst);
-	if (!ret) {
-		mtk_vcodec_err(inst, "Decode NG, Decode Timeout @[%d]",
-			       vsi->frm_num);
-		return false;
-	}
-
-	if (vpu_dec_end(&inst->vpu)) {
-		mtk_vcodec_err(inst, "vp9_dec_vpu_end failed");
-		return false;
+		if (vpu_dec_end(&inst->vpu)) {
+			mtk_vcodec_err(inst, "vp9_dec_vpu_end failed");
+			return false;
+		}
+		mtk_vcodec_debug(inst, "Decode Ok @%d (%d/%d)", vsi->frm_num,
+					inst->frm_hdr.width, inst->frm_hdr.height);
+	} else {
+		mtk_vcodec_debug(inst, "Decode Ok @%d (show_existing_frame)",
+					vsi->frm_num);
 	}
 
 	vp9_swap_frm_bufs(inst);
-	mtk_vcodec_debug(inst, "Decode Ok @%d (%d/%d)", vsi->frm_num,
-		     inst->frm_hdr.width, inst->frm_hdr.height);
-
 	vsi->frm_num++;
-
-	mtk_vcodec_debug_leave(inst);
-
 	return true;
 }
 
-bool vp9_is_last_sub_frm(struct vdec_vp9_inst *inst)
+static bool vp9_is_last_sub_frm(struct vdec_vp9_inst *inst)
 {
 	struct vdec_vp9_vsi *vsi = inst->vsi;
 
@@ -659,8 +568,7 @@ bool vp9_is_last_sub_frm(struct vdec_vp9_inst *inst)
 	return false;
 }
 
-struct vdec_fb *vp9_rm_from_fb_disp_list(struct vdec_vp9_inst
-		*inst)
+static struct vdec_fb *vp9_rm_from_fb_disp_list(struct vdec_vp9_inst *inst)
 {
 	struct vdec_fb_node *node;
 	struct vdec_fb *fb = NULL;
@@ -679,13 +587,15 @@ struct vdec_fb *vp9_rm_from_fb_disp_list(struct vdec_vp9_inst
 	return fb;
 }
 
-bool vp9_add_to_fb_use_list(struct vdec_vp9_inst *inst,
+static bool vp9_add_to_fb_use_list(struct vdec_vp9_inst *inst,
 			    struct vdec_fb *fb)
 {
 	struct vdec_fb_node *node;
 
-	if (!fb)
+	if (!fb) {
+		mtk_vcodec_debug(inst, "fb == NULL");
 		return false;
+	}
 
 	node = list_first_entry_or_null(&inst->available_fb_node_list,
 					struct vdec_fb_node, list);
@@ -693,63 +603,32 @@ bool vp9_add_to_fb_use_list(struct vdec_vp9_inst *inst,
 		node->fb = fb;
 		list_move_tail(&node->list, &inst->fb_use_list);
 	} else {
-		mtk_vcodec_debug(inst, "No free fb node");
+		mtk_vcodec_err(inst, "No free fb node");
 		return false;
 	}
-
-	mtk_vcodec_debug_leave(inst);
-
 	return true;
 }
 
-struct vdec_fb *vp9_rm_from_fb_free_list(struct vdec_vp9_inst
-		*inst)
-{
-	struct vdec_fb_node *node;
-	struct vdec_fb *fb = NULL;
-
-	node = list_first_entry_or_null(&inst->fb_free_list,
-					struct vdec_fb_node, list);
-	if (node) {
-		fb = (struct vdec_fb *)node->fb;
-		fb->status |= FB_ST_FREE;
-		list_move_tail(&node->list, &inst->available_fb_node_list);
-		mtk_vcodec_debug(inst, "[FB] get free fb %p st=%d",
-				 node->fb, fb->status);
-	} else
-		mtk_vcodec_debug(inst, "[FB] there is no free fb");
-
-	mtk_vcodec_debug_leave(inst);
-
-	return fb;
-}
-
-bool vp9_fb_use_list_to_fb_free_list(struct vdec_vp9_inst *inst)
+static void vp9_reset(struct vdec_vp9_inst *inst)
 {
 	struct vdec_fb_node *node, *tmp;
 
 	list_for_each_entry_safe(node, tmp, &inst->fb_use_list, list)
 		list_move_tail(&node->list, &inst->fb_free_list);
 
-	mtk_vcodec_debug_leave(inst);
-	return true;
-}
-
-void vp9_reset(struct vdec_vp9_inst *inst)
-{
-	vp9_fb_use_list_to_fb_free_list(inst);
-
 	vp9_free_all_sf_ref_fb(inst);
 	inst->vsi->sf_next_ref_fb_idx = vp9_get_sf_ref_fb(inst);
 
 	if (vpu_dec_reset(&inst->vpu))
-		mtk_vcodec_debug(inst, "vp9_dec_vpu_reset failed");
+		mtk_vcodec_err(inst, "vp9_dec_vpu_reset failed");
 
-	if (vp9_setup_buf(inst))
-		mtk_vcodec_debug(inst, "vp9_setup_buf failed");
+	/* Set the va again, since vpu_dec_reset will clear mv_buf in vpu */
+	inst->vsi->mv_buf.va = (unsigned long)inst->work_buf.mv_buf.va;
+	inst->vsi->mv_buf.pa = (unsigned long)inst->work_buf.mv_buf.dma_addr;
+	inst->vsi->mv_buf.sz = (unsigned long)inst->work_buf.mv_buf.size;
 }
 
-static void init_list(struct vdec_vp9_inst *inst)
+static void init_all_fb_lists(struct vdec_vp9_inst *inst)
 {
 	int i;
 
@@ -758,7 +637,7 @@ static void init_list(struct vdec_vp9_inst *inst)
 	INIT_LIST_HEAD(&inst->fb_free_list);
 	INIT_LIST_HEAD(&inst->fb_disp_list);
 
-	for (i = 0; i < VP9_MAX_FRM_BUFF_NODE_NUM; i++) {
+	for (i = 0; i < ARRAY_SIZE(inst->dec_fb); i++) {
 		INIT_LIST_HEAD(&inst->dec_fb[i].list);
 		inst->dec_fb[i].fb = NULL;
 		list_add_tail(&inst->dec_fb[i].list,
@@ -768,7 +647,6 @@ static void init_list(struct vdec_vp9_inst *inst)
 
 static void get_pic_info(struct vdec_vp9_inst *inst, struct vdec_pic_info *pic)
 {
-
 	pic->y_bs_sz = inst->vsi->buf_sz_y_bs;
 	pic->c_bs_sz = inst->vsi->buf_sz_c_bs;
 	pic->y_len_sz = inst->vsi->buf_len_sz_y;
@@ -776,8 +654,8 @@ static void get_pic_info(struct vdec_vp9_inst *inst, struct vdec_pic_info *pic)
 
 	pic->pic_w = inst->frm_hdr.width;
 	pic->pic_h = inst->frm_hdr.height;
-	pic->buf_w = inst->work_buf.frmbuf_width;
-	pic->buf_h = inst->work_buf.frmbuf_height;
+	pic->buf_w = inst->work_buf.buf_w;
+	pic->buf_h = inst->work_buf.buf_h;
 
 	mtk_vcodec_debug(inst, "pic(%d, %d), buf(%d, %d)",
 		 pic->pic_w, pic->pic_h, pic->buf_w, pic->buf_h);
@@ -787,7 +665,6 @@ static void get_pic_info(struct vdec_vp9_inst *inst, struct vdec_pic_info *pic)
 
 static void get_disp_fb(struct vdec_vp9_inst *inst, struct vdec_fb **out_fb)
 {
-	mtk_vcodec_debug_enter(inst);
 
 	*out_fb = vp9_rm_from_fb_disp_list(inst);
 	if (*out_fb)
@@ -808,7 +685,6 @@ static void get_free_fb(struct vdec_vp9_inst *inst, struct vdec_fb **out_fb)
 		mtk_vcodec_debug(inst, "[FB] get free fb %p st=%d",
 				 node->fb, fb->status);
 	} else {
-		fb = NULL;
 		mtk_vcodec_debug(inst, "[FB] there is no free fb");
 	}
 
@@ -821,19 +697,16 @@ static int vdec_vp9_deinit(unsigned long h_vdec)
 	struct mtk_vcodec_mem *mem;
 	int ret = 0;
 
-	mtk_vcodec_debug_enter(inst);
-
-	if (vpu_dec_deinit(&inst->vpu)) {
-		mtk_vcodec_err(inst, "[E]vpu_dec_deinit");
-		ret = -EINVAL;
-	}
+	ret = vpu_dec_deinit(&inst->vpu);
+	if (ret)
+		mtk_vcodec_err(inst, "vpu_dec_deinit failed");
 
 	mem = &inst->work_buf.mv_buf;
 	if (mem->va)
 		mtk_vcodec_mem_free(inst->ctx, mem);
 
 	vp9_free_all_sf_ref_fb(inst);
-	vp9_free_handle(inst);
+	vp9_free_inst(inst);
 
 	return ret;
 }
@@ -856,19 +729,18 @@ static int vdec_vp9_init(struct mtk_vcodec_ctx *ctx, unsigned long *h_vdec)
 	inst->vpu.handler = vpu_dec_ipi_handler;
 
 	if (vpu_dec_init(&inst->vpu)) {
-		mtk_vcodec_err(inst, "[E]vp9_dec_vpu_init - %d",
-						inst->vpu.inst_addr);
+		mtk_vcodec_err(inst, "vp9_dec_vpu_init failed");
 		goto err_deinit_inst;
 	}
 
 	inst->vsi = (struct vdec_vp9_vsi *)inst->vpu.vsi;
-	init_list(inst);
+	init_all_fb_lists(inst);
 
 	(*h_vdec) = (unsigned long)inst;
 	return 0;
 
 err_deinit_inst:
-	vp9_free_handle(inst);
+	vp9_free_inst(inst);
 
 	return -EINVAL;
 }
@@ -878,12 +750,9 @@ static int vdec_vp9_decode(unsigned long h_vdec, struct mtk_vcodec_mem *bs,
 {
 	int ret = 0;
 	struct vdec_vp9_inst *inst = (struct vdec_vp9_inst *)h_vdec;
-	struct vdec_vp9_frm_hdr *frm_hdr = &inst->frm_hdr;
 	struct vdec_vp9_vsi *vsi = inst->vsi;
-	unsigned int data[3];
+	u32 data[3];
 	int i;
-
-	mtk_vcodec_debug_enter(inst);
 
 	*res_chg = false;
 
@@ -893,16 +762,15 @@ static int vdec_vp9_decode(unsigned long h_vdec, struct mtk_vcodec_mem *bs,
 		return ret;
 	}
 
-	if (bs != NULL)
-		mtk_vcodec_debug(inst, "Input BS Size = %ld", bs->size);
+	if (bs == NULL) {
+		mtk_vcodec_err(inst, "bs == NULL");
+		return -EINVAL;;
+	}
 
-	memcpy((void *)inst + sizeof(*inst), (void *)inst,
-	       sizeof(*inst));
+	mtk_vcodec_debug(inst, "Input BS Size = %ld", bs->size);
 
 	while (1) {
-		struct vdec_fb *cur_fb;
-
-		frm_hdr->resolution_changed = false;
+		struct vdec_fb *cur_fb = NULL;
 
 		data[0] = *((unsigned int *)bs->va);
 		data[1] = *((unsigned int *)(bs->va + 4));
@@ -920,7 +788,7 @@ static int vdec_vp9_decode(unsigned long h_vdec, struct mtk_vcodec_mem *bs,
 			unsigned char *sf_bs_dst;
 
 			sf_bs_sz = bs->size > VP9_SUPER_FRAME_BS_SZ ?
-				VP9_SUPER_FRAME_BS_SZ : bs->size;
+								VP9_SUPER_FRAME_BS_SZ : bs->size;
 			sf_bs_off = VP9_SUPER_FRAME_BS_SZ - sf_bs_sz;
 			sf_bs_src = bs->va + bs->size - sf_bs_sz;
 			sf_bs_dst = vsi->sf_bs_buf + sf_bs_off;
@@ -939,12 +807,11 @@ static int vdec_vp9_decode(unsigned long h_vdec, struct mtk_vcodec_mem *bs,
 		ret = vpu_dec_start(&inst->vpu, data, 3);
 		if (ret) {
 			mtk_vcodec_err(inst, "vpu_dec_start failed");
-			ret = -EINVAL;
 			goto DECODE_ERROR;
 		}
 
 		if (vsi->resolution_changed) {
-			if (!vp9_realloc_work_buf(inst)) {
+			if (!vp9_alloc_work_buf(inst)) {
 				ret = -EINVAL;
 				goto DECODE_ERROR;
 			}
@@ -968,18 +835,19 @@ static int vdec_vp9_decode(unsigned long h_vdec, struct mtk_vcodec_mem *bs,
 		mtk_vcodec_debug(inst, "[#pic %d]", vsi->frm_num);
 
 		/* the same as VP9_SKIP_FRAME */
-		inst->frm_hdr.show_frame = vsi->show_frm;
+		inst->frm_hdr.show_frame = vsi->show_frame;
 
-		if (vsi->show_exist)
+		if (vsi->show_existing_frame)
 			mtk_vcodec_debug(inst,
 				"drv->new_fb_idx=%d, drv->frm_to_show=%d",
 				vsi->new_fb_idx, vsi->frm_to_show);
 
-		if (vsi->show_exist && (vsi->frm_to_show <
-					VP9_MAX_FRM_BUFF_NUM)) {
-			mtk_vcodec_debug(inst,
+		if (vsi->show_existing_frame && (vsi->frm_to_show <
+					VP9_MAX_FRM_BUF_NUM)) {
+			mtk_vcodec_err(inst,
 				"Skip Decode drv->new_fb_idx=%d, drv->frm_to_show=%d",
 				vsi->new_fb_idx, vsi->frm_to_show);
+
 			vp9_ref_cnt_fb(inst, &vsi->new_fb_idx,
 							vsi->frm_to_show);
 			ret = -EINVAL;
@@ -987,46 +855,24 @@ static int vdec_vp9_decode(unsigned long h_vdec, struct mtk_vcodec_mem *bs,
 		}
 
 		/* VPU assign the buffer pointer in its address space,
-		  * reassign here
-		  */
-		for (i = 0; i < REFS_PER_FRAME; i++) {
+		 * reassign here
+		 */
+		for (i = 0; i < ARRAY_SIZE(vsi->frm_refs); i++) {
 			unsigned int idx = vsi->frm_refs[i].idx;
 
 			vsi->frm_refs[i].buf = &vsi->frm_bufs[idx].buf;
 		}
 
-		if (frm_hdr->resolution_changed) {
-			unsigned int width = inst->frm_hdr.width;
-			unsigned int height = inst->frm_hdr.height;
-			unsigned int frmbuf_width =
-				inst->work_buf.frmbuf_width;
-			unsigned int frmbuf_height =
-				inst->work_buf.frmbuf_height;
-			struct mtk_vcodec_mem tmp_buf =	inst->work_buf.mv_buf;
-			struct vp9_dram_buf tmp_buf2 = vsi->mv_buf;
-			struct vdec_fb tmp_buf3 =
-				inst->work_buf.sf_ref_buf[0];
-
-			memcpy((void *)inst, (void *)inst + sizeof(*inst),
-			       sizeof(*inst));
-
-			inst->frm_hdr.width = width;
-			inst->frm_hdr.height = height;
-			inst->work_buf.frmbuf_width = frmbuf_width;
-			inst->work_buf.frmbuf_height = frmbuf_height;
-			inst->work_buf.mv_buf = tmp_buf;
-			inst->vsi->mv_buf = tmp_buf2;
-			inst->work_buf.sf_ref_buf[0] = tmp_buf3;
-
+		if (vsi->resolution_changed) {
 			*res_chg = true;
 			mtk_vcodec_debug(inst, "VDEC_ST_RESOLUTION_CHANGED");
-			vp9_add_to_fb_free_list(inst, fb);
+
 			ret = 0;
 			goto DECODE_ERROR;
 		}
 
-		if (vp9_check_proc(inst) != true) {
-			mtk_vcodec_err(inst, "vp9_check_proc");
+		if (vp9_decode_end_proc(inst) != true) {
+			mtk_vcodec_err(inst, "vp9_decode_end_proc");
 			ret = -EINVAL;
 			goto DECODE_ERROR;
 		}
@@ -1035,19 +881,12 @@ static int vdec_vp9_decode(unsigned long h_vdec, struct mtk_vcodec_mem *bs,
 		if (vp9_is_last_sub_frm(inst))
 			break;
 
-		/* for resolution change backup */
-		memcpy((void *)inst + sizeof(*inst), (void *)inst,
-		       sizeof(*inst));
 	}
 	inst->frm_cnt++;
-
-	mtk_vcodec_debug_leave(inst);
 
 DECODE_ERROR:
 	if (ret < 0)
 		vp9_add_to_fb_free_list(inst, fb);
-
-	mtk_vcodec_debug_leave(inst);
 
 	return ret;
 }
@@ -1079,13 +918,13 @@ static int vdec_vp9_get_param(unsigned long h_vdec,
 		get_pic_info(inst, out);
 		break;
 	case GET_PARAM_DPB_SIZE:
-		*((unsigned int *)out) = 9;
+		*((unsigned int *)out) = MAX_VP9_DPB_SIZE;
 		break;
 	case GET_PARAM_CROP_INFO:
 		get_crop_info(inst, out);
 		break;
 	default:
-		mtk_vcodec_err(inst, "not support type %d", type);
+		mtk_vcodec_err(inst, "not supported param type %d", type);
 		ret = -EINVAL;
 		break;
 	}
@@ -1099,6 +938,8 @@ static struct vdec_common_if vdec_vp9_if = {
 	vdec_vp9_get_param,
 	vdec_vp9_deinit,
 };
+
+struct vdec_common_if *get_vp9_dec_comm_if(void);
 
 struct vdec_common_if *get_vp9_dec_comm_if(void)
 {

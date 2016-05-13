@@ -13,6 +13,7 @@
 * GNU General Public License for more details.
 */
 
+#include <linux/slab.h>
 #include <linux/interrupt.h>
 #include <linux/irq.h>
 #include <linux/module.h>
@@ -132,7 +133,7 @@ static int fops_vcodec_open(struct file *file)
 
 	ctx = kzalloc(sizeof(*ctx), GFP_KERNEL);
 	if (!ctx)
-		ret = -ENOMEM;
+		return -ENOMEM;
 
 	mutex_lock(&dev->dev_mutex);
 	/*
@@ -156,8 +157,8 @@ static int fops_vcodec_open(struct file *file)
 	}
 	ctx->m2m_ctx = v4l2_m2m_ctx_init(dev->m2m_dev_enc, ctx,
 				&mtk_vcodec_enc_queue_init);
-	if (IS_ERR(ctx->m2m_ctx)) {
-		ret = PTR_ERR(ctx->m2m_ctx);
+	if (IS_ERR((__force void *)ctx->m2m_ctx)) {
+		ret = PTR_ERR((__force void *)ctx->m2m_ctx);
 		mtk_v4l2_err("Failed to v4l2_m2m_ctx_init() (%d)",
 				ret);
 		goto err_m2m_ctx_init;
@@ -277,10 +278,10 @@ static int mtk_vcodec_probe(struct platform_device *pdev)
 			goto err_res;
 		}
 		dev->reg_base[i] = devm_ioremap_resource(&pdev->dev, res);
-		if (IS_ERR(dev->reg_base[i])) {
+		if (IS_ERR((__force void *)dev->reg_base[i])) {
 			dev_err(&pdev->dev,
 				"devm_ioremap_resource %d failed.", i);
-			ret = PTR_ERR(dev->reg_base[i]);
+			ret = PTR_ERR((__force void *)dev->reg_base[i]);
 			goto err_res;
 		}
 		mtk_v4l2_debug(2, "reg[%d] base=0x%p", i, dev->reg_base[i]);
@@ -347,6 +348,8 @@ static int mtk_vcodec_probe(struct platform_device *pdev)
 	vfd_enc->lock           = &dev->dev_mutex;
 	vfd_enc->v4l2_dev       = &dev->v4l2_dev;
 	vfd_enc->vfl_dir        = VFL_DIR_M2M;
+	vfd_enc->device_caps	= V4L2_CAP_VIDEO_M2M_MPLANE |
+					V4L2_CAP_STREAMING;
 
 	snprintf(vfd_enc->name, sizeof(vfd_enc->name), "%s",
 		 MTK_VCODEC_ENC_NAME);
@@ -355,17 +358,17 @@ static int mtk_vcodec_probe(struct platform_device *pdev)
 	platform_set_drvdata(pdev, dev);
 
 	dev->alloc_ctx = vb2_dma_contig_init_ctx(&pdev->dev);
-	if (IS_ERR(dev->alloc_ctx)) {
-		dev->alloc_ctx = NULL;
+	if (IS_ERR((__force void *)dev->alloc_ctx)) {
 		mtk_v4l2_err("Failed to alloc vb2 dma context 0");
-		ret = PTR_ERR(dev->alloc_ctx);
+		ret = PTR_ERR((__force void *)dev->alloc_ctx);
+		dev->alloc_ctx = NULL;
 		goto err_vb2_ctx_init;
 	}
 
 	dev->m2m_dev_enc = v4l2_m2m_init(&mtk_venc_m2m_ops);
-	if (IS_ERR(dev->m2m_dev_enc)) {
+	if (IS_ERR((__force void *)dev->m2m_dev_enc)) {
 		mtk_v4l2_err("Failed to init mem2mem enc device");
-		ret = PTR_ERR(dev->m2m_dev_enc);
+		ret = PTR_ERR((__force void *)dev->m2m_dev_enc);
 		goto err_enc_mem_init;
 	}
 

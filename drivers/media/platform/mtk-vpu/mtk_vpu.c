@@ -11,7 +11,6 @@
 * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 * GNU General Public License for more details.
 */
-#include <linux/bootmem.h>
 #include <linux/clk.h>
 #include <linux/debugfs.h>
 #include <linux/firmware.h>
@@ -32,7 +31,7 @@
  * related to video codec, scaling and color format converting.
  * VPU interfaces with other blocks by share memory and interrupt.
  **/
-#define VPU_FW_VERSION		"0.2.15"
+#define VPU_FW_VERSION		"0.2.16"
 
 #define INIT_TIMEOUT_MS		2000U
 #define IPI_TIMEOUT_MS		2000U
@@ -91,7 +90,7 @@ enum vpu_fw_type {
  */
 struct vpu_mem {
 	void *va;
-	phys_addr_t pa;
+	dma_addr_t pa;
 };
 
 /**
@@ -238,7 +237,7 @@ static inline bool vpu_running(struct mtk_vpu *vpu)
 	return vpu_cfg_readl(vpu, VPU_RESET) & BIT(0);
 }
 
-void vpu_clock_disable(struct mtk_vpu *vpu)
+static void vpu_clock_disable(struct mtk_vpu *vpu)
 {
 	/* Disable VPU watchdog */
 	mutex_lock(&vpu->vpu_mutex);
@@ -251,7 +250,7 @@ void vpu_clock_disable(struct mtk_vpu *vpu)
 	clk_disable(vpu->clk);
 }
 
-int vpu_clock_enable(struct mtk_vpu *vpu)
+static int vpu_clock_enable(struct mtk_vpu *vpu)
 {
 	int ret;
 
@@ -380,6 +379,7 @@ static void vpu_wdt_reset_func(struct work_struct *ws)
 	}
 	mutex_lock(&vpu->vpu_mutex);
 	vpu_cfg_writel(vpu, 0x0, VPU_RESET);
+	vpu->fw_loaded = false;
 	mutex_unlock(&vpu->vpu_mutex);
 	vpu_clock_disable(vpu);
 
@@ -396,12 +396,14 @@ int vpu_wdt_reg_handler(struct platform_device *pdev,
 			void *priv, enum rst_id id)
 {
 	struct mtk_vpu *vpu = platform_get_drvdata(pdev);
-	struct vpu_wdt_handler *handler = vpu->wdt.handler;
+	struct vpu_wdt_handler *handler;
 
 	if (!vpu) {
-		dev_err(vpu->dev, "vpu device in not ready\n");
+		dev_err(&pdev->dev, "vpu device in not ready\n");
 		return -EPROBE_DEFER;
 	}
+
+	handler = vpu->wdt.handler;
 
 	if (id >= 0 && id < VPU_RST_MAX && wdt_reset) {
 		dev_dbg(vpu->dev, "wdt register id %d\n", id);
@@ -445,7 +447,8 @@ void *vpu_mapping_dm_addr(struct platform_device *pdev,
 	}
 
 	if (dtcm_dmem_addr < VPU_DTCM_SIZE)
-		return dtcm_dmem_addr + vpu->reg.tcm + VPU_DTCM_OFFSET;
+		return (__force void *)(dtcm_dmem_addr + vpu->reg.tcm +
+					VPU_DTCM_OFFSET);
 
 	return vpu->extmem[D_FW].va + (dtcm_dmem_addr - VPU_DTCM_SIZE);
 }
@@ -507,13 +510,13 @@ static int load_requested_vpu(struct mtk_vpu *vpu,
 
 	/* handle extended firmware size */
 	if (dl_size > tcm_size) {
-		dev_dbg(vpu->dev, "fw size %lx > limited fw size %lx\n",
+		dev_dbg(vpu->dev, "fw size %zu > limited fw size %zu\n",
 			dl_size, tcm_size);
 		extra_fw_size = dl_size - tcm_size;
-		dev_dbg(vpu->dev, "extra_fw_size %lx\n", extra_fw_size);
+		dev_dbg(vpu->dev, "extra_fw_size %zu\n", extra_fw_size);
 		dl_size = tcm_size;
 	}
-	dest = vpu->reg.tcm;
+	dest = (__force void *)vpu->reg.tcm;
 	if (fw_type == D_FW)
 		dest += VPU_DTCM_OFFSET;
 	memcpy(dest, vpu_fw->data, dl_size);
@@ -591,7 +594,7 @@ int vpu_load_firmware(struct platform_device *pdev)
 	struct mtk_vpu *vpu = platform_get_drvdata(pdev);
 	struct device *dev = &pdev->dev;
 	struct vpu_run *run = &vpu->run;
-	const struct firmware *vpu_fw;
+	const struct firmware *vpu_fw = NULL;
 	int ret;
 
 	if (!pdev) {
@@ -599,8 +602,12 @@ int vpu_load_firmware(struct platform_device *pdev)
 		return -EINVAL;
 	}
 
-	if (vpu->fw_loaded)
+	mutex_lock(&vpu->vpu_mutex);
+	if (vpu->fw_loaded) {
+		mutex_unlock(&vpu->vpu_mutex);
 		return 0;
+	}
+	mutex_unlock(&vpu->vpu_mutex);
 
 	ret = vpu_clock_enable(vpu);
 	if (ret) {
@@ -626,6 +633,7 @@ int vpu_load_firmware(struct platform_device *pdev)
 		goto OUT_LOAD_FW;
 	}
 
+	vpu->fw_loaded = true;
 	/* boot up vpu */
 	vpu_cfg_writel(vpu, 0x1, VPU_RESET);
 
@@ -653,7 +661,6 @@ int vpu_load_firmware(struct platform_device *pdev)
 	}
 
 	ret = 0;
-	vpu->fw_loaded = true;
 	dev_info(dev, "vpu is ready. Fw version %s\n", run->fw_ver);
 
 OUT_LOAD_FW:
@@ -786,7 +793,8 @@ static int vpu_ipi_init(struct mtk_vpu *vpu)
 	vpu_cfg_writel(vpu, 0x0, VPU_TO_HOST);
 
 	/* shared buffer initialization */
-	vpu->recv_buf = (struct share_obj *)(vpu->reg.tcm + VPU_DTCM_OFFSET);
+	vpu->recv_buf = (__force struct share_obj *)(vpu->reg.tcm +
+						     VPU_DTCM_OFFSET);
 	vpu->send_buf = vpu->recv_buf + 1;
 	memset(vpu->recv_buf, 0, sizeof(struct share_obj));
 	memset(vpu->send_buf, 0, sizeof(struct share_obj));
@@ -845,16 +853,16 @@ static int mtk_vpu_probe(struct platform_device *pdev)
 	vpu->dev = &pdev->dev;
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "tcm");
 	vpu->reg.tcm = devm_ioremap_resource(dev, res);
-	if (IS_ERR(vpu->reg.tcm)) {
+	if (IS_ERR((__force void *)vpu->reg.tcm)) {
 		dev_err(dev, "devm_ioremap_resource vpu tcm failed.\n");
-		return PTR_ERR(vpu->reg.tcm);
+		return PTR_ERR((__force void *)vpu->reg.tcm);
 	}
 
 	res = platform_get_resource_byname(pdev, IORESOURCE_MEM, "cfg_reg");
 	vpu->reg.cfg = devm_ioremap_resource(dev, res);
-	if (IS_ERR(vpu->reg.cfg)) {
+	if (IS_ERR((__force void *)vpu->reg.cfg)) {
 		dev_err(dev, "devm_ioremap_resource vpu cfg failed.\n");
-		return PTR_ERR(vpu->reg.cfg);
+		return PTR_ERR((__force void *)vpu->reg.cfg);
 	}
 
 	/* Get VPU clock */
@@ -914,7 +922,7 @@ static int mtk_vpu_probe(struct platform_device *pdev)
 	/* Set PTCM to 96K and DTCM to 32K */
 	vpu_cfg_writel(vpu, 0x2, VPU_TCM_CFG);
 
-	vpu->enable_4GB = !!(max_pfn > (0xffffffffUL >> PAGE_SHIFT));
+	vpu->enable_4GB = !!(totalram_pages > (SZ_2G >> PAGE_SHIFT));
 	dev_info(dev, "4GB mode %u\n", vpu->enable_4GB);
 
 	if (vpu->enable_4GB) {

@@ -30,6 +30,10 @@
 #include "mtk_mdp_core.h"
 #include "mtk_vpu.h"
 
+int mtk_mdp_dbg_level;
+EXPORT_SYMBOL(mtk_mdp_dbg_level);
+
+module_param(mtk_mdp_dbg_level, int, S_IRUGO | S_IWUSR);
 
 static const struct mtk_mdp_fmt mtk_mdp_formats[] = {
 	{
@@ -143,6 +147,9 @@ int mtk_mdp_try_fmt_mplane(struct mtk_mdp_ctx *ctx, struct v4l2_format *f)
 	u32 min_w, min_h, tmp_w, tmp_h;
 	int i;
 
+	mtk_mdp_dbg(2, "type:%d, wxh:%dx%d", f->type, pix_mp->width,
+		    pix_mp->height);
+
 	fmt = mtk_mdp_find_fmt(&pix_mp->pixelformat, 0, f->type);
 	if (!fmt) {
 		dev_err(&ctx->mdp_dev->pdev->dev,
@@ -177,6 +184,8 @@ int mtk_mdp_try_fmt_mplane(struct mtk_mdp_ctx *ctx, struct v4l2_format *f)
 		min_h = variant->pix_min->target_rot_dis_h;
 	}
 
+	mtk_mdp_dbg(2, "mod x,y:%d,%d, max:%dx%d", mod_x, mod_y, max_w,
+		    max_h);
 	/*
 	 * To check if image size is modified to adjust parameter against
 	 * hardware abilities
@@ -187,6 +196,9 @@ int mtk_mdp_try_fmt_mplane(struct mtk_mdp_ctx *ctx, struct v4l2_format *f)
 	mtk_mdp_bound_align_image(&pix_mp->width, min_w, max_w, mod_x,
 				  &pix_mp->height, min_h, max_h, mod_y);
 
+	if (tmp_w != pix_mp->width || tmp_h != pix_mp->height)
+		mtk_mdp_dbg(1, "size change:%dx%d to %dx%d", tmp_w, tmp_h,
+			    pix_mp->width, pix_mp->height);
 	pix_mp->num_planes = fmt->num_planes;
 
 	if (pix_mp->width >= 1280) /* HD */
@@ -201,6 +213,8 @@ int mtk_mdp_try_fmt_mplane(struct mtk_mdp_ctx *ctx, struct v4l2_format *f)
 		pix_mp->plane_fmt[i].bytesperline = bpl;
 		if (pix_mp->plane_fmt[i].sizeimage < sizeimage)
 			pix_mp->plane_fmt[i].sizeimage = sizeimage;
+		mtk_mdp_dbg(2, "[%d] bpl:%d, sizeimage:%d", i, bpl,
+			    pix_mp->plane_fmt[i].sizeimage);
 	}
 
 	return 0;
@@ -211,6 +225,8 @@ int mtk_mdp_g_fmt_mplane(struct mtk_mdp_ctx *ctx, struct v4l2_format *f)
 	struct mtk_mdp_frame *frame;
 	struct v4l2_pix_format_mplane *pix_mp;
 	int i;
+
+	mtk_mdp_dbg(2, "type:%d", f->type);
 
 	frame = mtk_mdp_ctx_get_frame(ctx, f->type);
 	if (IS_ERR(frame))
@@ -230,6 +246,10 @@ int mtk_mdp_g_fmt_mplane(struct mtk_mdp_ctx *ctx, struct v4l2_format *f)
 			frame->fmt->depth[i]) / 8;
 		pix_mp->plane_fmt[i].sizeimage =
 			 pix_mp->plane_fmt[i].bytesperline * frame->f_height;
+
+		mtk_mdp_dbg(2, "[%d] bpl:%d, sizeimage:%d", i,
+			    pix_mp->plane_fmt[i].bytesperline,
+			    pix_mp->plane_fmt[i].sizeimage);
 	}
 
 	return 0;
@@ -238,6 +258,9 @@ int mtk_mdp_g_fmt_mplane(struct mtk_mdp_ctx *ctx, struct v4l2_format *f)
 void mtk_mdp_check_crop_change(u32 tmp_w, u32 tmp_h, u32 *w, u32 *h)
 {
 	if (tmp_w != *w || tmp_h != *h) {
+		mtk_mdp_dbg(1, "size change:%dx%d to %dx%d",
+			    *w, *h, tmp_w, tmp_h);
+
 		*w = tmp_w;
 		*h = tmp_h;
 	}
@@ -256,6 +279,8 @@ int mtk_mdp_try_crop(struct mtk_mdp_ctx *ctx, struct v4l2_crop *cr)
 			"doesn't support negative values for top & left\n");
 		return -EINVAL;
 	}
+
+	mtk_mdp_dbg(2, "set wxh:%dx%d", cr->c.width, cr->c.height);
 
 	if (cr->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
 		f = &ctx->d_frame;
@@ -299,6 +324,9 @@ int mtk_mdp_try_crop(struct mtk_mdp_ctx *ctx, struct v4l2_crop *cr)
 		}
 	}
 
+	mtk_mdp_dbg(2, "mod x,y:%d,%d, min:%dx%d, tmp:%dx%d", mod_x, mod_y,
+		    min_w, min_h, tmp_w, tmp_h);
+
 	v4l_bound_align_image(&tmp_w, min_w, max_w, mod_x,
 			      &tmp_h, min_h, max_h, mod_y, 0);
 
@@ -322,6 +350,9 @@ int mtk_mdp_try_crop(struct mtk_mdp_ctx *ctx, struct v4l2_crop *cr)
 		cr->c.left & 1)
 			cr->c.left -= 1;
 
+	mtk_mdp_dbg(2, "align l,t,w,h:%d,%d,%d,%d, max:%dx%d",
+		    cr->c.left, cr->c.top, cr->c.width,
+		    cr->c.height, max_w, max_h);
 	return 0;
 }
 
@@ -454,13 +485,16 @@ void mtk_mdp_ctrls_delete(struct mtk_mdp_ctx *ctx)
 int mtk_mdp_prepare_addr(struct mtk_mdp_ctx *ctx, struct vb2_buffer *vb,
 			 struct mtk_mdp_frame *frame, struct mtk_mdp_addr *addr)
 {
-	int ret = 0;
 	u32 pix_size;
 
 	if ((vb == NULL) || (frame == NULL))
 		return -EINVAL;
 
 	pix_size = frame->f_width * frame->f_height;
+
+	mtk_mdp_dbg(3, "planes:%d, comp:%d, size:%d",
+		    frame->fmt->num_planes, frame->fmt->num_comp, pix_size);
+
 	addr->y = vb2_dma_contig_plane_dma_addr(vb, 0);
 
 	if (frame->fmt->num_planes == 1) {
@@ -490,7 +524,6 @@ int mtk_mdp_prepare_addr(struct mtk_mdp_ctx *ctx, struct vb2_buffer *vb,
 			return -EINVAL;
 		}
 	} else {
-
 		if (frame->fmt->num_planes >= 2)
 			addr->cb = vb2_dma_contig_plane_dma_addr(vb, 1);
 
@@ -498,7 +531,10 @@ int mtk_mdp_prepare_addr(struct mtk_mdp_ctx *ctx, struct vb2_buffer *vb,
 			addr->cr = vb2_dma_contig_plane_dma_addr(vb, 2);
 	}
 
-	return ret;
+	mtk_mdp_dbg(3, "addr y,cb,cr:%p,%p,%p",
+		    (void *)addr->y, (void *)addr->cb, (void *)addr->cr);
+
+	return 0;
 }
 
 int mtk_mdp_process_done(void *priv, int vb_state)

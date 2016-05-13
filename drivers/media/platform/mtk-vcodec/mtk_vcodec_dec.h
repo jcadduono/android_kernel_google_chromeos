@@ -19,6 +19,8 @@
 #include <media/videobuf2-core.h>
 #include <media/videobuf2-v4l2.h>
 
+#define MTK_VDEC_IRQ_STATUS_DEC_SUCCESS        0x10000
+
 /**
  * struct vdec_fb  - decoder frame buffer
  * @base_y	: Y plane memory info
@@ -32,26 +34,24 @@ struct vdec_fb {
 };
 
 /**
- * struct mtk_video_buf - Private data related to each VB2 buffer.
+ * struct mtk_video_dec_buf - Private data related to each VB2 buffer.
  * @b:			VB2 buffer
  * @list:			link list
  * @used:		Output buffer contain decoded frame data
  * @ready_to_display:	Output buffer not display yet
- * @nonrealdisplay:	Output buffer is not display frame
  * @queued_in_vb2:	Output buffer is queue in vb2
  * @queued_in_v4l2:	Output buffer is in v4l2
  * @lastframe:		Intput buffer is last buffer - EOS
  * @frame_buffer:		Decode status of output buffer
  * @lock:			V4L2 and decode thread should get mutex
- *			before r/w info in mtk_video_buf
+ *			before r/w info in mtk_video_dec_buf
  */
-struct mtk_video_buf {
+struct mtk_video_dec_buf {
 	struct vb2_v4l2_buffer	vb;
 	struct list_head	list;
 
 	bool	used;
 	bool	ready_to_display;
-	bool	nonrealdisplay;
 	bool	queued_in_vb2;
 	bool	queued_in_v4l2;
 	bool	lastframe;
@@ -71,11 +71,11 @@ extern const struct v4l2_m2m_ops mtk_vdec_m2m_ops;
  */
 int mtk_vdec_unlock(struct mtk_vcodec_ctx *ctx);
 int mtk_vdec_lock(struct mtk_vcodec_ctx *ctx);
-int m2mctx_vdec_queue_init(void *priv, struct vb2_queue *src_vq,
+int mtk_vcodec_dec_queue_init(void *priv, struct vb2_queue *src_vq,
 			   struct vb2_queue *dst_vq);
 void mtk_vcodec_dec_set_default_params(struct mtk_vcodec_ctx *ctx);
 void mtk_vcodec_vdec_release(struct mtk_vcodec_ctx *ctx);
-int mtk_vdec_ctrls_setup(struct mtk_vcodec_ctx *ctx);
-void mtk_vdec_ctrls_free(struct mtk_vcodec_ctx *ctx);
+int mtk_vcodec_dec_ctrls_setup(struct mtk_vcodec_ctx *ctx);
+
 
 #endif /* _MTK_VCODEC_DEC_H_ */
