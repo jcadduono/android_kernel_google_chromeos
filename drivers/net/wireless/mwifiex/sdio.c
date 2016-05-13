@@ -2488,11 +2488,11 @@ static void mwifiex_sdio_work(struct work_struct *work)
 	if (test_and_clear_bit(MWIFIEX_IFACE_WORK_FW_DUMP,
 			       &iface_work_flags))
 		mwifiex_sdio_fw_dump_work(save_adapter);
+	if (test_and_clear_bit(MWIFIEX_IFACE_WORK_READ_REGS, &iface_work_flags))
+		mwifiex_sdio_read_regs_work(save_adapter);
 	if (test_and_clear_bit(MWIFIEX_IFACE_WORK_CARD_RESET,
 			       &iface_work_flags))
 		mwifiex_sdio_card_reset_work(save_adapter);
-	if (test_and_clear_bit(MWIFIEX_IFACE_WORK_READ_REGS, &iface_work_flags))
-		mwifiex_sdio_read_regs_work(save_adapter);
 }
 
 static DECLARE_WORK(sdio_work, mwifiex_sdio_work);
