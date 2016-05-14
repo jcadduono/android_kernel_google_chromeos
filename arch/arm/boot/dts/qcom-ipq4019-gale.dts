@@ -531,6 +531,11 @@
 			status = "ok";
 		};
 
+		max98357a: max98357a@0 {
+			compatible = "maxim,max98357a";
+			status = "ok";
+		};
+
 		sound: sound@0 {
 			status = "ok";
 			pinctrl-0 = <&audio_pins>;
