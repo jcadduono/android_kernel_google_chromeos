@@ -615,6 +615,8 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 	rcu_read_unlock();
 	if (mpath_table_updated) {
 		mesh_path_table_debug_dump(sdata);
+		cfg80211_new_mpath(sdata->dev, mpath->dst, sta->addr,
+				   GFP_KERNEL);
 	}
 	return process ? new_metric : 0;
 }
