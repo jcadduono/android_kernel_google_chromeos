@@ -423,8 +423,8 @@
 				};
 			};
 
-			atmegaxx_captouch@51 {
-				compatible = "atmel,atmegaxx_captouch";
+			atmel-captouch@51 {
+				compatible = "atmel,captouch";
 				reg = <0x51>;
 				interrupt-parent = <&tlmm>;
 				interrupts = <67 IRQ_TYPE_EDGE_FALLING>;
