@@ -89,6 +89,7 @@
 #include <linux/netfilter_ipv4.h>
 #include <linux/random.h>
 #include <linux/slab.h>
+#include <linux/android_aid.h>
 
 #include <asm/uaccess.h>
 
@@ -117,20 +118,6 @@
 #include <net/secure_seq.h>
 #ifdef CONFIG_IP_MROUTE
 #include <linux/mroute.h>
-#endif
-
-#ifdef CONFIG_ANDROID_PARANOID_NETWORK
-#include <linux/android_aid.h>
-
-static inline int current_has_network(struct net *net)
-{
-	return in_egroup_p(AID_INET) || ns_capable(net->user_ns, CAP_NET_RAW);
-}
-#else
-static inline int current_has_network(struct net *net)
-{
-	return 1;
-}
 #endif
 
 /* The inetsw table contains everything that inet_create needs to
@@ -270,7 +257,7 @@ static int inet_create(struct net *net, struct socket *sock, int protocol,
 	int try_loading_module = 0;
 	int err;
 
-	if (!current_has_network(net))
+	if (!inet_sk_allowed(net, AID_INET))
 		return -EACCES;
 
 	sock->state = SS_UNCONNECTED;
