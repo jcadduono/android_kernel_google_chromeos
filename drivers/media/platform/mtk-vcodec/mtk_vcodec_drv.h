@@ -26,7 +26,7 @@
 #include "mtk_vcodec_util.h"
 
 #define MTK_VCODEC_DRV_NAME	"mtk_vcodec_drv"
-#define MTK_VCODEC_DEC_NAME	"mtk-vcodec-dec" 
+#define MTK_VCODEC_DEC_NAME	"mtk-vcodec-dec"
 #define MTK_VCODEC_ENC_NAME	"mtk-vcodec-enc"
 #define MTK_PLATFORM_STR	"platform:mt8173"
 
@@ -203,12 +203,14 @@ struct mtk_vcodec_pm {
  * struct vdec_pic_info  - picture size information
  * @pic_w: picture width
  * @pic_h: picture height
- * @buf_w: picture buffer width (16 aligned up from pic_w)
- * @buf_h: picture buffer heiht (32 aligned up from pic_h)
+ * @buf_w: picture buffer width (64 aligned up from pic_w)
+ * @buf_h: picture buffer heiht (64 aligned up from pic_h)
  * @y_bs_sz: Y bitstream size
  * @c_bs_sz: CbCr bitstream size
- * @y_len_sz: Y length size
- * @c_len_sz: CbCr length size
+ * @y_len_sz: additional size required to store decompress information for y
+ *		plane
+ * @c_len_sz: additional size required to store decompress information for cbcr
+ *		plane
  * E.g. suppose picture size is 176x144,
  *      buffer size will be aligned to 176x160.
  */
@@ -242,7 +244,7 @@ struct vdec_pic_info {
  * @drv_handle: driver handle for specific decode/encode instance
  *
  * @picinfo: store picture info after header parsing
- * @dpb_count: store dpb count after header parsing
+ * @dpb_size: store dpb count after header parsing
  * @int_cond: variable used by the waitqueue
  * @int_type: type of the last interrupt
  * @queue: waitqueue that can be used to wait for this context to
@@ -258,6 +260,8 @@ struct vdec_pic_info {
  * @ycbcr_enc: enum v4l2_ycbcr_encoding, Y'CbCr encoding
  * @quantization: enum v4l2_quantization, colorspace quantization
  * @xfer_func: enum v4l2_xfer_func, colorspace transfer function
+ * @lock: protect variables accessed by V4L2 threads and worker thread such as
+ *	  mtk_video_dec_buf.
  */
 struct mtk_vcodec_ctx {
 	enum mtk_instance_type type;
@@ -277,7 +281,7 @@ struct mtk_vcodec_ctx {
 	unsigned long drv_handle;
 
 	struct vdec_pic_info picinfo;
-	int dpb_count;
+	int dpb_size;
 
 	int int_cond;
 	int int_type;
@@ -295,6 +299,8 @@ struct mtk_vcodec_ctx {
 	enum v4l2_xfer_func xfer_func;
 
 	int decoded_frame_cnt;
+	struct mutex lock;
+
 };
 
 /**
@@ -359,7 +365,7 @@ struct mtk_vcodec_dev {
 	struct v4l2_device v4l2_dev;
 	struct video_device *vfd_dec;
 	struct video_device *vfd_enc;
-	
+
 	struct v4l2_m2m_dev *m2m_dev_dec;
 	struct v4l2_m2m_dev *m2m_dev_enc;
 	struct platform_device *plat_dev;

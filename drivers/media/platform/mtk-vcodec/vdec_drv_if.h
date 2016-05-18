@@ -20,6 +20,7 @@
 #include "mtk_vcodec_dec.h"
 #include "mtk_vcodec_util.h"
 
+
 /**
  * struct vdec_fb_status  - decoder frame buffer status
  * @FB_ST_NORMAL	: initial state
@@ -32,6 +33,16 @@ enum vdec_fb_status {
 	FB_ST_FREE		= (1 << 1)
 };
 
+/* For GET_PARAM_DISP_FRAME_BUFFER and GET_PARAM_FREE_FRAME_BUFFER,
+ * the caller does not own the returned buffer. The buffer will not be
+ *				released before vdec_if_deinit.
+ * GET_PARAM_DISP_FRAME_BUFFER	: get next displayable frame buffer,
+ *				struct vdec_fb**
+ * GET_PARAM_FREE_FRAME_BUFFER	: get non-referenced framebuffer, vdec_fb**
+ * GET_PARAM_PIC_INFO		: get picture info, struct vdec_pic_info*
+ * GET_PARAM_CROP_INFO		: get crop info, struct v4l2_crop*
+ * GET_PARAM_DPB_SIZE		: get dpb size, unsigned int*
+ */
 enum vdec_get_param_type {
 	GET_PARAM_DISP_FRAME_BUFFER,
 	GET_PARAM_FREE_FRAME_BUFFER,
@@ -43,49 +54,46 @@ enum vdec_get_param_type {
 /**
  * struct vdec_fb_node  - decoder frame buffer node
  * @list	: list to hold this node
- * @fb		: point to frame buffer (vdec_fb)
+ * @fb	: point to frame buffer (vdec_fb), fb could point to frame buffer and working buffer
+ *	this is for maintain buffers in different state
  */
 struct vdec_fb_node {
 	struct list_head list;
-	void *fb;
+	struct vdec_fb *fb;
 };
 
 /**
- * For the same vdec_handle, these functions below are not thread safe.
- * For different vdec_handle, these functions can be called at the same time.
- */
-
-/**
  * vdec_if_init() - initialize decode driver
- * @ctx      : [in] v4l2 context
- * @fourcc   : [in] video format fourcc, V4L2_PIX_FMT_H264/VP8/VP9..
+ * @ctx	: [in] v4l2 context
+ * @fourcc	: [in] video format fourcc, V4L2_PIX_FMT_H264/VP8/VP9..
  */
 int vdec_if_init(struct mtk_vcodec_ctx *ctx, unsigned int fourcc);
 
 /**
  * vdec_if_deinit() - deinitialize decode driver
- * @ctx : [in] v4l2 context
+ * @ctx	: [in] v4l2 context
  *
  */
-int vdec_if_deinit(struct mtk_vcodec_ctx *ctx);
+void vdec_if_deinit(struct mtk_vcodec_ctx *ctx);
 
 /**
  * vdec_if_decode() - trigger decode
- * @handle  : [in] video decode handle
- * @bs      : [in] input bitstream
- * @fb      : [in] frame buffer to store decoded frame
- * @res_chg : [out] resolution change happen
- *
- * while EOF flush decode, need to set input bitstream as NULL
+ * @ctx	: [in] v4l2 context
+ * @bs	: [in] input bitstream
+ * @fb	: [in] frame buffer to store decoded frame, when null menas parse
+ *	header only
+ * @res_chg	: [out] resolution change happens if current bs have different
+ *	picture width/height
+ * Note: To flush the decoder when reaching EOF, set input bitstream as NULL.
  */
 int vdec_if_decode(struct mtk_vcodec_ctx *ctx, struct mtk_vcodec_mem *bs,
 		   struct vdec_fb *fb, bool *res_chg);
 
 /**
  * vdec_if_get_param() - get driver's parameter
- * @handle : [in] video decode handle
- * @type   : [in] input parameter type
- * @out    : [out] buffer to store query result
+ * @ctx	: [in] v4l2 context
+ * @type	: [in] input parameter type
+ * @out	: [out] buffer to store query result
  */
 int vdec_if_get_param(struct mtk_vcodec_ctx *ctx, enum vdec_get_param_type type,
 		      void *out);

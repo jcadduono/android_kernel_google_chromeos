@@ -19,6 +19,12 @@
 #include <media/videobuf2-core.h>
 #include <media/videobuf2-v4l2.h>
 
+#define VCODEC_CAPABILITY_4K_DISABLED	0x10
+#define VCODEC_DEC_4K_CODED_WIDTH	4096U
+#define VCODEC_DEC_4K_CODED_HEIGHT	2304U
+#define MTK_VDEC_MAX_W	2048U
+#define MTK_VDEC_MAX_H	1088U
+
 #define MTK_VDEC_IRQ_STATUS_DEC_SUCCESS        0x10000
 
 /**
@@ -35,16 +41,18 @@ struct vdec_fb {
 
 /**
  * struct mtk_video_dec_buf - Private data related to each VB2 buffer.
- * @b:			VB2 buffer
- * @list:			link list
- * @used:		Output buffer contain decoded frame data
- * @ready_to_display:	Output buffer not display yet
- * @queued_in_vb2:	Output buffer is queue in vb2
- * @queued_in_v4l2:	Output buffer is in v4l2
+ * @b:		VB2 buffer
+ * @list:	link list
+ * @used:	Capture buffer contain decoded frame data and keep in
+ *		codec data structure
+ * @ready_to_display:	Capture buffer not display yet
+ * @queued_in_vb2:	Capture buffer is queue in vb2
+ * @queued_in_v4l2:	Capture buffer is in v4l2 driver, but not in vb2
+ *			queue yet
  * @lastframe:		Intput buffer is last buffer - EOS
- * @frame_buffer:		Decode status of output buffer
- * @lock:			V4L2 and decode thread should get mutex
- *			before r/w info in mtk_video_dec_buf
+ * @frame_buffer:	Decode status, and buffer information of Capture buffer
+ *
+ * Note : These status information help us track and debug buffer state
  */
 struct mtk_video_dec_buf {
 	struct vb2_v4l2_buffer	vb;
@@ -56,7 +64,6 @@ struct mtk_video_dec_buf {
 	bool	queued_in_v4l2;
 	bool	lastframe;
 	struct vdec_fb	frame_buffer;
-	struct mutex	lock;
 };
 
 extern const struct v4l2_ioctl_ops mtk_vdec_ioctl_ops;
@@ -69,8 +76,8 @@ extern const struct v4l2_m2m_ops mtk_vdec_m2m_ops;
  * mtk_vdec_lock get decoder hw lock and set curr_ctx
  * to ctx instance that get lock
  */
-int mtk_vdec_unlock(struct mtk_vcodec_ctx *ctx);
-int mtk_vdec_lock(struct mtk_vcodec_ctx *ctx);
+void mtk_vdec_unlock(struct mtk_vcodec_ctx *ctx);
+void mtk_vdec_lock(struct mtk_vcodec_ctx *ctx);
 int mtk_vcodec_dec_queue_init(void *priv, struct vb2_queue *src_vq,
 			   struct vb2_queue *dst_vq);
 void mtk_vcodec_dec_set_default_params(struct mtk_vcodec_ctx *ctx);

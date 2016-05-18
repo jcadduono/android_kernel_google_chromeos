@@ -50,7 +50,7 @@ struct vdec_common_if {
 	 * (*deinit)() - deinitialize driver.
 	 * @h_vdec : [in] driver handle to be deinit
 	 */
-	int (*deinit)(unsigned long h_vdec);
+	void (*deinit)(unsigned long h_vdec);
 };
 
 #endif

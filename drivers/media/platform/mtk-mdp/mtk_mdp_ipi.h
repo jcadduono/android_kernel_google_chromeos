@@ -16,8 +16,6 @@
 #ifndef __MTK_MDP_IPI_H__
 #define __MTK_MDP_IPI_H__
 
-#define MTK_MDP_MAX_CTX		30
-
 enum mdp_ipi_msgid {
 	AP_MDP_INIT		= 0xd000,
 	AP_MDP_DEINIT		= 0xd001,

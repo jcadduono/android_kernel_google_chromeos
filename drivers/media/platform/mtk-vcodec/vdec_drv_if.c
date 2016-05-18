@@ -58,35 +58,32 @@ int vdec_if_init(struct mtk_vcodec_ctx *ctx, unsigned int fourcc)
 int vdec_if_decode(struct mtk_vcodec_ctx *ctx, struct mtk_vcodec_mem *bs,
 		   struct vdec_fb *fb, bool *res_chg)
 {
-	unsigned long flags;
 	int ret = 0;
 
 	if (bs) {
-		if ((bs->dma_addr & 63) != 0)
+		if ((bs->dma_addr & 63) != 0) {
+			mtk_v4l2_err("bs dma_addr should 64 byte align");
 			return -EINVAL;
+		}
 	}
 
 	if (fb) {
 		if (((fb->base_y.dma_addr & 511) != 0) ||
-		    ((fb->base_c.dma_addr & 511) != 0))
+		    ((fb->base_c.dma_addr & 511) != 0)) {
+			mtk_v4l2_err("frame buffer dma_addr should 512 byte align");
 			return -EINVAL;
+		}
 	}
 
 	mtk_vdec_lock(ctx);
 
-	spin_lock_irqsave(&ctx->dev->irqlock, flags);
-	ctx->dev->curr_ctx = ctx;
-	spin_unlock_irqrestore(&ctx->dev->irqlock, flags);
-
+	mtk_vcodec_set_curr_ctx(ctx->dev, ctx);
 	mtk_vcodec_dec_clock_on(&ctx->dev->pm);
 	enable_irq(ctx->dev->dec_irq);
 	ret = ctx->dec_if->decode(ctx->drv_handle, bs, fb, res_chg);
 	disable_irq(ctx->dev->dec_irq);
 	mtk_vcodec_dec_clock_off(&ctx->dev->pm);
-
-	spin_lock_irqsave(&ctx->dev->irqlock, flags);
-	ctx->dev->curr_ctx = NULL;
-	spin_unlock_irqrestore(&ctx->dev->irqlock, flags);
+	mtk_vcodec_set_curr_ctx(ctx->dev, NULL);
 
 	mtk_vdec_unlock(ctx);
 
@@ -105,19 +102,16 @@ int vdec_if_get_param(struct mtk_vcodec_ctx *ctx, enum vdec_get_param_type type,
 	return ret;
 }
 
-int vdec_if_deinit(struct mtk_vcodec_ctx *ctx)
+void vdec_if_deinit(struct mtk_vcodec_ctx *ctx)
 {
-	int ret = 0;
-
 	if (ctx->drv_handle == 0)
-		return 0;
+		return;
 
 	mtk_vdec_lock(ctx);
 	mtk_vcodec_dec_clock_on(&ctx->dev->pm);
-	ret = ctx->dec_if->deinit(ctx->drv_handle);
+	ctx->dec_if->deinit(ctx->drv_handle);
 	mtk_vcodec_dec_clock_off(&ctx->dev->pm);
 	mtk_vdec_unlock(ctx);
 
 	ctx->drv_handle = 0;
-	return ret;
 }

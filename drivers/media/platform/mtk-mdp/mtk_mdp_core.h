@@ -227,13 +227,15 @@ struct mtk_mdp_variant {
  * @m2m_dev:	v4l2 memory-to-memory device data
  * @state:	flags used to synchronize m2m and capture mode operation
  * @alloc_ctx:	videobuf2 memory allocator context
+ * @ctx_list:	list of struct mtk_mdp_ctx
  * @vdev:	video device for image processor driver
  * @v4l2_dev:	V4L2 device to register video devices for.
  * @workqueue:	decode work queue
  * @vpu_dev:	VPU platform device
- * @ctx:	array of driver context
- * @ctx_mask:	used to mark which contexts are opened
- * @ctx_num:	counter of driver context
+ * @ctx_num:	counter of active MTK MDP context
+ * @id_counter:	An integer id given to the next opened context
+ * @wdt_wq:	work queue for VPU watchdog
+ * @wdt_work:	worker for VPU watchdog
  */
 struct mtk_mdp_dev {
 	struct mutex			lock;
@@ -246,20 +248,23 @@ struct mtk_mdp_dev {
 	struct v4l2_m2m_dev		*m2m_dev;
 	unsigned long			state;
 	struct vb2_alloc_ctx		*alloc_ctx;
+	struct list_head		ctx_list;
 	struct video_device		vdev;
 	struct v4l2_device		v4l2_dev;
 	struct workqueue_struct		*workqueue;
 	struct platform_device		*vpu_dev;
-	struct mtk_mdp_ctx		*ctx[MTK_MDP_MAX_CTX];
-	unsigned long		ctx_mask[BITS_TO_LONGS(MTK_MDP_MAX_CTX)];
 	int				ctx_num;
+	unsigned long			id_counter;
+	struct workqueue_struct		*wdt_wq;
+	struct work_struct		wdt_work;
 };
 
 /**
  * mtk_mdp_ctx - the device context data
+ * @list:		link to ctx_list of mtk_mdp_dev
  * @s_frame:		source frame properties
  * @d_frame:		destination frame properties
- * @idx:		index of the context that this structure describes
+ * @id:			index of the context that this structure describes
  * @flags:		additional flags for image conversion
  * @state:		flags to keep track of user configuration
  * @rotation:		rotates the image by specified angle
@@ -277,11 +282,12 @@ struct mtk_mdp_dev {
  * @work:		worker for image processing
  */
 struct mtk_mdp_ctx {
+	struct list_head		list;
 	struct mtk_mdp_frame		s_frame;
 	struct mtk_mdp_frame		d_frame;
 	u32				flags;
 	u32				state;
-	int				idx;
+	int				id;
 	int				rotation;
 	u32				hflip:1;
 	u32				vflip:1;

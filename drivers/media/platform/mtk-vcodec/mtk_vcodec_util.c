@@ -92,3 +92,24 @@ void mtk_vcodec_mem_free(struct mtk_vcodec_ctx *data,
 	mem->size = 0;
 }
 EXPORT_SYMBOL(mtk_vcodec_mem_free);
+
+void mtk_vcodec_set_curr_ctx(struct mtk_vcodec_dev *dev,
+		struct mtk_vcodec_ctx *ctx)
+{
+	unsigned long flags;
+
+	spin_lock_irqsave(&dev->irqlock, flags);
+	dev->curr_ctx = ctx;
+	spin_unlock_irqrestore(&dev->irqlock, flags);
+}
+
+struct mtk_vcodec_ctx *mtk_vcodec_get_curr_ctx(struct mtk_vcodec_dev *dev)
+{
+	unsigned long flags;
+	struct mtk_vcodec_ctx *ctx;
+
+	spin_lock_irqsave(&dev->irqlock, flags);
+	ctx = dev->curr_ctx;
+	spin_unlock_irqrestore(&dev->irqlock, flags);
+	return ctx;
+}

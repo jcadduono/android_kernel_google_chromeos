@@ -27,14 +27,8 @@
 #define OUT_FMT_IDX	0
 #define CAP_FMT_IDX	3
 
-#define VCODEC_CAPABILITY_4K_DISABLED	0x10
-#define VCODEC_DEC_4K_CODED_WIDTH	4096U
-#define VCODEC_DEC_4K_CODED_HEIGHT	2304U
-
 #define MTK_VDEC_MIN_W	64U
 #define MTK_VDEC_MIN_H	64U
-#define MTK_VDEC_MAX_W	2048U
-#define MTK_VDEC_MAX_H	1088U
 #define DFT_CFG_WIDTH	MTK_VDEC_MIN_W
 #define DFT_CFG_HEIGHT	MTK_VDEC_MIN_H
 
@@ -105,6 +99,11 @@ static struct mtk_q_data *mtk_vdec_get_q_data(struct mtk_vcodec_ctx *ctx,
 	return &ctx->q_data[MTK_Q_DATA_DST];
 }
 
+/* This function is try to clean all display buffer, the buffer will return in
+ * display order.
+ * Note the buffer return from codec driver may still in driver's reference
+ * list.
+ */
 static struct vb2_buffer *get_display_buffer(struct mtk_vcodec_ctx *ctx)
 {
 	struct vdec_fb *disp_frame_buffer = NULL;
@@ -126,7 +125,7 @@ static struct vb2_buffer *get_display_buffer(struct mtk_vcodec_ctx *ctx)
 
 	dstbuf = container_of(disp_frame_buffer, struct mtk_video_dec_buf,
 				frame_buffer);
-	mutex_lock(&dstbuf->lock);
+	mutex_lock(&ctx->lock);
 	if (dstbuf->used) {
 		vb2_set_plane_payload(&dstbuf->vb.vb2_buf, 0,
 					ctx->picinfo.y_bs_sz);
@@ -144,14 +143,21 @@ static struct vb2_buffer *get_display_buffer(struct mtk_vcodec_ctx *ctx)
 		v4l2_m2m_buf_done(&dstbuf->vb, VB2_BUF_STATE_DONE);
 		ctx->decoded_frame_cnt++;
 	}
-	mutex_unlock(&dstbuf->lock);
+	mutex_unlock(&ctx->lock);
 	return &dstbuf->vb.vb2_buf;
 }
 
+/* This function is try to clean all capture buffers that is not used as
+ * reference buffer by codec driver any more
+ * In this case, we need re-queue buffer to vb2 buffer if user space
+ * already return this buffer to v4l2 or this buffer is just the output of
+ * previous sps/pps/resolution change decode, or do nothing if user
+ * space still own this buffer
+ */
 static struct vb2_buffer *get_free_buffer(struct mtk_vcodec_ctx *ctx)
 {
 	struct mtk_video_dec_buf *dstbuf;
-	struct vdec_fb *free_frame_buffer;
+	struct vdec_fb *free_frame_buffer = NULL;
 
 	if (vdec_if_get_param(ctx,
 				GET_PARAM_FREE_FRAME_BUFFER,
@@ -170,11 +176,18 @@ static struct vb2_buffer *get_free_buffer(struct mtk_vcodec_ctx *ctx)
 	dstbuf = container_of(free_frame_buffer, struct mtk_video_dec_buf,
 				frame_buffer);
 
-	mutex_lock(&dstbuf->lock);
+	mutex_lock(&ctx->lock);
 	if (dstbuf->used) {
 		if ((dstbuf->queued_in_vb2) &&
 		    (dstbuf->queued_in_v4l2) &&
 		    (free_frame_buffer->status == FB_ST_FREE)) {
+			/* After decode sps/pps or non-display buffer, we dont
+			 * need to return capture buffer to user space, but
+			 * just re-queue this capture buffer to vb2 queue.
+			 * This reduce overheads that dq/q unused capture
+			 * buffer We use queued_in_vb2 to mark this buffer
+			 * is from decode output, not q from user space.
+			 */
 			mtk_v4l2_debug(2,
 				"[%d]status=%x queue id=%d to rdy_queue %d",
 				ctx->id, free_frame_buffer->status,
@@ -183,6 +196,14 @@ static struct vb2_buffer *get_free_buffer(struct mtk_vcodec_ctx *ctx)
 			v4l2_m2m_buf_queue(ctx->m2m_ctx, &dstbuf->vb);
 		} else if ((dstbuf->queued_in_vb2 == false) &&
 			   (dstbuf->queued_in_v4l2 == true)) {
+			/* If buffer in v4l2 driver but not in vb2 queue yet,
+			 * and we get this buffer from free_list, it means
+			 * that codec driver do not use this buffer as
+			 * reference buffer anymore. We should q buffer to vb2
+			 * queue, so later work thread could get this buffer
+			 * for decode In this sate, queued_in_vb2 = false
+			 * menas this buffer is not from previous decode output
+			 */
 			mtk_v4l2_debug(2,
 					"[%d]status=%x queue id=%d to rdy_queue",
 					ctx->id, free_frame_buffer->status,
@@ -190,8 +211,14 @@ static struct vb2_buffer *get_free_buffer(struct mtk_vcodec_ctx *ctx)
 			v4l2_m2m_buf_queue(ctx->m2m_ctx, &dstbuf->vb);
 			dstbuf->queued_in_vb2 = true;
 		} else {
-			mtk_v4l2_debug(2,
-					"[%d]status=%x err queue id=%d %d %d",
+			/* Codec driver do not need to reference this capture
+			 * buffer and this buffer is not in v4l2 driver.
+			 * Then we dont need to do any thing, just add log when
+			 * we need to debug buffer flow.
+			 * When this buffer q from user space, it could
+			 * directly q to vb2 buffer
+			 */
+			mtk_v4l2_debug(3, "[%d]status=%x err queue id=%d %d %d",
 					ctx->id, free_frame_buffer->status,
 					dstbuf->vb.vb2_buf.index,
 					dstbuf->queued_in_vb2,
@@ -199,7 +226,7 @@ static struct vb2_buffer *get_free_buffer(struct mtk_vcodec_ctx *ctx)
 		}
 		dstbuf->used = false;
 	}
-	mutex_unlock(&dstbuf->lock);
+	mutex_unlock(&ctx->lock);
 	return &dstbuf->vb.vb2_buf;
 }
 
@@ -242,49 +269,50 @@ static void mtk_vdec_flush_decoder(struct mtk_vcodec_ctx *ctx)
 
 	ret = vdec_if_decode(ctx, NULL, NULL, &res_chg);
 	if (ret)
-		mtk_v4l2_err("DecodeFinal failed");
+		mtk_v4l2_err("DecodeFinal failed, ret=%d", ret);
 
 	clean_display_buffer(ctx);
 	clean_free_buffer(ctx);
 }
 
-static bool mtk_vdec_pic_info_update(struct mtk_vcodec_ctx *ctx)
+static void mtk_vdec_pic_info_update(struct mtk_vcodec_ctx *ctx)
 {
-	int dpbsize;
+	unsigned int dpbsize = 0;
+	int ret;
 
 	if (vdec_if_get_param(ctx,
 				GET_PARAM_PIC_INFO,
 				&ctx->last_decoded_picinfo)) {
 		mtk_v4l2_err("[%d]Error!! Cannot get param : GET_PARAM_PICTURE_INFO ERR",
 				ctx->id);
-		return false;
+		return;
 	}
 
 	if (ctx->last_decoded_picinfo.pic_w == 0 ||
 		ctx->last_decoded_picinfo.pic_h == 0 ||
 		ctx->last_decoded_picinfo.buf_w == 0 ||
-		ctx->last_decoded_picinfo.buf_h == 0)
-		return false;
-
-	if ((ctx->last_decoded_picinfo.pic_w != ctx->picinfo.pic_w) ||
-	    (ctx->last_decoded_picinfo.pic_h != ctx->picinfo.pic_h)) {
-
-		mtk_v4l2_debug(1,
-				"[%d]-> new(%d,%d), old(%d,%d), real(%d,%d)",
-				ctx->id, ctx->last_decoded_picinfo.pic_w,
-				ctx->last_decoded_picinfo.pic_h,
-				ctx->picinfo.pic_w, ctx->picinfo.pic_h,
-				ctx->last_decoded_picinfo.buf_w,
-				ctx->last_decoded_picinfo.buf_h);
-
-		vdec_if_get_param(ctx, GET_PARAM_DPB_SIZE, &dpbsize);
-		if (dpbsize == 0)
-			dpbsize = 1;
-		ctx->dpb_count = dpbsize;
-		return true;
+		ctx->last_decoded_picinfo.buf_h == 0) {
+		mtk_v4l2_err("Cannot get correct pic info");
+		return;
 	}
 
-	return false;
+	if ((ctx->last_decoded_picinfo.pic_w == ctx->picinfo.pic_w) ||
+	    (ctx->last_decoded_picinfo.pic_h == ctx->picinfo.pic_h))
+		return;
+
+	mtk_v4l2_debug(1,
+			"[%d]-> new(%d,%d), old(%d,%d), real(%d,%d)",
+			ctx->id, ctx->last_decoded_picinfo.pic_w,
+			ctx->last_decoded_picinfo.pic_h,
+			ctx->picinfo.pic_w, ctx->picinfo.pic_h,
+			ctx->last_decoded_picinfo.buf_w,
+			ctx->last_decoded_picinfo.buf_h);
+
+	ret = vdec_if_get_param(ctx, GET_PARAM_DPB_SIZE, &dpbsize);
+	if (dpbsize == 0)
+		mtk_v4l2_err("Incorrect dpb size, ret=%d", ret);
+
+	ctx->dpb_size = dpbsize;
 }
 
 static void mtk_vdec_worker(struct work_struct *work)
@@ -322,7 +350,7 @@ static void mtk_vdec_worker(struct work_struct *work)
 
 	buf.va = vb2_plane_vaddr(src_buf, 0);
 	buf.dma_addr = vb2_dma_contig_plane_dma_addr(src_buf, 0);
-	buf.size = (unsigned int)src_buf->planes[0].bytesused;
+	buf.size = (size_t)src_buf->planes[0].bytesused;
 	if (!buf.va) {
 		v4l2_m2m_job_finish(dev->m2m_dev_dec, ctx->m2m_ctx);
 		mtk_v4l2_err("[%d] id=%d src_addr is NULL!!",
@@ -340,11 +368,8 @@ static void mtk_vdec_worker(struct work_struct *work)
 	pfb->base_c.size = ctx->picinfo.c_bs_sz + ctx->picinfo.c_len_sz;
 	pfb->status = 0;
 	mtk_v4l2_debug(3, "===>[%d] vdec_if_decode() ===>", ctx->id);
-	mtk_v4l2_debug(3,
-			"[%d] Bitstream VA=%p DMA=%llx Size=0x%lx vb=%p",
-			ctx->id, buf.va,
-			(u64)buf.dma_addr,
-			buf.size, src_buf);
+	mtk_v4l2_debug(3, "[%d] Bitstream VA=%p DMA=%llx Size=0x%lx vb=%p",
+			ctx->id, buf.va, (u64)buf.dma_addr, buf.size, src_buf);
 
 	mtk_v4l2_debug(3,
 			"id=%d Framebuf  pfb=%p VA=%p Y_DMA=%llx C_DMA=%llx Size=0x%lx",
@@ -352,7 +377,7 @@ static void mtk_vdec_worker(struct work_struct *work)
 			pfb->base_y.va, (u64)pfb->base_y.dma_addr,
 			(u64)pfb->base_c.dma_addr, pfb->base_y.size);
 
-	if (src_buf_info->lastframe == true) {
+	if (src_buf_info->lastframe) {
 		/* update src buf status */
 		src_buf = v4l2_m2m_src_buf_remove(ctx->m2m_ctx);
 		src_buf_info->lastframe = false;
@@ -362,6 +387,7 @@ static void mtk_vdec_worker(struct work_struct *work)
 		dst_buf = v4l2_m2m_dst_buf_remove(ctx->m2m_ctx);
 		dst_buf_info->used = false;
 
+		vdec_if_decode(ctx, NULL, NULL, &res_chg);
 		clean_display_buffer(ctx);
 		vb2_set_plane_payload(&dst_buf_info->vb.vb2_buf, 0, 0);
 		vb2_set_plane_payload(&dst_buf_info->vb.vb2_buf, 1, 0);
@@ -372,9 +398,9 @@ static void mtk_vdec_worker(struct work_struct *work)
 				= src_buf_info->vb.timestamp;
 		dst_buf_info->vb.timecode
 				= src_buf_info->vb.timecode;
-		mutex_lock(&dst_buf_info->lock);
+		mutex_lock(&ctx->lock);
 		dst_buf_info->used = true;
-		mutex_unlock(&dst_buf_info->lock);
+		mutex_unlock(&ctx->lock);
 		src_buf_info->used = true;
 
 		ret = vdec_if_decode(ctx, &buf, pfb, &res_chg);
@@ -405,7 +431,7 @@ static void mtk_vdec_worker(struct work_struct *work)
 		clean_display_buffer(ctx);
 		clean_free_buffer(ctx);
 
-		if ((ret == 0) && (res_chg == true)) {
+		if (!ret && res_chg) {
 			mtk_vdec_pic_info_update(ctx);
 			/*
 			 * On encountering a resolution change in the stream.
@@ -428,16 +454,14 @@ static void mtk_vdec_worker(struct work_struct *work)
 	v4l2_m2m_job_finish(dev->m2m_dev_dec, ctx->m2m_ctx);
 }
 
-int mtk_vdec_unlock(struct mtk_vcodec_ctx *ctx)
+void mtk_vdec_unlock(struct mtk_vcodec_ctx *ctx)
 {
 	mutex_unlock(&ctx->dev->dec_mutex);
-	return 0;
 }
 
-int mtk_vdec_lock(struct mtk_vcodec_ctx *ctx)
+void mtk_vdec_lock(struct mtk_vcodec_ctx *ctx)
 {
 	mutex_lock(&ctx->dev->dec_mutex);
-	return 0;
 }
 
 void mtk_vcodec_vdec_release(struct mtk_vcodec_ctx *ctx)
@@ -531,7 +555,7 @@ static int vidioc_vdec_dqbuf(struct file *file, void *priv,
 	struct mtk_vcodec_ctx *ctx = fh_to_ctx(priv);
 
 	if (ctx->state == MTK_STATE_ABORT) {
-		mtk_v4l2_err("[%d] Call on QBUF after unrecoverable error",
+		mtk_v4l2_err("[%d] Call on DQBUF after unrecoverable error",
 				ctx->id);
 		return -EIO;
 	}
@@ -545,8 +569,6 @@ static int vidioc_vdec_querycap(struct file *file, void *priv,
 	strlcpy(cap->driver, MTK_VCODEC_DEC_NAME, sizeof(cap->driver));
 	strlcpy(cap->bus_info, MTK_PLATFORM_STR, sizeof(cap->bus_info));
 	strlcpy(cap->card, MTK_PLATFORM_STR, sizeof(cap->card));
-	cap->device_caps  = V4L2_CAP_VIDEO_M2M_MPLANE | V4L2_CAP_STREAMING;
-	cap->capabilities = cap->device_caps | V4L2_CAP_DEVICE_CAPS;
 
 	return 0;
 }
@@ -610,9 +632,7 @@ static int vidioc_vdec_g_crop(struct file *file, void *priv,
 	    (ctx->q_data[MTK_Q_DATA_SRC].fmt->fourcc == V4L2_PIX_FMT_VP8) ||
 	    (ctx->q_data[MTK_Q_DATA_SRC].fmt->fourcc == V4L2_PIX_FMT_VP9)) {
 
-		if (vdec_if_get_param(ctx,
-					GET_PARAM_CROP_INFO,
-					cr)) {
+		if (vdec_if_get_param(ctx, GET_PARAM_CROP_INFO, cr)) {
 			mtk_v4l2_debug(2,
 					"[%d]Error!! Cannot get param : GET_PARAM_CROP_INFO ERR",
 					ctx->id);
@@ -641,16 +661,16 @@ static int vidioc_vdec_s_fmt(struct file *file, void *priv,
 {
 	struct mtk_vcodec_ctx *ctx = fh_to_ctx(priv);
 	struct v4l2_pix_format_mplane *pix_mp;
-	struct vb2_queue *vq;
 	struct mtk_q_data *q_data;
 	int ret = 0;
 	struct mtk_video_fmt *fmt;
+	struct vb2_queue *vq;
 
 	mtk_v4l2_debug(3, "[%d]", ctx->id);
 
 	fmt = mtk_vdec_find_format(f);
 	if (fmt == NULL) {
-		mtk_v4l2_err("mtk_vdec_find_format fail");
+		mtk_v4l2_err("vidioc_vdec_s_fmt fail");
 		return ret;
 	}
 
@@ -668,15 +688,13 @@ static int vidioc_vdec_s_fmt(struct file *file, void *priv,
 	}
 
 	vq = v4l2_m2m_get_vq(ctx->m2m_ctx, f->type);
-	if (!vq)
-		return -EINVAL;
 
 	q_data = mtk_vdec_get_q_data(ctx, f->type);
 	if (!q_data)
 		return -EINVAL;
 
+	q_data->fmt = fmt;
 	if (f->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		q_data->fmt = fmt;
 		q_data->sizeimage[0] = pix_mp->plane_fmt[0].sizeimage;
 		pix_mp->plane_fmt[0].bytesperline = 0;
 		pix_mp->width = 0;
@@ -691,8 +709,6 @@ static int vidioc_vdec_s_fmt(struct file *file, void *priv,
 			}
 			ctx->state = MTK_STATE_INIT;
 		}
-	} else {
-		q_data->fmt = fmt;
 	}
 
 	return 0;
@@ -715,7 +731,7 @@ static int vidioc_enum_framesizes(struct file *file, void *priv,
 		fsize->stepwise = mtk_vdec_framesizes[i].stepwise;
 		if (!(ctx->dev->dec_capability &
 				VCODEC_CAPABILITY_4K_DISABLED)) {
-			mtk_v4l2_debug(0, "4K is enabled");
+			mtk_v4l2_debug(3, "4K is enabled");
 			fsize->stepwise.max_width =
 					VCODEC_DEC_4K_CODED_WIDTH;
 			fsize->stepwise.max_height =
@@ -792,12 +808,12 @@ static int vidioc_vdec_g_fmt(struct file *file, void *priv,
 
 	if ((f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) &&
 	    (ctx->state >= MTK_STATE_HEADER)) {
-		/* previous decode might have resolution change that make
-		 * picinfo changed update context'x picinfo here to make sure
-		 * we know what report to user space
+		/* Until STREAMOFF is called on the CAPTURE queue
+		 * (acknowledging the event), the driver operates as if
+		 * the resolution hasn't changed yet.
+		 * So we just return picinfo yet, and update picinfo in
+		 * stop_streaming hook function
 		 */
-		memcpy(&ctx->picinfo, &ctx->last_decoded_picinfo,
-			sizeof(struct vdec_pic_info));
 		q_data->sizeimage[0] = ctx->picinfo.y_bs_sz +
 					ctx->picinfo.y_len_sz;
 		q_data->sizeimage[1] = ctx->picinfo.c_bs_sz +
@@ -855,7 +871,7 @@ static int vidioc_vdec_g_fmt(struct file *file, void *priv,
 
 		mtk_v4l2_debug(1, "[%d] state=%d Format could not be read %d, not ready yet!",
 				ctx->id, ctx->state, f->type);
-		return -EAGAIN;
+		return -EINVAL;
 	}
 
 	return 0;
@@ -951,10 +967,10 @@ static void vb2ops_vdec_buf_queue(struct vb2_buffer *vb)
 	 */
 	if (vb->vb2_queue->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
 		struct vb2_buffer *src_buf;
-		struct mtk_vcodec_mem buf;
+		struct mtk_vcodec_mem src_mem;
 		bool res_chg = false;
 		int ret = 0;
-		int dpbsize = 1;
+		unsigned int dpbsize = 1;
 
 		v4l2_m2m_buf_queue(ctx->m2m_ctx, vb2_v4l2);
 
@@ -965,26 +981,30 @@ static void vb2ops_vdec_buf_queue(struct vb2_buffer *vb)
 				return;
 			}
 
-			buf.va	= vb2_plane_vaddr(src_buf, 0);
-			buf.dma_addr = vb2_dma_contig_plane_dma_addr(
+			src_mem.va	= vb2_plane_vaddr(src_buf, 0);
+			src_mem.dma_addr = vb2_dma_contig_plane_dma_addr(
 						src_buf,
 						0);
-			buf.size = (size_t)src_buf->planes[0].bytesused;
+			src_mem.size = (size_t)src_buf->planes[0].bytesused;
 			mtk_v4l2_debug(2,
 					"[%d] buf id=%d va=%p dma=%llx size=%zu",
-					ctx->id,
-					src_buf->index,
-					buf.va, (u64)buf.dma_addr, buf.size);
+					ctx->id, src_buf->index,
+					src_mem.va, (u64)src_mem.dma_addr,
+					src_mem.size);
 
-			ret = vdec_if_decode(ctx, &buf, NULL, &res_chg);
+			ret = vdec_if_decode(ctx, &src_mem, NULL, &res_chg);
 			if (ret) {
+				/* fb == NULL menas to parse SPS/PPS header or
+				 * resolution info in src_mem. Decode can fail
+				 * if there is no SPS header or picture info
+				 * in bs
+				 */
 				src_buf = v4l2_m2m_src_buf_remove(ctx->m2m_ctx);
 				v4l2_m2m_buf_done(to_vb2_v4l2_buffer(src_buf),
 						VB2_BUF_STATE_DONE);
-				mtk_v4l2_err("[%d] vdec_if_decode() src_buf=%d, size=%zu, fail=%d",
-						ctx->id,
-						src_buf->index,
-						buf.size, ret);
+				mtk_v4l2_debug(0, "[%d] vdec_if_decode() src_buf=%d, size=%zu, fail=%d",
+						ctx->id, src_buf->index,
+						src_mem.size, ret);
 				return;
 			}
 
@@ -996,8 +1016,7 @@ static void vb2ops_vdec_buf_queue(struct vb2_buffer *vb)
 				return;
 			}
 
-			memcpy(&ctx->last_decoded_picinfo, &ctx->picinfo,
-				sizeof(struct vdec_pic_info));
+			ctx->last_decoded_picinfo = ctx->picinfo;
 			ctx->q_data[MTK_Q_DATA_DST].sizeimage[0] =
 						ctx->picinfo.y_bs_sz +
 						ctx->picinfo.y_len_sz;
@@ -1015,23 +1034,22 @@ static void vb2ops_vdec_buf_queue(struct vb2_buffer *vb)
 				ctx->q_data[MTK_Q_DATA_DST].sizeimage[0],
 				ctx->q_data[MTK_Q_DATA_DST].sizeimage[1]);
 
-			vdec_if_get_param(ctx, GET_PARAM_DPB_SIZE, &dpbsize);
+			ret = vdec_if_get_param(ctx, GET_PARAM_DPB_SIZE,
+						&dpbsize);
 			if (dpbsize == 0) {
-				mtk_v4l2_debug(2,
-						"[%d] vdec_if_get_param()  GET_PARAM_DPB_SIZE fail=%d",
+				mtk_v4l2_err("[%d] vdec_if_get_param()  GET_PARAM_DPB_SIZE fail=%d",
 						ctx->id, ret);
-				dpbsize = 1;
 			}
-			ctx->dpb_count = dpbsize;
+			ctx->dpb_size = dpbsize;
 			ctx->state = MTK_STATE_HEADER;
 			mtk_v4l2_debug(1, "[%d] dpbsize=%d", ctx->id,
-					ctx->dpb_count);
+					ctx->dpb_size);
 		} else {
 			mtk_v4l2_debug(3, "[%d] already init driver %d",
 					ctx->id, ctx->state);
 		}
 	} else {
-		mutex_lock(&buf->lock);
+		mutex_lock(&ctx->lock);
 		if (buf->used == false) {
 			v4l2_m2m_buf_queue(ctx->m2m_ctx,
 					to_vb2_v4l2_buffer(vb));
@@ -1043,12 +1061,14 @@ static void vb2ops_vdec_buf_queue(struct vb2_buffer *vb)
 			buf->queued_in_v4l2 = true;
 			buf->ready_to_display = false;
 		}
-		mutex_unlock(&buf->lock);
+		mutex_unlock(&ctx->lock);
 	}
 }
 
 static void vb2ops_vdec_buf_finish(struct vb2_buffer *vb)
 {
+	struct mtk_vcodec_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
+
 	if (vb->vb2_queue->type ==
 		V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
 		struct vb2_v4l2_buffer *vb2_v4l2;
@@ -1056,10 +1076,10 @@ static void vb2ops_vdec_buf_finish(struct vb2_buffer *vb)
 
 		vb2_v4l2 = container_of(vb, struct vb2_v4l2_buffer, vb2_buf);
 		buf = container_of(vb2_v4l2, struct mtk_video_dec_buf, vb);
-		mutex_lock(&buf->lock);
+		mutex_lock(&ctx->lock);
 		buf->queued_in_v4l2 = false;
 		buf->queued_in_vb2 = false;
-		mutex_unlock(&buf->lock);
+		mutex_unlock(&ctx->lock);
 	}
 }
 
@@ -1074,7 +1094,6 @@ static int vb2ops_vdec_buf_init(struct vb2_buffer *vb)
 		buf->used = false;
 		buf->ready_to_display = false;
 		buf->queued_in_v4l2 = false;
-		mutex_init(&buf->lock);
 	} else {
 		buf->lastframe = false;
 	}
@@ -1097,7 +1116,7 @@ static void vb2ops_vdec_stop_streaming(struct vb2_queue *q)
 	struct vb2_buffer *src_buf = NULL, *dst_buf = NULL;
 	struct mtk_vcodec_ctx *ctx = vb2_get_drv_priv(q);
 
-	mtk_v4l2_debug(1, "[%d] (%d) state=(%x) ctx->decoded_frame_cnt=%d",
+	mtk_v4l2_debug(3, "[%d] (%d) state=(%x) ctx->decoded_frame_cnt=%d",
 			ctx->id, q->type, ctx->state, ctx->decoded_frame_cnt);
 
 	if (q->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
@@ -1106,37 +1125,33 @@ static void vb2ops_vdec_stop_streaming(struct vb2_queue *q)
 					VB2_BUF_STATE_ERROR);
 
 	} else if (q->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
-		int i;
-		struct vb2_v4l2_buffer *vb2_v4l2;
-		struct mtk_video_dec_buf *buf;
+		if (ctx->state >= MTK_STATE_HEADER) {
 
-		if (ctx->state >= MTK_STATE_HEADER)
+			/* Until STREAMOFF is called on the CAPTURE queue
+			 * (acknowledging the event), the driver operates
+			 * as if the resolution hasn't changed yet, i.e.
+			 * VIDIOC_G_FMT< etc. return previous resolution.
+			 * So we update picinfo here
+			 */
+			ctx->picinfo = ctx->last_decoded_picinfo;
+
+			mtk_v4l2_debug(2,
+				"[%d]-> new(%d,%d), old(%d,%d), real(%d,%d)",
+				ctx->id, ctx->last_decoded_picinfo.pic_w,
+				ctx->last_decoded_picinfo.pic_h,
+				ctx->picinfo.pic_w, ctx->picinfo.pic_h,
+				ctx->last_decoded_picinfo.buf_w,
+				ctx->last_decoded_picinfo.buf_h);
+
 			mtk_vdec_flush_decoder(ctx);
-
+		}
 		ctx->state = MTK_STATE_FLUSH;
 
 		while ((dst_buf = v4l2_m2m_dst_buf_remove(ctx->m2m_ctx))) {
 			vb2_set_plane_payload(dst_buf, 0, 0);
 			vb2_set_plane_payload(dst_buf, 1, 0);
 			v4l2_m2m_buf_done(to_vb2_v4l2_buffer(dst_buf),
-				VB2_BUF_STATE_ERROR);
-		}
-
-		for (i = 0; i < q->num_buffers; ++i) {
-			if (q->bufs[i]->state == VB2_BUF_STATE_ACTIVE) {
-				vb2_v4l2 = container_of(q->bufs[i],
-					struct vb2_v4l2_buffer, vb2_buf);
-				buf = container_of(vb2_v4l2,
-					struct mtk_video_dec_buf, vb);
-
-				mtk_v4l2_debug(1, "[%d] id=%d, type=%d, [%d %d] %d -> VB2_BUF_STATE_ERROR",
-						ctx->id, i, q->type,
-						buf->queued_in_vb2,
-						buf->queued_in_v4l2,
-						(int)q->bufs[i]->state);
-				v4l2_m2m_buf_done(vb2_v4l2,
-						VB2_BUF_STATE_ERROR);
-			}
+					VB2_BUF_STATE_ERROR);
 		}
 	}
 }
@@ -1154,12 +1169,6 @@ static int m2mops_vdec_job_ready(void *m2m_priv)
 	struct mtk_vcodec_ctx *ctx = m2m_priv;
 
 	mtk_v4l2_debug(3, "[%d]", ctx->id);
-
-	if (!v4l2_m2m_num_src_bufs_ready(ctx->m2m_ctx))
-		return 0;
-
-	if (!v4l2_m2m_num_dst_bufs_ready(ctx->m2m_ctx))
-		return 0;
 
 	if (ctx->state == MTK_STATE_ABORT)
 		return 0;
@@ -1189,7 +1198,7 @@ static int mtk_vdec_g_v_ctrl(struct v4l2_ctrl *ctrl)
 	switch (ctrl->id) {
 	case V4L2_CID_MIN_BUFFERS_FOR_CAPTURE:
 		if (ctx->state >= MTK_STATE_HEADER) {
-			ctrl->val = ctx->dpb_count;
+			ctrl->val = ctx->dpb_size;
 		} else {
 			mtk_v4l2_err("Seqinfo not ready");
 			ctrl->val = 1;

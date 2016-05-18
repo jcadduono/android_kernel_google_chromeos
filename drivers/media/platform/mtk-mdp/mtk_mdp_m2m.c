@@ -166,8 +166,10 @@ void mtk_mdp_m2m_job_finish(struct mtk_mdp_ctx *ctx, int vb_state)
 	dst_vb = v4l2_m2m_dst_buf_remove(ctx->m2m_ctx);
 
 	if (src_vb && dst_vb) {
-		src_vb2_v4l2 = container_of(src_vb, struct vb2_v4l2_buffer, vb2_buf);
-		dst_vb2_v4l2 = container_of(dst_vb, struct vb2_v4l2_buffer, vb2_buf);
+		src_vb2_v4l2 = container_of(src_vb, struct vb2_v4l2_buffer,
+					    vb2_buf);
+		dst_vb2_v4l2 = container_of(dst_vb, struct vb2_v4l2_buffer,
+					    vb2_buf);
 
 		dst_vb2_v4l2->timestamp = src_vb2_v4l2->timestamp;
 		dst_vb2_v4l2->timecode = src_vb2_v4l2->timecode;
@@ -392,7 +394,7 @@ static int mtk_mdp_m2m_s_fmt_mplane(struct file *file, void *fh,
 	struct v4l2_pix_format_mplane *pix;
 	int i, ret = 0;
 
-	mtk_mdp_dbg(2, "[%d]", ctx->idx);
+	mtk_mdp_dbg(2, "[%d]", ctx->id);
 
 	ret = mtk_mdp_m2m_try_fmt_mplane(file, fh, f);
 	if (ret)
@@ -710,7 +712,7 @@ static int mtk_mdp_m2m_open(struct file *file)
 
 	mutex_init(&ctx->qlock);
 	mutex_init(&ctx->slock);
-	ctx->idx = ffz(mdp->ctx_mask[0]);
+	ctx->id = mdp->id_counter++;
 	v4l2_fh_init(&ctx->fh, vfd);
 	file->private_data = &ctx->fh;
 	ret = mtk_mdp_ctrls_create(ctx);
@@ -720,6 +722,7 @@ static int mtk_mdp_m2m_open(struct file *file)
 	/* Use separate control handler per file handle */
 	ctx->fh.ctrl_handler = &ctx->ctrl_handler;
 	v4l2_fh_add(&ctx->fh);
+	INIT_LIST_HEAD(&ctx->list);
 
 	ctx->mdp_dev = mdp;
 	/* Default color format */
@@ -761,11 +764,10 @@ static int mtk_mdp_m2m_open(struct file *file)
 		ret = -EINVAL;
 		goto err_load_vpu;
 	}
-	set_bit(ctx->idx, &mdp->ctx_mask[0]);
-	mdp->ctx[ctx->idx] = ctx;
+	list_add(&ctx->list, &mdp->ctx_list);
 	mutex_unlock(&mdp->lock);
 
-	mtk_mdp_dbg(0, "%s [%d]", dev_name(&mdp->pdev->dev), ctx->idx);
+	mtk_mdp_dbg(0, "%s [%d]", dev_name(&mdp->pdev->dev), ctx->id);
 
 	return 0;
 
@@ -796,8 +798,6 @@ static int mtk_mdp_m2m_release(struct file *file)
 	mtk_mdp_ctrls_delete(ctx);
 	v4l2_fh_del(&ctx->fh);
 	v4l2_fh_exit(&ctx->fh);
-	mdp->ctx[ctx->idx] = NULL;
-	clear_bit(ctx->idx, &mdp->ctx_mask[0]);
 	if (mdp->ctx_num > 0) {
 		mtk_mdp_vpu_deinit(&ctx->vpu);
 		mdp->ctx_num--;
@@ -805,6 +805,7 @@ static int mtk_mdp_m2m_release(struct file *file)
 		clear_bit(MTK_MDP_M2M_OPEN, &mdp->state);
 		mdp->ctx_num = 0;
 	}
+	list_del_init(&ctx->list);
 	kfree(ctx);
 
 	mutex_unlock(&mdp->lock);

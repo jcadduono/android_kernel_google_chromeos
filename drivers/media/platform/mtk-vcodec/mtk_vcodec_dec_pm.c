@@ -34,9 +34,11 @@ int mtk_vcodec_init_dec_pm(struct mtk_vcodec_dev *mtkdev)
 	pm = &mtkdev->pm;
 	pm->mtkdev = mtkdev;
 	dev = &pdev->dev;
-	node = of_parse_phandle(dev->of_node, "mediatek,larb", 0);
-	if (!node)
+	node = of_parse_phandle(pdev->dev.of_node, "mediatek,larb", 0);
+	if (!node) {
+		mtk_v4l2_err("of_parse_phandle mediatek,larb fail!");
 		return -1;
+	}
 
 	pdev = of_find_device_by_node(node);
 	if (WARN_ON(!pdev)) {
@@ -46,7 +48,6 @@ int mtk_vcodec_init_dec_pm(struct mtk_vcodec_dev *mtkdev)
 	pm->larbvdec = &pdev->dev;
 
 	pdev = mtkdev->plat_dev;
-	pm_runtime_enable(&pdev->dev);
 	pm->dev = &pdev->dev;
 
 	pm->vcodecpll = devm_clk_get(&pdev->dev, "vcodecpll");
@@ -97,6 +98,8 @@ int mtk_vcodec_init_dec_pm(struct mtk_vcodec_dev *mtkdev)
 		ret = -1;
 	}
 
+	pm_runtime_enable(&pdev->dev);
+
 	return ret;
 }
 
@@ -127,52 +130,61 @@ void mtk_vcodec_dec_clock_on(struct mtk_vcodec_pm *pm)
 {
 	int ret;
 
-	clk_set_rate(pm->vcodecpll, 1482 * 1000000);
-
-
-	clk_set_rate(pm->vencpll, 800 * 1000000);
-
-	ret = clk_prepare_enable(pm->vcodecpll_370p5_ck);
+	ret = clk_set_rate(pm->vcodecpll, 1482 * 1000000);
 	if (ret)
-		mtk_v4l2_err("vcodecpll_370p5_ck fail %d", ret);
+		mtk_v4l2_err("clk_set_rate vcodecpll fail %d", ret);
 
-	ret = clk_prepare_enable(pm->venc_lt_sel);
+	ret = clk_set_rate(pm->vencpll, 800 * 1000000);
 	if (ret)
-		mtk_v4l2_err("venc_lt_sel fail %d", ret);
-
-	ret = clk_set_parent(pm->venc_lt_sel, pm->vcodecpll_370p5_ck);
-	if (ret)
-		mtk_v4l2_err("clk_set_parent fail %d", ret);
-
-
+		mtk_v4l2_err("clk_set_rate vencpll fail %d", ret);
 
 	ret = clk_prepare_enable(pm->vcodecpll);
 	if (ret)
-		mtk_v4l2_err("vcodecpll fail %d", ret);
+		mtk_v4l2_err("clk_prepare_enable vcodecpll fail %d", ret);
+
+	ret = clk_prepare_enable(pm->vencpll);
+	if (ret)
+		mtk_v4l2_err("clk_prepare_enable vencpll fail %d", ret);
+
+	ret = clk_prepare_enable(pm->vcodecpll_370p5_ck);
+	if (ret)
+		mtk_v4l2_err("clk_prepare_enable vcodecpll_370p5_ck fail %d",
+				ret);
+
+	ret = clk_prepare_enable(pm->venc_lt_sel);
+	if (ret)
+		mtk_v4l2_err("clk_prepare_enable venc_lt_sel fail %d", ret);
+
+	ret = clk_set_parent(pm->venc_lt_sel, pm->vcodecpll_370p5_ck);
+	if (ret)
+		mtk_v4l2_err("clk_set_parent venc_lt_sel vcodecpll_370p5_ck fail %d",
+				ret);
+
 
 	ret = clk_prepare_enable(pm->univpll_d2);
 	if (ret)
-		mtk_v4l2_err("univpll_d2 fail %d", ret);
+		mtk_v4l2_err("clk_prepare_enable univpll_d2 fail %d", ret);
 
 	ret = clk_prepare_enable(pm->clk_cci400_sel);
 	if (ret)
-		mtk_v4l2_err("clk_cci400_sel fail %d", ret);
+		mtk_v4l2_err("clk_prepare_enable clk_cci400_sel fail %d", ret);
 
 	ret = clk_set_parent(pm->clk_cci400_sel, pm->univpll_d2);
 	if (ret)
-		mtk_v4l2_err("clk_set_parent fail %d", ret);
+		mtk_v4l2_err("clk_set_parent clk_cci400_sel univpll_d2 fail %d",
+				ret);
 
 	ret = clk_prepare_enable(pm->vdecpll);
 	if (ret)
-		mtk_v4l2_err("vdecpll fail %d", ret);
+		mtk_v4l2_err("clk_prepare_enable vdecpll fail %d", ret);
 
 	ret = clk_prepare_enable(pm->vdec_sel);
 	if (ret)
-		mtk_v4l2_err("vdec_sel fail %d", ret);
+		mtk_v4l2_err("clk_prepare_enable vdec_sel fail %d", ret);
 
 	ret = clk_set_parent(pm->vdec_sel, pm->vdecpll);
 	if (ret)
-		mtk_v4l2_err("clk_set_parent fail %d", ret);
+		mtk_v4l2_err("clk_set_parent vdec_sel vdecpll fail %d", ret);
 
 	ret = mtk_smi_larb_get(pm->larbvdec);
 	if (ret)
@@ -185,5 +197,11 @@ void mtk_vcodec_dec_clock_off(struct mtk_vcodec_pm *pm)
 	mtk_smi_larb_put(pm->larbvdec);
 	clk_disable_unprepare(pm->vdec_sel);
 	clk_disable_unprepare(pm->vdecpll);
+	clk_disable_unprepare(pm->univpll_d2);
+	clk_disable_unprepare(pm->clk_cci400_sel);
+	clk_disable_unprepare(pm->venc_lt_sel);
+	clk_disable_unprepare(pm->vcodecpll_370p5_ck);
+	clk_disable_unprepare(pm->vencpll);
+	clk_disable_unprepare(pm->vcodecpll);
 }
 

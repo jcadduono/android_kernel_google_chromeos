@@ -604,7 +604,7 @@ static int vdec_vp8_get_param(unsigned long h_vdec,
 	return 0;
 }
 
-static int vdec_vp8_deinit(unsigned long h_vdec)
+static void vdec_vp8_deinit(unsigned long h_vdec)
 {
 	struct vdec_vp8_inst *inst = (struct vdec_vp8_inst *)h_vdec;
 
@@ -613,8 +613,6 @@ static int vdec_vp8_deinit(unsigned long h_vdec)
 	vpu_dec_deinit(&inst->vpu);
 	free_working_buf(inst);
 	kfree(inst);
-
-	return 0;
 }
 
 static struct vdec_common_if vdec_vp8_if = {

@@ -658,6 +658,27 @@ static void mtk_mdp_clock_off(struct mtk_mdp_dev *mdp)
 		mtk_mdp_comp_clock_off(dev, mdp->comp[i]);
 }
 
+static void mtk_wdt_worker(struct work_struct *work)
+{
+	struct mtk_mdp_dev *mdp =
+			container_of(work, struct mtk_mdp_dev, wdt_work);
+	struct mtk_mdp_ctx *ctx;
+
+	mtk_mdp_dbg(0, "Watchdog timeout");
+
+	list_for_each_entry(ctx, &mdp->ctx_list, list) {
+		mtk_mdp_dbg(0, "[%d] Change as state error", ctx->id);
+		mtk_mdp_ctx_error(ctx);
+	}
+}
+
+static void mtk_mdp_reset_handler(void *priv)
+{
+	struct mtk_mdp_dev *mdp = priv;
+
+	queue_work(mdp->wdt_wq, &mdp->wdt_work);
+}
+
 static int mtk_mdp_probe(struct platform_device *pdev)
 {
 	struct mtk_mdp_dev *mdp;
@@ -672,6 +693,7 @@ static int mtk_mdp_probe(struct platform_device *pdev)
 	mdp->id = pdev->id;
 	mdp->variant = &mtk_mdp_default_variant;
 	mdp->pdev = pdev;
+	INIT_LIST_HEAD(&mdp->ctx_list);
 
 	init_waitqueue_head(&mdp->irq_queue);
 	mutex_init(&mdp->lock);
@@ -721,6 +743,14 @@ static int mtk_mdp_probe(struct platform_device *pdev)
 		goto err_alloc_workqueue;
 	}
 
+	mdp->wdt_wq = create_singlethread_workqueue("mdp_wdt_wq");
+	if (!mdp->wdt_wq) {
+		dev_err(&pdev->dev, "unable to alloc wdt workqueue\n");
+		ret = -ENOMEM;
+		goto err_alloc_wdt_wq;
+	}
+	INIT_WORK(&mdp->wdt_work, mtk_wdt_worker);
+
 	ret = v4l2_device_register(dev, &mdp->v4l2_dev);
 	if (ret) {
 		dev_err(&pdev->dev, "Failed to register v4l2 device\n");
@@ -735,6 +765,8 @@ static int mtk_mdp_probe(struct platform_device *pdev)
 	}
 
 	mdp->vpu_dev = vpu_get_plat_device(pdev);
+	vpu_wdt_reg_handler(mdp->vpu_dev, mtk_mdp_reset_handler, mdp,
+			    VPU_RST_MDP);
 
 	platform_set_drvdata(pdev, mdp);
 
@@ -756,6 +788,9 @@ err_m2m_register:
 	v4l2_device_unregister(&mdp->v4l2_dev);
 
 err_dev_register:
+	destroy_workqueue(mdp->wdt_wq);
+
+err_alloc_wdt_wq:
 	destroy_workqueue(mdp->workqueue);
 
 err_alloc_workqueue:

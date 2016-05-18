@@ -306,7 +306,7 @@ error_free_inst:
 	return err;
 }
 
-static int vdec_h264_deinit(unsigned long h_vdec)
+static void vdec_h264_deinit(unsigned long h_vdec)
 {
 	struct vdec_h264_inst *inst = (struct vdec_h264_inst *)h_vdec;
 
@@ -317,7 +317,6 @@ static int vdec_h264_deinit(unsigned long h_vdec)
 	free_mv_buf(inst);
 
 	kfree(inst);
-	return 0;
 }
 
 static int find_start_code(unsigned char *data, unsigned int data_sz)
