@@ -1479,6 +1479,14 @@ struct htt_tx_mode_switch_ind {
 	struct htt_tx_mode_switch_record records[0];
 } __packed;
 
+struct htt_channel_change {
+	u8 pad[3];
+	__le32 freq;
+	__le32 center_freq1;
+	__le32 center_freq2;
+	__le32 phymode;
+} __packed;
+
 union htt_rx_pn_t {
 	/* WEP: 24-bit PN */
 	u32 pn24;
@@ -1526,6 +1534,7 @@ struct htt_resp {
 		struct htt_rx_pn_ind rx_pn_ind;
 		struct htt_rx_offload_ind rx_offload_ind;
 		struct htt_rx_in_ord_ind rx_in_ord_ind;
+		struct htt_channel_change chan_change;
 		struct htt_tx_fetch_ind tx_fetch_ind;
 		struct htt_tx_fetch_confirm tx_fetch_confirm;
 		struct htt_tx_mode_switch_ind tx_mode_switch_ind;
