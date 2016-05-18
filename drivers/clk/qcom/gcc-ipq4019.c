@@ -499,12 +499,7 @@ static struct clk_branch gcc_gp3_clk = {
 };
 
 static const struct freq_tbl ftbl_gcc_sdcc1_apps_clk[] = {
-	F(144000,    P_XO,			1,  3, 240),
-	F(400000,    P_XO,			1,  1, 0),
-	F(20000000,  P_FEPLL500,		1,  1, 25),
-	F(25000000,  P_FEPLL500,		1,  1, 20),
-	F(50000000,  P_FEPLL500,		1,  1, 10),
-	F(100000000, P_FEPLL500,		1,  1, 5),
+	F(167000000, P_FEPLL500,	3,  0, 0),
 	F(193000000, P_DDRPLL,		1,  0, 0),
 	{ }
 };
@@ -519,7 +514,6 @@ static struct clk_rcg2  sdcc1_apps_clk_src = {
 		.parent_names = gcc_xo_sdcc1_500,
 		.num_parents = 3,
 		.ops = &clk_rcg2_ops,
-		.flags = CLK_SET_RATE_PARENT,
 	},
 };
 
@@ -1292,6 +1286,7 @@ static const struct qcom_reset_map gcc_ipq4019_resets[] = {
 	[GCC_TCSR_BCR] = {0x22000, 0},
 	[GCC_MPM_BCR] = {0x24000, 0},
 	[GCC_SPDM_BCR] = {0x25000, 0},
+	[GCC_SDHCI_DDR_PLL_RESET] = {0x2E020, 8},
 };
 
 static const struct regmap_config gcc_ipq4019_regmap_config = {

@@ -300,8 +300,12 @@
 			reg = <0x7824900 0x11c>, <0x7824000 0x800>;
 			interrupts = <0 123 0>, <0 138 0>;
 			bus-width = <8>;
+			resets = <&gcc GCC_SDHCI_DDR_PLL_RESET>;
+			reset-names = "sdhci_ddr_pll_reset";
 			clocks = <&gcc GCC_SDCC1_APPS_CLK>, <&gcc GCC_SDCC1_AHB_CLK>;
 			clock-names = "core", "iface";
+			clock-frequency = <167000000>;
+			disable-ddr-pll-clock-quirk;
 			status = "disabled";
 		};
 

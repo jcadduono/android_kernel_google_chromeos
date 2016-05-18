@@ -154,5 +154,6 @@
 #define GCC_QDSS_BCR					69
 #define GCC_MPM_BCR					70
 #define GCC_SPDM_BCR					71
+#define GCC_SDHCI_DDR_PLL_RESET		72
 
 #endif

@@ -19,6 +19,7 @@
 #include <linux/delay.h>
 #include <linux/mmc/mmc.h>
 #include <linux/slab.h>
+#include <linux/reset.h>
 
 #include "sdhci-pltfm.h"
 
@@ -433,6 +434,25 @@ static struct sdhci_ops sdhci_msm_ops = {
 	.set_uhs_signaling = sdhci_set_uhs_signaling,
 };
 
+static void sdhci_reset_ddr_mmc_clock(struct device *dev)
+{
+	struct reset_control *sdhci_ddr_rst;
+	int ret;
+
+	sdhci_ddr_rst = reset_control_get(dev, "sdhci_ddr_pll_reset");
+
+	if (!IS_ERR_OR_NULL(sdhci_ddr_rst)) {
+		ret = reset_control_assert(sdhci_ddr_rst);
+		if (ret) {
+			dev_err(dev, "sdhci ddr ppl reset failed (%d)\n", ret);
+		}
+		else
+			dev_info(dev, "sdhci ddr ppl reset successfull\n");
+	}
+
+	reset_control_put(sdhci_ddr_rst);
+}
+
 static int sdhci_msm_probe(struct platform_device *pdev)
 {
 	struct sdhci_host *host;
@@ -441,7 +461,7 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 	struct resource *core_memres;
 	int ret;
 	u16 host_version, core_minor;
-	u32 core_version, caps;
+	u32 core_version, caps, mclk_freq;
 	u8 core_major;
 
 	msm_host = devm_kzalloc(&pdev->dev, sizeof(*msm_host), GFP_KERNEL);
@@ -496,9 +516,24 @@ static int sdhci_msm_probe(struct platform_device *pdev)
 		goto pclk_disable;
 	}
 
+	mclk_freq = pltfm_host->clock;
+
+	/* Set the core clock frequency given in device-tree */
+	if (mclk_freq != 0) {
+		ret = clk_set_rate(msm_host->clk, mclk_freq);
+		if (ret) {
+			dev_err(&pdev->dev, "Failed to set clk rate %u\n", mclk_freq);
+			goto pclk_disable;
+		}
+		dev_info(&pdev->dev, "clock rate set to %u\n", mclk_freq);
+	}
+
 	ret = clk_prepare_enable(msm_host->clk);
 	if (ret)
 		goto pclk_disable;
+
+	if (host->quirks2 & SDHCI_QUIRK2_MMC_DISABLE_DDR_PLL_CLK_SRC)
+		sdhci_reset_ddr_mmc_clock(&pdev->dev);
 
 	core_memres = platform_get_resource(pdev, IORESOURCE_MEM, 1);
 	msm_host->core_mem = devm_ioremap_resource(&pdev->dev, core_memres);
