@@ -383,6 +383,7 @@ nouveau_drm_load(struct drm_device *dev, unsigned long flags)
 {
 	struct pci_dev *pdev = dev->pdev;
 	struct nouveau_drm *drm;
+	struct nvkm_device *device;
 	int ret;
 
 	ret = nouveau_cli_create(nouveau_name(dev), "DRM", sizeof(*drm),
@@ -464,9 +465,14 @@ nouveau_drm_load(struct drm_device *dev, unsigned long flags)
 	if (ret)
 		goto fail_bios;
 
-	ret = nouveau_display_create(dev);
-	if (ret)
-		goto fail_dispctor;
+	device = nvxx_device(&drm->device);
+	if (device->oclass[NVDEV_ENGINE_DISP]) {
+		ret = nouveau_display_create(dev);
+		if (ret)
+			goto fail_dispctor;
+	} else {
+		drm_mode_config_init(dev);
+	}
 
 	if (dev->mode_config.num_crtc) {
 		ret = nouveau_display_init(dev);
@@ -489,7 +495,10 @@ nouveau_drm_load(struct drm_device *dev, unsigned long flags)
 	return 0;
 
 fail_dispinit:
-	nouveau_display_destroy(dev);
+	if (device->oclass[NVDEV_ENGINE_DISP])
+		nouveau_display_destroy(dev);
+	else
+		drm_mode_config_cleanup(dev);
 fail_dispctor:
 	nouveau_bios_takedown(dev);
 fail_bios:
@@ -507,6 +516,7 @@ static int
 nouveau_drm_unload(struct drm_device *dev)
 {
 	struct nouveau_drm *drm = nouveau_drm(dev);
+	struct nvkm_device *device = nvxx_device(&drm->device);
 
 	if (nouveau_runtime_pm != 0)
 		pm_runtime_forbid(dev->dev);
@@ -517,7 +527,10 @@ nouveau_drm_unload(struct drm_device *dev)
 
 	if (dev->mode_config.num_crtc)
 		nouveau_display_fini(dev);
-	nouveau_display_destroy(dev);
+	if (device->oclass[NVDEV_ENGINE_DISP])
+		nouveau_display_destroy(dev);
+	else
+		drm_mode_config_cleanup(dev);
 
 	nouveau_bios_takedown(dev);
 
