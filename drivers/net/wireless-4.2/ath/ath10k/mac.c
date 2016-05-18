@@ -36,20 +36,46 @@
 /* Rates */
 /*********/
 
-static struct ieee80211_rate ath10k_rates[] = {
+static struct ieee80211_rate ath10k_10_2_rates[] = {
 	{ .bitrate = 10,
-	  .hw_value = ATH10K_HW_RATE_CCK_LP_1M },
+	  .hw_value = ATH10K_HW_RATE_10_2_CCK_LP_1M },
 	{ .bitrate = 20,
-	  .hw_value = ATH10K_HW_RATE_CCK_LP_2M,
-	  .hw_value_short = ATH10K_HW_RATE_CCK_SP_2M,
+	  .hw_value = ATH10K_HW_RATE_10_2_CCK_LP_2M,
+	  .hw_value_short = ATH10K_HW_RATE_10_2_CCK_SP_2M,
 	  .flags = IEEE80211_RATE_SHORT_PREAMBLE },
 	{ .bitrate = 55,
-	  .hw_value = ATH10K_HW_RATE_CCK_LP_5_5M,
-	  .hw_value_short = ATH10K_HW_RATE_CCK_SP_5_5M,
+	  .hw_value = ATH10K_HW_RATE_10_2_CCK_LP_5_5M,
+	  .hw_value_short = ATH10K_HW_RATE_10_2_CCK_SP_5_5M,
 	  .flags = IEEE80211_RATE_SHORT_PREAMBLE },
 	{ .bitrate = 110,
-	  .hw_value = ATH10K_HW_RATE_CCK_LP_11M,
-	  .hw_value_short = ATH10K_HW_RATE_CCK_SP_11M,
+	  .hw_value = ATH10K_HW_RATE_10_2_CCK_LP_11M,
+	  .hw_value_short = ATH10K_HW_RATE_10_2_CCK_SP_11M,
+	  .flags = IEEE80211_RATE_SHORT_PREAMBLE },
+
+	{ .bitrate = 60, .hw_value = ATH10K_HW_RATE_OFDM_6M },
+	{ .bitrate = 90, .hw_value = ATH10K_HW_RATE_OFDM_9M },
+	{ .bitrate = 120, .hw_value = ATH10K_HW_RATE_OFDM_12M },
+	{ .bitrate = 180, .hw_value = ATH10K_HW_RATE_OFDM_18M },
+	{ .bitrate = 240, .hw_value = ATH10K_HW_RATE_OFDM_24M },
+	{ .bitrate = 360, .hw_value = ATH10K_HW_RATE_OFDM_36M },
+	{ .bitrate = 480, .hw_value = ATH10K_HW_RATE_OFDM_48M },
+	{ .bitrate = 540, .hw_value = ATH10K_HW_RATE_OFDM_54M },
+};
+
+static struct ieee80211_rate ath10k_10_4_rates[] = {
+	{ .bitrate = 10,
+	  .hw_value = ATH10K_HW_RATE_10_4_CCK_LP_1M },
+	{ .bitrate = 20,
+	  .hw_value = ATH10K_HW_RATE_10_4_CCK_LP_2M,
+	  .hw_value_short = ATH10K_HW_RATE_10_4_CCK_SP_2M,
+	  .flags = IEEE80211_RATE_SHORT_PREAMBLE },
+	{ .bitrate = 55,
+	  .hw_value = ATH10K_HW_RATE_10_4_CCK_LP_5_5M,
+	  .hw_value_short = ATH10K_HW_RATE_10_4_CCK_SP_5_5M,
+	  .flags = IEEE80211_RATE_SHORT_PREAMBLE },
+	{ .bitrate = 110,
+	  .hw_value = ATH10K_HW_RATE_10_4_CCK_LP_11M,
+	  .hw_value_short = ATH10K_HW_RATE_10_4_CCK_SP_11M,
 	  .flags = IEEE80211_RATE_SHORT_PREAMBLE },
 
 	{ .bitrate = 60, .hw_value = ATH10K_HW_RATE_OFDM_6M },
@@ -64,11 +90,14 @@ static struct ieee80211_rate ath10k_rates[] = {
 
 #define ATH10K_MAC_FIRST_OFDM_RATE_IDX 4
 
-#define ath10k_a_rates (ath10k_rates + ATH10K_MAC_FIRST_OFDM_RATE_IDX)
-#define ath10k_a_rates_size (ARRAY_SIZE(ath10k_rates) - \
+#define ath10k_a_rates (ath10k_10_2_rates + ATH10K_MAC_FIRST_OFDM_RATE_IDX)
+#define ath10k_a_rates_size (ARRAY_SIZE(ath10k_10_2_rates) - \
 			     ATH10K_MAC_FIRST_OFDM_RATE_IDX)
-#define ath10k_g_rates (ath10k_rates + 0)
-#define ath10k_g_rates_size (ARRAY_SIZE(ath10k_rates))
+#define ath10k_g_10_2_rates (ath10k_10_2_rates + 0)
+#define ath10k_g_10_2_rates_size (ARRAY_SIZE(ath10k_10_2_rates))
+
+#define ath10k_g_10_4_rates (ath10k_10_4_rates + 0)
+#define ath10k_g_10_4_rates_size (ARRAY_SIZE(ath10k_10_4_rates))
 
 static bool ath10k_mac_bitrate_is_cck(int bitrate)
 {
@@ -7717,8 +7746,14 @@ int ath10k_mac_register(struct ath10k *ar)
 		band = &ar->mac.sbands[IEEE80211_BAND_2GHZ];
 		band->n_channels = ARRAY_SIZE(ath10k_2ghz_channels);
 		band->channels = channels;
-		band->n_bitrates = ath10k_g_rates_size;
-		band->bitrates = ath10k_g_rates;
+
+		if (ar->hw_params.new_cck_rate_map) {
+			band->n_bitrates = ath10k_g_10_4_rates_size;
+			band->bitrates = ath10k_g_10_4_rates;
+		} else {
+			band->n_bitrates = ath10k_g_10_2_rates_size;
+			band->bitrates = ath10k_g_10_2_rates;
+		}
 
 		ar->hw->wiphy->bands[IEEE80211_BAND_2GHZ] = band;
 	}
