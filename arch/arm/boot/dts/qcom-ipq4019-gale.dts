@@ -473,5 +473,10 @@
 				linux,input-type = <1>;
 			};
 		};
+
+		adau7002: adau7002@0 {
+			compatible = "adi,adau7002";
+			status = "ok";
+		};
 	};
 };

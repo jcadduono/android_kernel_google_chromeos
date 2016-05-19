@@ -45,6 +45,14 @@ static struct snd_soc_dai_link ipq4019_snd_dai[] = {
 				SND_SOC_DAIFMT_NB_NF |
 				SND_SOC_DAIFMT_CBS_CFS),
 	},
+	{
+		.name		= "IPQ40xx Capture",
+		.stream_name	= "I2S Capture",
+		.cpu_dai_name	= "soc:ipq4019-pcm-i2s@0",
+		.platform_name	= "7709000.qca-pcm-i2s",
+		.codec_dai_name = "adau7002-hifi",
+		.codec_name	= "soc:adau7002@0",
+	},
 };
 
 static struct snd_soc_card snd_soc_card_qca = {
