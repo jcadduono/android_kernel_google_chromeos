@@ -327,6 +327,7 @@ struct msdc_host {
 	u32 mclk;		/* mmc subsystem clock frequency */
 	u32 src_clk_freq;	/* source clock frequency */
 	u32 sclk;		/* SD/MS bus clock frequency */
+	bool clock_on;
 	unsigned char timing;
 	bool vqmmc_enabled;
 	u32 hs400_ds_delay;
@@ -511,6 +512,7 @@ static void msdc_gate_clock(struct msdc_host *host)
 {
 	clk_disable_unprepare(host->src_clk);
 	clk_disable_unprepare(host->h_clk);
+	host->clock_on = false;
 }
 
 static void msdc_ungate_clock(struct msdc_host *host)
@@ -519,6 +521,7 @@ static void msdc_ungate_clock(struct msdc_host *host)
 	clk_prepare_enable(host->src_clk);
 	while (!(readl(host->base + MSDC_CFG) & MSDC_CFG_CKSTB))
 		cpu_relax();
+	host->clock_on = true;
 }
 
 static void msdc_set_mclk(struct msdc_host *host, unsigned char timing, u32 hz)
@@ -1485,7 +1488,8 @@ static void msdc_recheck_sdio_irq(struct msdc_host *host)
 {
 	u32 reg_int, reg_ps;
 
-	if (host->mmc->caps & MMC_CAP_SDIO_IRQ && host->irq_thread_alive) {
+	if (host->clock_on && (host->mmc->caps & MMC_CAP_SDIO_IRQ)
+		&& host->irq_thread_alive) {
 		reg_int = readl(host->base + MSDC_INT);
 		reg_ps  = readl(host->base + MSDC_PS);
 		if (!((reg_int & MSDC_INT_SDIOIRQ) || (reg_ps & MSDC_PS_DATA1))) {
