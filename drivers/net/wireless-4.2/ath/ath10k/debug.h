@@ -66,6 +66,10 @@ enum ath_pktlog_type {
 /* FIXME: How to calculate the buffer size sanely? */
 #define ATH10K_FW_STATS_BUF_SIZE (1024*1024)
 
+/* TPC units are in dBm units */
+#define ATH10K_TPC_MAX_VAL 70
+#define ATH10K_TPC_MIN_VAL 0
+
 extern unsigned int ath10k_debug_mask;
 
 __printf(2, 3) void ath10k_info(struct ath10k *ar, const char *fmt, ...);
