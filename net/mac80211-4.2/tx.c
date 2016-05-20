@@ -2149,7 +2149,8 @@ static struct sk_buff *ieee80211_build_hdr(struct ieee80211_sub_if_data *sdata,
 			if (mpp_lookup)
 				mppath = mpp_path_lookup(sdata, skb->data);
 
-			if (mppath && mpath)
+			if (mppath && mpath &&
+			    !ether_addr_equal(mppath->mpp, mpath->dst))
 				mesh_path_del(mpath->sdata, mpath->dst);
 		}
 
