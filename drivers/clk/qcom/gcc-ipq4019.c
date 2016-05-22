@@ -79,7 +79,7 @@ static struct parent_map gcc_xo_sdcc1_500_map[] = {
 
 static const char * const gcc_xo_sdcc1_500[] = {
 	"xo",
-	"ddrpll",
+	"ddrpllsdcc",
 	"fepll500",
 };
 
@@ -500,7 +500,7 @@ static struct clk_branch gcc_gp3_clk = {
 
 static const struct freq_tbl ftbl_gcc_sdcc1_apps_clk[] = {
 	F(167000000, P_FEPLL500,	3,  0, 0),
-	F(193000000, P_DDRPLL,		1,  0, 0),
+	F(192000000, P_DDRPLL,		1,  0, 0),
 	{ }
 };
 
@@ -521,7 +521,7 @@ static const struct freq_tbl ftbl_gcc_apps_clk[] = {
 	F(48000000, P_XO,	   1, 0, 0),
 	F(200000000, P_FEPLL200,   1, 0, 0),
 	F(500000000, P_FEPLL500,   1, 0, 0),
-	F(710000000, P_DDRPLL,     2, 0, 0),
+	F(716000000, P_DDRPLL,     2, 0, 0),
 	{ }
 };
 
@@ -1315,13 +1315,15 @@ static int gcc_ipq4019_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
 
-	clk_register_fixed_rate(dev, "fepll125", "xo", 0, 200000000);
-	clk_register_fixed_rate(dev, "fepll125dly", "xo", 0, 200000000);
-	clk_register_fixed_rate(dev, "fepllwcss2g", "xo", 0, 200000000);
-	clk_register_fixed_rate(dev, "fepllwcss5g", "xo", 0, 200000000);
+	clk_register_fixed_rate(dev, "fepll125", "xo", 0, 125000000);
+	clk_register_fixed_rate(dev, "fepll125dly", "xo", 0, 125000000);
+	clk_register_fixed_rate(dev, "fepllwcss2g", "xo", 0, 250000000);
+	clk_register_fixed_rate(dev, "fepllwcss5g", "xo", 0, 250000000);
 	clk_register_fixed_rate(dev, "fepll200", "xo", 0, 200000000);
-	clk_register_fixed_rate(dev, "fepll500", "xo", 0, 200000000);
-	clk_register_fixed_rate(dev, "ddrpllapss", "xo", 0, 666000000);
+	clk_register_fixed_rate(dev, "fepll500", "xo", 0, 500000000);
+	clk_register_fixed_rate(dev, "ddrpllapss", "xo", 0, 672000000);
+	clk_register_fixed_rate(dev, "ddrpllsdcc", "xo", 0, 192000000);
+	clk_register_fixed_rate(dev, "pcnoc_clk_src", "xo", 0, 100000000);
 
 	return qcom_cc_probe(pdev, &gcc_ipq4019_desc);
 }
