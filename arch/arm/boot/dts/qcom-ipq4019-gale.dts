@@ -52,6 +52,9 @@
 
 		pinctrl@0x01000000 {
 
+			pinctrl-0 = <&bt_pins_default>;
+			pinctrl-names = "default";
+
 			fw_pins: fw_pinmux {
 				wp {
 					pins = "gpio6";
@@ -84,6 +87,13 @@
 			rx_active {
 					pins = "gpio43";
 					bias-pull,down;
+			};
+
+			bt_pins_default: bt_pins_default {
+				bt_reset {
+					pins = "gpio42";
+					output-high;
+				};
 			};
 
 			spi_0_pins: spi_0_pinmux {
