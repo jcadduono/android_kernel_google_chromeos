@@ -25,7 +25,7 @@ static void of_get_regulation_constraints(struct device_node *np,
 	const __be32 *min_uV, *max_uV;
 	const __be32 *state_disk_uV, *state_mem_uV, *state_standby_uV;
 	struct regulation_constraints *constraints = &(*init_data)->constraints;
-	int ret;
+	int ret, i, cnt;
 	u32 pval;
 
 	constraints->name = of_get_property(np, "regulator-name", NULL);
@@ -110,6 +110,20 @@ static void of_get_regulation_constraints(struct device_node *np,
 		constraints->state_standby.enabled = true;
 	if (of_find_property(np, "regulator-suspend-standby-disabled", NULL))
 		constraints->state_standby.disabled = true;
+
+	cnt = of_property_count_elems_of_size(np,
+					      "regulator-supported-modes",
+					      sizeof(u32));
+	if (cnt > 0)
+		constraints->valid_ops_mask |= REGULATOR_CHANGE_MODE;
+
+	for (i = 0; i < cnt; i++) {
+		u32 mode;
+
+		of_property_read_u32_index(np, "regulator-supported-modes",
+					   i, &mode);
+		constraints->valid_modes_mask |= (1 << mode);
+	}
 }
 
 /**
