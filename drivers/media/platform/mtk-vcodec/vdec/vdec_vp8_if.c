@@ -55,15 +55,19 @@
 
 /**
  * struct vdec_vp8_dec_info - decode misc information
- * @working_buf_dma   : working buffer dma address
+ *                            AP-W/R : AP is writer/reader on this item
+ *                            VPU-W/R: VPU is write/reader on this item
+ * @working_buf_dma   : working buffer dma address (AP-W, VPU-R)
  * @prev_y_dma        : previous decoded frame buffer Y plane address
- * @cur_y_fb_dma      : current plane Y frame buffer dma address
- * @cur_c_fb_dma      : current plane C frame buffer dma address
- * @bs_dma	      : bitstream dma address
- * @bs_sz	      : bitstream size
+ *                      (AP-R, VPU-W)
+ * @cur_y_fb_dma      : current plane Y frame buffer dma address (AP-W, VPU-R)
+ * @cur_c_fb_dma      : current plane C frame buffer dma address (AP-W, VPU-R)
+ * @bs_dma	      : bitstream dma address (AP-W, VPU-R)
+ * @bs_sz	      : bitstream size (AP-W, VPU-R)
  * @resolution_changed: resolution change flag 1 - changed,  0 - not change
- * @show_frame	      : display this frame or not
- * @wait_key_frame    : wait key frame coming
+ *			(AP-R, VPU-W)
+ * @show_frame	      : display this frame or not (AP-R, VPU-W)
+ * @wait_key_frame    : wait key frame coming (AP-R, VPU-W)
  */
 struct vdec_vp8_dec_info {
 	uint64_t working_buf_dma;
@@ -79,11 +83,13 @@ struct vdec_vp8_dec_info {
 
 /**
  * struct vdec_vp8_vsi - VPU shared information
+ *                       AP-W/R : AP is writer/reader on this item
+ *                       VPU-W/R: VPU is write/reader on this item
  * @dec			: decoding information
- * @pic			: picture information
- * @dec_table		: decoder coefficient table
- * @segment_buf		: segmentation buffer
- * @load_data		: flag to indicate reload decode data
+ * @pic			: picture information (AP-R, VPU-W)
+ * @dec_table		: decoder coefficient table (AP-R/W, VPU-R/W)
+ * @segment_buf		: segmentation buffer (AP-R/W, VPU-R/W)
+ * @load_data		: flag to indicate reload decode data (AP-R, VPU-W)
  */
 struct vdec_vp8_vsi {
 	struct vdec_vp8_dec_info dec;
