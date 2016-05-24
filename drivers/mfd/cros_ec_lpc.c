@@ -22,6 +22,7 @@
  */
 
 #include <linux/delay.h>
+#include <linux/dmi.h>
 #include <linux/mfd/cros_ec.h>
 #include <linux/mfd/cros_ec_commands.h>
 #include <linux/mfd/cros_ec_lpc_reg.h>
@@ -330,6 +331,43 @@ static int cros_ec_lpc_remove(struct platform_device *pdev)
 	return 0;
 }
 
+static struct dmi_system_id cros_ec_lpc_dmi_table[] __initdata = {
+	{
+		/*
+		 * Today all Chromebooks/boxes ship with Google_* as version and
+		 * coreboot as bios vendor. No other systems with this
+		 * combination are known to date.
+		 */
+		.matches = {
+			DMI_MATCH(DMI_BIOS_VENDOR, "coreboot"),
+			DMI_MATCH(DMI_BIOS_VERSION, "Google_"),
+		},
+	},
+	{
+		/* x86-link, the Chromebook Pixel. */
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "GOOGLE"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "Link"),
+		},
+	},
+	{
+		/* x86-samus, the Chromebook Pixel 2. */
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "GOOGLE"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "Samus"),
+		},
+	},
+	{
+		/* x86-peppy, the Acer C720 Chromebook. */
+		.matches = {
+			DMI_MATCH(DMI_SYS_VENDOR, "Acer"),
+			DMI_MATCH(DMI_PRODUCT_NAME, "Peppy"),
+		},
+	},
+	{ /* sentinel */ }
+};
+MODULE_DEVICE_TABLE(dmi, cros_ec_lpc_dmi_table);
+
 static struct platform_driver cros_ec_lpc_driver = {
 	.driver = {
 		.name = MYNAME,
@@ -355,6 +393,9 @@ static int __init cros_ec_lpc_init(void)
 {
 	int ret;
 
+	if (!dmi_check_system(cros_ec_lpc_dmi_table))
+		return -ENODEV;
+
 	cros_ec_lpc_reg_init();
 
 	/* Register the driver */
@@ -364,7 +405,7 @@ static int __init cros_ec_lpc_init(void)
 		return ret;
 	}
 
-	/* Register the device, and it'll get hooked up automaticaly */
+	/* Register the device, and it'll get hooked up automatically */
 	ret = platform_device_register(&cros_ec_lpc_device);
 	if (ret < 0) {
 		pr_warn(MYNAME ": can't register device: %d\n", ret);
