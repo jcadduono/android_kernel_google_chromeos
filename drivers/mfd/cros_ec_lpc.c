@@ -273,33 +273,32 @@ static int cros_ec_lpc_probe(struct platform_device *pdev)
 	int err = -ENOTTY;
 	u8 buf[2];
 
-	if (!request_region(EC_LPC_ADDR_MEMMAP, EC_MEMMAP_SIZE, MYNAME)) {
-		dev_warn(dev, "couldn't reserve memmap region\n");
-		goto failed_memmap;
+	if (!devm_request_region(dev, EC_LPC_ADDR_MEMMAP, EC_MEMMAP_SIZE,
+				 dev_name(dev))) {
+		dev_err(dev, "couldn't reserve memmap region\n");
+		return -EBUSY;
 	}
 
 	cros_ec_lpc_read_bytes(EC_LPC_ADDR_MEMMAP + EC_MEMMAP_ID, 2, buf);
 	if (buf[0] != 'E' || buf[1] != 'C') {
-		dev_warn(dev, "EC ID not detected\n");
-		goto failed_ec_probe;
+		dev_err(dev, "EC ID not detected\n");
+		return -ENODEV;
 	}
 
-	if (!request_region(EC_HOST_CMD_REGION0, EC_HOST_CMD_REGION_SIZE,
-			    MYNAME)) {
-		dev_warn(dev, "couldn't reserve region0\n");
-		goto failed_region0;
+	if (!devm_request_region(dev, EC_HOST_CMD_REGION0,
+				 EC_HOST_CMD_REGION_SIZE, dev_name(dev))) {
+		dev_err(dev, "couldn't reserve region0\n");
+		return -EBUSY;
 	}
-	if (!request_region(EC_HOST_CMD_REGION1, EC_HOST_CMD_REGION_SIZE,
-			    MYNAME)) {
-		dev_warn(dev, "couldn't reserve region1\n");
-		goto failed_region1;
+	if (!devm_request_region(dev, EC_HOST_CMD_REGION1,
+				 EC_HOST_CMD_REGION_SIZE, dev_name(dev))) {
+		dev_err(dev, "couldn't reserve region1\n");
+		return -EBUSY;
 	}
 
 	ec_dev = devm_kzalloc(dev, sizeof(*ec_dev), GFP_KERNEL);
-	if (!ec_dev) {
-		err = -ENOMEM;
-		goto failed_ec_dev;
-	}
+	if (!ec_dev)
+		return -ENOMEM;
 
 	platform_set_drvdata(pdev, ec_dev);
 	ec_dev->dev = dev;
@@ -315,21 +314,9 @@ static int cros_ec_lpc_probe(struct platform_device *pdev)
 	ec_dev->dout_size = sizeof(struct ec_host_request);
 
 	err = cros_ec_register(ec_dev);
-	if (err) {
+	if (err)
 		dev_warn(dev, "couldn't register ec_dev\n");
-		goto failed_ec_dev;
-	}
 
-	return 0;
-
-failed_ec_dev:
-	release_region(EC_HOST_CMD_REGION1, EC_HOST_CMD_REGION_SIZE);
-failed_region1:
-	release_region(EC_HOST_CMD_REGION0, EC_HOST_CMD_REGION_SIZE);
-failed_region0:
-failed_ec_probe:
-	release_region(EC_LPC_ADDR_MEMMAP, EC_MEMMAP_SIZE);
-failed_memmap:
 	return err;
 }
 
@@ -339,10 +326,6 @@ static int cros_ec_lpc_remove(struct platform_device *pdev)
 
 	ec_dev = platform_get_drvdata(pdev);
 	cros_ec_remove(ec_dev);
-
-	release_region(EC_HOST_CMD_REGION1, EC_HOST_CMD_REGION_SIZE);
-	release_region(EC_HOST_CMD_REGION0, EC_HOST_CMD_REGION_SIZE);
-	release_region(EC_LPC_ADDR_MEMMAP, EC_MEMMAP_SIZE);
 
 	return 0;
 }
