@@ -241,20 +241,4 @@ extern void ipq4019_glb_rx_data_port_en(uint32_t enable);
 extern void ipq4019_glb_tx_framesync_port_en(uint32_t enable);
 extern void ipq4019_glb_rx_framesync_port_en(uint32_t enable);
 extern void ipq4019_glb_clk_enable_oe(uint32_t dir);
-/* Stereo APIs */
-extern void ipq4019_stereo_config_reset(uint32_t reset, uint32_t stereo_offset);
-extern void ipq4019_stereo_config_mic_reset(uint32_t reset,
-					uint32_t stereo_offset);
-extern void ipq4019_stereo_config_enable(uint32_t enable,
-					uint32_t stereo_offset);
-extern int ipq4019_cfg_bit_width(uint32_t bit_width, uint32_t stereo_offset);
-extern void ipq4019_config_stereo_mode(uint32_t mode, uint32_t stereo_offset);
-extern void ipq4019_config_master(uint32_t enable, uint32_t stereo_offset);
-extern void ipq4019_config_mclk_sel(uint32_t stereo_offset, uint32_t val);
-extern void ipq4019_config_sample_cnt_clear_type(uint32_t stereo_offset);
-
-/* APIs in DAI driver */
-extern int ipq4019_get_mbox_id(struct snd_pcm_substream *substream, int intf);
-extern int ipq4019_get_stereo_id(struct snd_pcm_substream *substream,
-								int intf);
 #endif
