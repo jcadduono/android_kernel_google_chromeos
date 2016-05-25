@@ -566,19 +566,26 @@ static int spi_qup_io_config(struct spi_device *spi, struct spi_transfer *xfer)
 	return 0;
 }
 
-static unsigned int spi_qup_sgl_get_size(struct scatterlist *sgl, unsigned int nents)
+static u32 spi_qup_sgl_get_nents_len(struct scatterlist *sgl, u32 max,
+				     u32 *nents)
 {
 	struct scatterlist *sg;
-	int i;
-	unsigned int length = 0;
+	u32 total = 0;
 
-	if (!nents)
-		return 0;
+	*nents = 0;
 
-	for_each_sg(sgl, sg, nents, i)
-		length += sg_dma_len(sg);
+	for (sg = sgl; sg; sg = sg_next(sg)) {
+		unsigned int len = sg_dma_len(sg);
 
-	return length;
+		/* check for overflow as well as limit */
+		if (((total + len) < total) || ((total + len) > max))
+			break;
+
+		total += len;
+		(*nents)++;
+	}
+
+	return total;
 }
 
 static int spi_qup_do_dma(struct spi_device *spi, struct spi_transfer *xfer,
@@ -594,26 +601,18 @@ unsigned long timeout)
 	tx_sgl = xfer->tx_sg.sgl;
 
 	do {
-		int rx_nents = 0, tx_nents = 0;
+		u32 rx_nents, tx_nents;
 
-		if (rx_sgl) {
-			rx_nents = sg_nents_for_len(rx_sgl, SPI_MAX_XFER);
-			if (rx_nents < 0)
-				rx_nents = sg_nents(rx_sgl);
+		if (rx_sgl)
+			qup->n_words = spi_qup_sgl_get_nents_len(rx_sgl,
+					SPI_MAX_XFER, &rx_nents) / qup->w_size;
 
-			qup->n_words = spi_qup_sgl_get_size(rx_sgl, rx_nents) /
-						qup->w_size;
-		}
+		if (tx_sgl)
+			qup->n_words = spi_qup_sgl_get_nents_len(tx_sgl,
+					SPI_MAX_XFER, &tx_nents) / qup->w_size;
 
-		if (tx_sgl) {
-			tx_nents = sg_nents_for_len(tx_sgl, SPI_MAX_XFER);
-			if (tx_nents < 0)
-				tx_nents = sg_nents(tx_sgl);
-
-			qup->n_words = spi_qup_sgl_get_size(tx_sgl, tx_nents) /
-						qup->w_size;
-		}
-
+		if (!qup->n_words)
+			return -EIO;
 
 		ret = spi_qup_io_config(spi, xfer);
 		if (ret)
