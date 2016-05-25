@@ -29,13 +29,6 @@ config IPQ_GCC_4019
 	  Say Y if you want to use peripheral devices such as UART, SPI,
 	  i2c, USB, SD/eMMC, etc.
 
-config IPQ_ADCC_4019
-	tristate "IPQ4019 Audio Clock Controller"
-	depends on COMMON_CLK_QCOM
-	help
-	  Say Y if you need support for audio clock controller on IPQ4019 devices.
-	  Audio clocks TXM, RXM, TXB and RXB depend on ADCC. ADCC also is used for
-	  selecting the pad's as the source for the ADSS [audio subsystem] clocks.
 
 config IPQ_GCC_806X
 	tristate "IPQ806x Global Clock Controller"
