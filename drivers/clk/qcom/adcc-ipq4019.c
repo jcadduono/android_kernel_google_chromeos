@@ -185,7 +185,7 @@ static struct clk_branch adcc_rxm_clk_src = {
 			.parent_names = (const char *[]){"rxm_clk_src"},
 			.num_parents = 1,
 			.ops = &clk_branch2_ops,
-			.flags = CLK_SET_RATE_PARENT,
+			.flags = CLK_SET_RATE_PARENT | CLK_IGNORE_UNUSED,
 		},
 	},
 };
@@ -219,7 +219,7 @@ static struct clk_branch adcc_txm_clk_src = {
 			},
 			.num_parents = 1,
 			.ops = &clk_branch2_ops,
-			.flags = CLK_SET_RATE_PARENT,
+			.flags = CLK_SET_RATE_PARENT | CLK_IGNORE_UNUSED,
 		},
 	},
 };
@@ -284,7 +284,7 @@ static struct clk_branch adcc_txb_clk_src = {
 			},
 			.num_parents = 1,
 			.ops = &clk_branch2_ops,
-			.flags = CLK_SET_RATE_PARENT,
+			.flags = CLK_SET_RATE_PARENT | CLK_IGNORE_UNUSED,
 		},
 	},
 };
@@ -320,7 +320,7 @@ static struct clk_branch adcc_rxb_clk_src = {
 			},
 			.num_parents = 1,
 			.ops = &clk_branch2_ops,
-			.flags = CLK_SET_RATE_PARENT,
+			.flags = CLK_SET_RATE_PARENT | CLK_IGNORE_UNUSED,
 		},
 	},
 };
