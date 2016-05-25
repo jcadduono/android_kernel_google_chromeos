@@ -205,7 +205,3 @@
 		sound-dai = <&rt5650 1>;
 	};
 };
-
-&touchscreen {
-	reset-gpios = <&pio 93 GPIO_ACTIVE_LOW>;
-};
