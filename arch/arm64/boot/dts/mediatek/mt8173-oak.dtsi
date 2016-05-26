@@ -104,13 +104,13 @@
 
 		volume_down {
 			label = "Volume_down";
-			gpios = <&pio 124 GPIO_ACTIVE_LOW>;
+			gpios = <&pio 123 GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_VOLUMEDOWN>;
 		};
 
 		volume_up {
 			label = "Volume_up";
-			gpios = <&pio 123 GPIO_ACTIVE_LOW>;
+			gpios = <&pio 124 GPIO_ACTIVE_LOW>;
 			linux,code = <KEY_VOLUMEUP>;
 		};
 	};
