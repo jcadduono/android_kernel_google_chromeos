@@ -206,19 +206,20 @@ IMG_IMPORT void IMG_CALLCONV PVRSRVDebugAssertFail(const IMG_CHAR *pszFile,
 
 /* PVR_DPF() handling */
 
-#if defined(PVRSRV_NEED_PVR_DPF)
+/* New logging mechanism */
+#define PVR_DBG_FATAL		DBGPRIV_FATAL
+#define PVR_DBG_ERROR		DBGPRIV_ERROR
+#define PVR_DBG_WARNING		DBGPRIV_WARNING
+#define PVR_DBG_MESSAGE		DBGPRIV_MESSAGE
+#define PVR_DBG_VERBOSE		DBGPRIV_VERBOSE
+#define PVR_DBG_CALLTRACE	DBGPRIV_CALLTRACE
+#define PVR_DBG_ALLOC		DBGPRIV_ALLOC
+#define PVR_DBG_BUFFERED	DBGPRIV_BUFFERED
+#define PVR_DBG_DEBUG		DBGPRIV_DEBUG
+#define PVR_DBGDRIV_MESSAGE	DBGPRIV_DBGDRV_MESSAGE
 
-	/* New logging mechanism */
-	#define PVR_DBG_FATAL		DBGPRIV_FATAL
-	#define PVR_DBG_ERROR		DBGPRIV_ERROR
-	#define PVR_DBG_WARNING		DBGPRIV_WARNING
-	#define PVR_DBG_MESSAGE		DBGPRIV_MESSAGE
-	#define PVR_DBG_VERBOSE		DBGPRIV_VERBOSE
-	#define PVR_DBG_CALLTRACE	DBGPRIV_CALLTRACE
-	#define PVR_DBG_ALLOC		DBGPRIV_ALLOC
-	#define PVR_DBG_BUFFERED	DBGPRIV_BUFFERED
-	#define PVR_DBG_DEBUG		DBGPRIV_DEBUG
-	#define PVR_DBGDRIV_MESSAGE	DBGPRIV_DBGDRV_MESSAGE
+
+#if defined(PVRSRV_NEED_PVR_DPF)
 
 	/* These levels are always on with PVRSRV_NEED_PVR_DPF */
 	#define __PVR_DPF_0x001UL(...) PVRSRVDebugPrintf(DBGPRIV_FATAL, __VA_ARGS__)
@@ -333,7 +334,15 @@ IMG_IMPORT void IMG_CALLCONV PVRSRVDebugPrintfDumpCCB(void);
 
 #else  /* defined(PVRSRV_NEED_PVR_DPF) */
 
-	#define PVR_DPF(X)  /*!< Null Implementation of PowerVR Debug Printf (does nothing) */
+	#define PVR_DBG_ALWAYS_PRINT	(PVR_DBG_FATAL | PVR_DBG_ERROR)
+
+	#define __PVR_DPF(lvl, fmt, ...) do { \
+		if ((lvl) & PVR_DBG_ALWAYS_PRINT) \
+			pr_err(fmt "\n", ##__VA_ARGS__); \
+	} while (0)
+
+	/* Get rid of the double bracketing */
+	#define PVR_DPF(x) __PVR_DPF x
 
 	#define PVR_LOG_ERROR(_rc, _call) (void)(_rc)
 	#define PVR_LOG_IF_ERROR(_rc, _call) (void)(_rc)
