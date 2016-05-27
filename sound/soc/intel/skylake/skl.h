@@ -90,6 +90,11 @@ struct skl_dma_params {
 	u8 stream_tag;
 };
 
+/* to pass dmic data */
+struct skl_machine_pdata {
+	u32 dmic_num;
+};
+
 int skl_platform_unregister(struct device *dev);
 int skl_platform_register(struct device *dev);
 
@@ -98,6 +103,7 @@ void skl_nhlt_free(void __iomem *addr);
 struct nhlt_specific_cfg *skl_get_ep_blob(struct skl *skl, u32 instance,
 			u8 link_type, u8 s_fmt, u8 no_ch, u32 s_rate, u8 dirn);
 
+int skl_get_dmic_geo(struct skl *skl);
 int skl_nhlt_update_topology_bin(struct skl *skl);
 int skl_init_dsp(struct skl *skl);
 void skl_free_dsp(struct skl *skl);
