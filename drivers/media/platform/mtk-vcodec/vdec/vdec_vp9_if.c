@@ -93,40 +93,45 @@ struct vp9_sf_ref_fb {
 
 /*
  * struct vdec_vp9_vsi - shared buffer between host and VPU firmware
- * @sf_bs_buf : super frame backup buffer
+ *		AP-W/R : AP is writer/reader on this item
+ *		VPU-W/R: VPU is write/reader on this item
+ * @sf_bs_buf : super frame backup buffer (AP-W, VPU-R)
  * @sf_ref_fb : record supoer frame reference buffer information
- * @sf_next_ref_fb_idx : next available super frame
- * @sf_frm_cnt : super frame count, filled by vpu
- * @sf_frm_offset : super frame offset, filled by vpu
- * @sf_frm_sz : super frame size, filled by vpu
- * @sf_frm_idx : current super frame
- * @sf_init : inform super frame info already parsed by vpu
- * @fb : capture buffer
- * @bs : bs buffer
- * @cur_fb : current show capture buffer
- * @pic_w : picture width
- * @pic_h : picture height
- * @buf_w : codec width
- * @buf_h : coded height
- * @buf_sz_y_bs : ufo compressed y plane size
- * @buf_sz_c_bs : ufo compressed cbcr plane size
- * @buf_len_sz_y : size used to store y plane ufo info
- * @buf_len_sz_c : size used to store cbcr plane ufo info
+ *		(AP-R/W, VPU-R/W)
+ * @sf_next_ref_fb_idx : next available super frame (AP-W, VPU-R)
+ * @sf_frm_cnt : super frame count, filled by vpu (AP-R, VPU-W)
+ * @sf_frm_offset : super frame offset, filled by vpu (AP-R, VPU-W)
+ * @sf_frm_sz : super frame size, filled by vpu (AP-R, VPU-W)
+ * @sf_frm_idx : current super frame (AP-R, VPU-W)
+ * @sf_init : inform super frame info already parsed by vpu (AP-R, VPU-W)
+ * @fb : capture buffer (AP-W, VPU-R)
+ * @bs : bs buffer (AP-W, VPU-R)
+ * @cur_fb : current show capture buffer (AP-R/W, VPU-R/W)
+ * @pic_w : picture width (AP-R, VPU-W)
+ * @pic_h : picture height (AP-R, VPU-W)
+ * @buf_w : codec width (AP-R, VPU-W)
+ * @buf_h : coded height (AP-R, VPU-W)
+ * @buf_sz_y_bs : ufo compressed y plane size (AP-R, VPU-W)
+ * @buf_sz_c_bs : ufo compressed cbcr plane size (AP-R, VPU-W)
+ * @buf_len_sz_y : size used to store y plane ufo info (AP-R, VPU-W)
+ * @buf_len_sz_c : size used to store cbcr plane ufo info (AP-R, VPU-W)
 
- * @profile : profile sparsed from vpu
- * @show_frame : display this frame or not
+ * @profile : profile sparsed from vpu (AP-R, VPU-W)
+ * @show_frame : display this frame or not (AP-R, VPU-W)
  * @show_existing_frame : inform this frame is show existing frame
- * @frm_to_show_idx : index to show frame
+ *		(AP-R, VPU-W)
+ * @frm_to_show_idx : index to show frame (AP-R, VPU-W)
 
  * @refresh_frm_flags : indicate when frame need to refine reference count
- * @resolution_changed : resolution change in this frame
+ *		(AP-R, VPU-W)
+ * @resolution_changed : resolution change in this frame (AP-R, VPU-W)
 
- * @frm_bufs : maintain reference buffer info
- * @ref_frm_map : maintain reference buffer map info
- * @new_fb_idx : index to frm_bufs array
- * @frm_num : decoded frame number, include sub-frame count
- * @mv_buf : motion vector working buffer
- * @frm_refs : maintain three reference buffer info
+ * @frm_bufs : maintain reference buffer info (AP-R/W, VPU-R/W)
+ * @ref_frm_map : maintain reference buffer map info (AP-R/W, VPU-R/W)
+ * @new_fb_idx : index to frm_bufs array (AP-R, VPU-W)
+ * @frm_num : decoded frame number, include sub-frame count (AP-R, VPU-W)
+ * @mv_buf : motion vector working buffer (AP-W, VPU-R)
+ * @frm_refs : maintain three reference buffer info (AP-R/W, VPU-R/W)
  */
 struct vdec_vp9_vsi {
 	unsigned char sf_bs_buf[VP9_SUPER_FRAME_BS_SZ];
