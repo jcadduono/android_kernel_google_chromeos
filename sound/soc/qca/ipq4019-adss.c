@@ -32,13 +32,6 @@ static struct reset_control *audio_blk_rst;
 static spinlock_t i2s_ctrl_lock;
 static spinlock_t glb_mode_lock;
 
-static void ipq4019_gcc_audio_blk_rst(void)
-{
-	reset_control_assert(audio_blk_rst);
-	mdelay(5);
-	reset_control_deassert(audio_blk_rst);
-}
-
 /* I2S Interface Enable */
 static void ipq4019_glb_i2s_interface_en(int enable)
 {
@@ -231,8 +224,10 @@ static int ipq4019_audio_adss_probe(struct platform_device *pdev)
 	 * Reset order is critical here.
 	 * First audio block should be out of reset,
 	 * followed by I2S block.
+	 * Since the audio block is brought out of
+	 * reset by hardware by default, it is not
+	 * required to be done in software explicitly.
 	 */
-	ipq4019_gcc_audio_blk_rst();
 	ipq4019_glb_i2s_reset();
 
 	ipq4019_glb_i2s_interface_en(ENABLE);

@@ -271,17 +271,11 @@ static int ipq4019_pcm_i2s_trigger(struct snd_pcm_substream *substream, int cmd)
 	int ret;
 	struct snd_pcm_runtime *runtime = substream->runtime;
 	struct ipq4019_pcm_rt_priv *pcm_rtpriv = runtime->private_data;
-	struct snd_soc_pcm_runtime *rtd = substream->private_data;
-	struct snd_soc_dai *dai = rtd->cpu_dai;
-	u32 desc_duration, intf = dai->driver->id;
+	u32 desc_duration;
 
 	switch (cmd) {
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
-		/* Enable the I2S Stereo block for operation */
-		ipq4019_stereo_config_enable(ENABLE,
-				ipq4019_get_stereo_id(substream, intf));
-
 		ret = ipq4019_mbox_dma_start(pcm_rtpriv->channel);
 		if (ret) {
 			dev_err(ss2dev(substream),
@@ -297,10 +291,6 @@ static int ipq4019_pcm_i2s_trigger(struct snd_pcm_substream *substream, int cmd)
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_SUSPEND:
-		/* Disable the I2S Stereo block */
-		ipq4019_stereo_config_enable(DISABLE,
-				ipq4019_get_stereo_id(substream, intf));
-		/* fall through... */
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 		/*
 		 * For e.g. the number of bytes needed to represent 1 second

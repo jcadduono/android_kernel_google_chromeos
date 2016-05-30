@@ -187,28 +187,6 @@ static int ipq4019_audio_hw_params(struct snd_pcm_substream *substream,
 	bclk = rate * bit_act * channels;
 	mclk = bclk * MCLK_MULTI;
 
-	switch (substream->stream) {
-	case SNDRV_PCM_STREAM_PLAYBACK:
-		ret = ipq4019_audio_clk_set(audio_tx_mclk, dev, mclk);
-		if (ret)
-			return ret;
-
-		ret = ipq4019_audio_clk_set(audio_tx_bclk, dev, bclk);
-		if (ret)
-			return ret;
-		break;
-
-	case SNDRV_PCM_STREAM_CAPTURE:
-		ret = ipq4019_audio_clk_set(audio_rx_mclk, dev, mclk);
-		if (ret)
-			return ret;
-
-		ret = ipq4019_audio_clk_set(audio_rx_bclk, dev, bclk);
-		if (ret)
-			return ret;
-		break;
-	}
-
 	ipq4019_glb_clk_enable_oe(substream->stream);
 
 	ipq4019_config_master(ENABLE, stereo_id);
@@ -235,6 +213,29 @@ static int ipq4019_audio_hw_params(struct snd_pcm_substream *substream,
 
 	ipq4019_stereo_config_reset(DISABLE, stereo_id);
 	ipq4019_stereo_config_mic_reset(DISABLE, stereo_id);
+	ipq4019_stereo_config_enable(ENABLE, stereo_id);
+
+	switch (substream->stream) {
+	case SNDRV_PCM_STREAM_PLAYBACK:
+		ret = ipq4019_audio_clk_set(audio_tx_mclk, dev, mclk);
+		if (ret)
+			return ret;
+
+		ret = ipq4019_audio_clk_set(audio_tx_bclk, dev, bclk);
+		if (ret)
+			return ret;
+		break;
+
+	case SNDRV_PCM_STREAM_CAPTURE:
+		ret = ipq4019_audio_clk_set(audio_rx_mclk, dev, mclk);
+		if (ret)
+			return ret;
+
+		ret = ipq4019_audio_clk_set(audio_rx_bclk, dev, bclk);
+		if (ret)
+			return ret;
+		break;
+	}
 
 	return 0;
 }
@@ -263,6 +264,10 @@ static void ipq4019_audio_shutdown(struct snd_pcm_substream *substream,
 		ipq4019_audio_clk_disable(&audio_rx_mclk, dev);
 		break;
 	}
+
+	/* Disable the I2S Stereo block */
+	ipq4019_stereo_config_enable(DISABLE,
+			ipq4019_get_stereo_id(substream, intf));
 }
 
 static struct snd_soc_dai_ops ipq4019_audio_ops = {
