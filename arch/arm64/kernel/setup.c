@@ -565,6 +565,8 @@ static int c_show(struct seq_file *m, void *v)
 #ifdef CONFIG_SMP
 		seq_printf(m, "processor\t: %d\n", i);
 #endif
+		seq_printf(m, "model name\t: ARMv8 Processor rev %d (%s)\n",
+			   MIDR_REVISION(midr), COMPAT_ELF_PLATFORM);
 
 		/*
 		 * Dump out the common processor features in a single line.
