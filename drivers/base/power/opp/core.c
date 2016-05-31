@@ -92,7 +92,7 @@ struct device_opp *_find_device_opp(struct device *dev)
 {
 	struct device_opp *dev_opp;
 
-	opp_rcu_lockdep_assert();
+	opp_rcu_lockdep_assert(NULL);
 
 	if (IS_ERR_OR_NULL(dev)) {
 		pr_err("%s: Invalid parameters\n", __func__);
@@ -195,7 +195,7 @@ bool dev_pm_opp_is_turbo(struct dev_pm_opp *opp)
 {
 	struct dev_pm_opp *tmp_opp;
 
-	opp_rcu_lockdep_assert();
+	opp_rcu_lockdep_assert(&opp->dev_opp->srcu_head.srcu);
 
 	tmp_opp = rcu_dereference(opp);
 	if (IS_ERR_OR_NULL(tmp_opp) || !tmp_opp->available) {
@@ -250,7 +250,7 @@ struct dev_pm_opp *dev_pm_opp_get_suspend_opp(struct device *dev)
 {
 	struct device_opp *dev_opp;
 
-	opp_rcu_lockdep_assert();
+	opp_rcu_lockdep_assert(NULL);
 
 	dev_opp = _find_device_opp(dev);
 	if (IS_ERR(dev_opp) || !dev_opp->suspend_opp ||
