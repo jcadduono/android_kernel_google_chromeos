@@ -16,6 +16,7 @@
 #include "mt8173-elm.dtsi"
 
 / {
-	model = "Mediatek Elm rev1 board";
-	compatible = "google,elm-rev1", "google,elm", "mediatek,mt8173";
+	model = "Mediatek Elm board";
+	compatible = "google,elm-rev2", "google,elm-rev1",
+		     "google,elm", "mediatek,mt8173";
 };
