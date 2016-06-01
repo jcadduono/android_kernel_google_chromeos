@@ -61,21 +61,23 @@ enum venc_h264_bs_mode {
 
 /*
  * struct venc_h264_vpu_config - Structure for h264 encoder configuration
- * @input_fourcc: input fourcc
- * @bitrate: target bitrate (in bps)
+ *                               AP-W/R : AP is writer/reader on this item
+ *                               VPU-W/R: VPU is write/reader on this item
+ * @input_fourcc: input fourcc (AP-W, VPU-R)
+ * @bitrate: target bitrate (in bps) (AP-W, VPU-R)
  * @pic_w: picture width. Picture size is visible stream resolution, in pixels,
  *         to be used for display purposes; must be smaller or equal to buffer
- *         size.
- * @pic_h: picture height
- * @buf_w: buffer width (with 16 alignment). Buffer size is stream resolution
- *         in pixels aligned to hardware requirements.
- * @buf_h: buffer height (with 16 alignment)
- * @gop_size: group of picture size (idr frame)
- * @intra_period: intra frame period
- * @framerate: frame rate in fps
- * @profile: as specified in standard
- * @level: as specified in standard
- * @wfd: WFD mode 1:on, 0:off
+ *         size. (AP-W, VPU-R)
+ * @pic_h: picture height (AP-W, VPU-R)
+ * @buf_w: buffer width (with 16 alignment) (AP-W, VPU-R) Buffer size is stream
+ *         resolution in pixels aligned to hardware requirements.
+ * @buf_h: buffer height (with 16 alignment) (AP-W, VPU-R)
+ * @gop_size: group of picture size (idr frame) (AP-W, VPU-R)
+ * @intra_period: intra frame period (AP-W, VPU-R)
+ * @framerate: frame rate in fps (AP-W, VPU-R)
+ * @profile: as specified in standard (AP-W, VPU-R)
+ * @level: as specified in standard (AP-W, VPU-R)
+ * @wfd: WFD mode 1:on, 0:off (AP-W, VPU-R)
  */
 struct venc_h264_vpu_config {
 	u32 input_fourcc;
@@ -94,9 +96,11 @@ struct venc_h264_vpu_config {
 
 /*
  * struct venc_h264_vpu_buf - Structure for buffer information
- * @iova: IO virtual address
- * @vpua: VPU side memory addr which is used by RC_CODE
- * @size: buffer size (in bytes)
+ *                            AP-W/R : AP is writer/reader on this item
+ *                            VPU-W/R: VPU is write/reader on this item
+ * @iova: IO virtual address (AP-W, VPU-R)
+ * @vpua: VPU side memory addr which is used by RC_CODE (AP-R, VPU-W)
+ * @size: buffer size (in bytes) (AP-R, VPU-W)
  */
 struct venc_h264_vpu_buf {
 	u32 iova;
@@ -106,9 +110,11 @@ struct venc_h264_vpu_buf {
 
 /*
  * struct venc_h264_vsi - Structure for VPU driver control and info share
+ *                        AP-W/R : AP is writer/reader on this item
+ *                        VPU-W/R: VPU is write/reader on this item
  * This structure is allocated in VPU side and shared to AP side.
- * @config: h264 encoder configuration
- * @work_bufs: working buffer information in VPU side
+ * @config: h264 encoder configuration (AP-W, VPU-R)
+ * @work_bufs: working buffer information in VPU side (AP-R/W, VPU-R/W)
  * The work_bufs here is for storing the 'size' info shared to AP side.
  * The similar item in struct venc_h264_inst is for memory allocation
  * in AP side. The AP driver will copy the 'size' from here to the one in
@@ -147,12 +153,6 @@ struct venc_h264_inst {
 	struct venc_h264_vsi *vsi;
 	struct mtk_vcodec_ctx *ctx;
 };
-
-static inline void h264_write_reg(struct venc_h264_inst *inst, u32 addr,
-				  u32 val)
-{
-	writel(val, inst->hw_base + addr);
-}
 
 static inline u32 h264_read_reg(struct venc_h264_inst *inst, u32 addr)
 {
