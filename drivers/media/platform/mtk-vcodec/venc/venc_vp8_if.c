@@ -56,18 +56,20 @@ enum venc_vp8_vpu_work_buf {
 
 /*
  * struct venc_vp8_vpu_config - Structure for vp8 encoder configuration
- * @input_fourcc: input fourcc
- * @bitrate: target bitrate (in bps)
+ *                              AP-W/R : AP is writer/reader on this item
+ *                              VPU-W/R: VPU is write/reader on this item
+ * @input_fourcc: input fourcc (AP-W, VPU-R)
+ * @bitrate: target bitrate (in bps) (AP-W, VPU-R)
  * @pic_w: picture width. Picture size is visible stream resolution, in pixels,
  *         to be used for display purposes; must be smaller or equal to buffer
- *         size.
- * @pic_h: picture height
- * @buf_w: buffer width (with 16 alignment). Buffer size is stream resolution
- *         in pixels aligned to hardware requirements.
- * @buf_h: buffer height (with 16 alignment)
- * @gop_size: group of picture size (key frame)
- * @framerate: frame rate in fps
- * @ts_mode: temporal scalability mode (0: disable, 1: enable)
+ *         size. (AP-W, VPU-R)
+ * @pic_h: picture height (AP-W, VPU-R)
+ * @buf_w: buffer width (with 16 alignment) (AP-W, VPU-R) Buffer size is stream
+ *         resolution in pixels aligned to hardware requirements.
+ * @buf_h: buffer height (with 16 alignment) (AP-W, VPU-R)
+ * @gop_size: group of picture size (key frame) (AP-W, VPU-R)
+ * @framerate: frame rate in fps (AP-W, VPU-R)
+ * @ts_mode: temporal scalability mode (0: disable, 1: enable) (AP-W, VPU-R)
  *	     support three temporal layers - 0: 7.5fps 1: 7.5fps 2: 15fps.
  */
 struct venc_vp8_vpu_config {
@@ -83,10 +85,12 @@ struct venc_vp8_vpu_config {
 };
 
 /*
- * struct venc_vp8_vpu_buf -Structure for buffer information
- * @iova: IO virtual address
- * @vpua: VPU side memory addr which is used by RC_CODE
- * @size: buffer size (in bytes)
+ * struct venc_vp8_vpu_buf - Structure for buffer information
+ *                           AP-W/R : AP is writer/reader on this item
+ *                           VPU-W/R: VPU is write/reader on this item
+ * @iova: IO virtual address (AP-W, VPU-R)
+ * @vpua: VPU side memory addr which is used by RC_CODE (AP-R, VPU-W)
+ * @size: buffer size (in bytes) (AP-R, VPU-W)
  */
 struct venc_vp8_vpu_buf {
 	u32 iova;
@@ -96,9 +100,11 @@ struct venc_vp8_vpu_buf {
 
 /*
  * struct venc_vp8_vsi - Structure for VPU driver control and info share
+ *                       AP-W/R : AP is writer/reader on this item
+ *                       VPU-W/R: VPU is write/reader on this item
  * This structure is allocated in VPU side and shared to AP side.
- * @config: vp8 encoder configuration
- * @work_bufs: working buffer information in VPU side
+ * @config: vp8 encoder configuration (AP-W, VPU-R)
+ * @work_bufs: working buffer information in VPU side (AP-R/W, VPU-R/W)
  * The work_bufs here is for storing the 'size' info shared to AP side.
  * The similar item in struct venc_vp8_inst is for memory allocation
  * in AP side. The AP driver will copy the 'size' from here to the one in
@@ -135,12 +141,6 @@ struct venc_vp8_inst {
 	struct venc_vp8_vsi *vsi;
 	struct mtk_vcodec_ctx *ctx;
 };
-
-static inline void vp8_enc_write_reg(struct venc_vp8_inst *inst, u32 addr,
-				     u32 val)
-{
-	writel(val, inst->hw_base + addr);
-}
 
 static inline u32 vp8_enc_read_reg(struct venc_vp8_inst *inst, u32 addr)
 {
