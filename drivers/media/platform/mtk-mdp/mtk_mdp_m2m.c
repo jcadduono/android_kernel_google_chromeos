@@ -21,43 +21,342 @@
 #include <media/v4l2-ioctl.h>
 
 #include "mtk_mdp_core.h"
+#include "mtk_mdp_m2m.h"
+#include "mtk_mdp_regs.h"
 #include "mtk_vpu.h"
 
+
+/**
+ *  struct mtk_mdp_pix_limit - image pixel size limits
+ *  @org_w: source pixel width
+ *  @org_h: source pixel height
+ *  @target_rot_dis_w: pixel dst scaled width with the rotator is off
+ *  @target_rot_dis_h: pixel dst scaled height with the rotator is off
+ *  @target_rot_en_w: pixel dst scaled width with the rotator is on
+ *  @target_rot_en_h: pixel dst scaled height with the rotator is on
+ */
+struct mtk_mdp_pix_limit {
+	u16 org_w;
+	u16 org_h;
+	u16 target_rot_dis_w;
+	u16 target_rot_dis_h;
+	u16 target_rot_en_w;
+	u16 target_rot_en_h;
+};
+
+/**
+ *  struct mtk_mdp_pix_align - alignement of image
+ *  @org_w: source alignment of width
+ *  @org_h: source alignment of height
+ *  @target_w: dst alignment of width
+ *  @target_h: dst alignment of height
+ */
+struct mtk_mdp_pix_align {
+	u16 org_w;
+	u16 org_h;
+	u16 target_w;
+	u16 target_h;
+};
+
+static const struct mtk_mdp_fmt mtk_mdp_formats[] = {
+	{
+		.name		= "YUV420 MT21. 2p, Y/CbCr",
+		.pixelformat	= V4L2_PIX_FMT_MT21,
+		.depth		= { 8, 4 },
+		.num_planes	= 2,
+		.flags		= MTK_MDP_FMT_FLAG_OUTPUT,
+	}, {
+		.name		= "YUV420 non-contig. 2p, Y/CbCr",
+		.pixelformat	= V4L2_PIX_FMT_NV12M,
+		.depth		= { 8, 4 },
+		.num_planes	= 2,
+		.flags		= MTK_MDP_FMT_FLAG_OUTPUT |
+				  MTK_MDP_FMT_FLAG_CAPTURE,
+	}, {
+		.name		= "YUV420 non-contig. 3p, Y/Cb/Cr",
+		.pixelformat	= V4L2_PIX_FMT_YUV420M,
+		.depth		= { 8, 2, 2 },
+		.num_planes	= 3,
+		.flags		= MTK_MDP_FMT_FLAG_OUTPUT |
+				  MTK_MDP_FMT_FLAG_CAPTURE,
+	}
+};
+
+static struct mtk_mdp_pix_limit mtk_mdp_size_max = {
+	.target_rot_dis_w	= 4096,
+	.target_rot_dis_h	= 4096,
+	.target_rot_en_w	= 4096,
+	.target_rot_en_h	= 4096,
+};
+
+static struct mtk_mdp_pix_limit mtk_mdp_size_min = {
+	.org_w			= 16,
+	.org_h			= 16,
+	.target_rot_dis_w	= 16,
+	.target_rot_dis_h	= 16,
+	.target_rot_en_w	= 16,
+	.target_rot_en_h	= 16,
+};
+
+static struct mtk_mdp_pix_align mtk_mdp_size_align = {
+	.org_w			= 16,
+	.org_h			= 16,
+	.target_w		= 2,
+	.target_h		= 2,
+};
+
+static struct mtk_mdp_variant mtk_mdp_default_variant = {
+	.pix_max		= &mtk_mdp_size_max,
+	.pix_min		= &mtk_mdp_size_min,
+	.pix_align		= &mtk_mdp_size_align,
+	.h_scale_up_max		= 32,
+	.v_scale_up_max		= 32,
+	.h_scale_down_max	= 32,
+	.v_scale_down_max	= 128,
+};
+
+static const struct mtk_mdp_fmt *mtk_mdp_find_fmt(u32 pixelformat, u32 type)
+{
+	u32 i, flag;
+
+	flag = V4L2_TYPE_IS_OUTPUT(type) ? MTK_MDP_FMT_FLAG_OUTPUT :
+					   MTK_MDP_FMT_FLAG_CAPTURE;
+
+	for (i = 0; i < ARRAY_SIZE(mtk_mdp_formats); ++i) {
+		if (!(mtk_mdp_formats[i].flags & flag))
+			continue;
+		if (mtk_mdp_formats[i].pixelformat == pixelformat)
+			return &mtk_mdp_formats[i];
+	}
+	return NULL;
+}
+
+static const struct mtk_mdp_fmt *mtk_mdp_find_fmt_by_index(u32 index, u32 type)
+{
+	u32 i, flag, num = 0;
+
+	flag = V4L2_TYPE_IS_OUTPUT(type) ? MTK_MDP_FMT_FLAG_OUTPUT :
+					   MTK_MDP_FMT_FLAG_CAPTURE;
+
+	for (i = 0; i < ARRAY_SIZE(mtk_mdp_formats); ++i) {
+		if (!(mtk_mdp_formats[i].flags & flag))
+			continue;
+		if (index == num)
+			return &mtk_mdp_formats[i];
+		num++;
+	}
+	return NULL;
+}
+
+static void mtk_mdp_bound_align_image(u32 *w, unsigned int wmin,
+				      unsigned int wmax, unsigned int align_w,
+				      u32 *h, unsigned int hmin,
+				      unsigned int hmax, unsigned int align_h)
+{
+	int org_w, org_h, step_w, step_h;
+	int walign, halign;
+
+	org_w = *w;
+	org_h = *h;
+	walign = ffs(align_w) - 1;
+	halign = ffs(align_h) - 1;
+	v4l_bound_align_image(w, wmin, wmax, walign, h, hmin, hmax, halign, 0);
+
+	step_w = 1 << walign;
+	step_h = 1 << halign;
+	if (*w < org_w && (*w + step_w) <= wmax)
+		*w += step_w;
+	if (*h < org_h && (*h + step_h) <= hmax)
+		*h += step_h;
+}
+
+static const struct mtk_mdp_fmt *mtk_mdp_try_fmt_mplane(struct mtk_mdp_ctx *ctx,
+							struct v4l2_format *f)
+{
+	struct mtk_mdp_dev *mdp = ctx->mdp_dev;
+	struct mtk_mdp_variant *variant = mdp->variant;
+	struct v4l2_pix_format_mplane *pix_mp = &f->fmt.pix_mp;
+	const struct mtk_mdp_fmt *fmt;
+	u32 max_w, max_h, align_w, align_h;
+	u32 min_w, min_h, org_w, org_h;
+	int i;
+
+	fmt = mtk_mdp_find_fmt(pix_mp->pixelformat, f->type);
+	if (!fmt) {
+		dev_dbg(&ctx->mdp_dev->pdev->dev,
+			"pixelformat format 0x%X invalid\n",
+			pix_mp->pixelformat);
+		return NULL;
+	}
+
+	pix_mp->field = V4L2_FIELD_NONE;
+
+	max_w = variant->pix_max->target_rot_dis_w;
+	max_h = variant->pix_max->target_rot_dis_h;
+
+	align_w = variant->pix_align->org_w;
+	align_h = variant->pix_align->org_h;
+
+	if (V4L2_TYPE_IS_OUTPUT(f->type)) {
+		min_w = variant->pix_min->org_w;
+		min_h = variant->pix_min->org_h;
+	} else {
+		min_w = variant->pix_min->target_rot_dis_w;
+		min_h = variant->pix_min->target_rot_dis_h;
+	}
+
+	mtk_mdp_dbg(2, "[%d] type:%d, wxh:%dx%d, align:%dx%d, max:%dx%d",
+		    ctx->id, f->type, pix_mp->width, pix_mp->height,
+		    align_w, align_h, max_w, max_h);
+	/*
+	 * To check if image size is modified to adjust parameter against
+	 * hardware abilities
+	 */
+	org_w = pix_mp->width;
+	org_h = pix_mp->height;
+
+	mtk_mdp_bound_align_image(&pix_mp->width, min_w, max_w, align_w,
+				  &pix_mp->height, min_h, max_h, align_h);
+
+	if (org_w != pix_mp->width || org_h != pix_mp->height)
+		mtk_mdp_dbg(1, "[%d] size change:%dx%d to %dx%d", ctx->id,
+			    org_w, org_h, pix_mp->width, pix_mp->height);
+	pix_mp->num_planes = fmt->num_planes;
+
+	for (i = 0; i < pix_mp->num_planes; ++i) {
+		int bpl = (pix_mp->width * fmt->depth[i]) >> 3;
+		int sizeimage = bpl * pix_mp->height;
+
+		pix_mp->plane_fmt[i].bytesperline = bpl;
+		if (pix_mp->plane_fmt[i].sizeimage < sizeimage)
+			pix_mp->plane_fmt[i].sizeimage = sizeimage;
+		mtk_mdp_dbg(2, "[%d] p%d, bpl:%d, sizeimage:%d", ctx->id, i,
+			    bpl, pix_mp->plane_fmt[i].sizeimage);
+	}
+
+	return fmt;
+}
+
+struct mtk_mdp_frame *mtk_mdp_ctx_get_frame(struct mtk_mdp_ctx *ctx,
+					    enum v4l2_buf_type type)
+{
+	if (V4L2_TYPE_IS_OUTPUT(type))
+		return &ctx->s_frame;
+	return &ctx->d_frame;
+}
+
+static void mtk_mdp_check_crop_change(u32 new_w, u32 new_h, u32 *w, u32 *h)
+{
+	if (new_w != *w || new_h != *h) {
+		mtk_mdp_dbg(1, "size change:%dx%d to %dx%d",
+			    *w, *h, new_w, new_h);
+
+		*w = new_w;
+		*h = new_h;
+	}
+}
+
+static int mtk_mdp_try_crop(struct mtk_mdp_ctx *ctx, struct v4l2_crop *cr)
+{
+	struct mtk_mdp_frame *frame;
+	struct mtk_mdp_dev *mdp = ctx->mdp_dev;
+	struct mtk_mdp_variant *variant = mdp->variant;
+	u32 align_w, align_h, new_w, new_h;
+	u32 min_w, min_h, max_w, max_h;
+
+	if (cr->c.top < 0 || cr->c.left < 0) {
+		dev_err(&ctx->mdp_dev->pdev->dev,
+			"doesn't support negative values for top & left\n");
+		return -EINVAL;
+	}
+
+	mtk_mdp_dbg(2, "[%d] type:%d, set wxh:%dx%d", ctx->id, cr->type,
+		    cr->c.width, cr->c.height);
+
+	frame = mtk_mdp_ctx_get_frame(ctx, cr->type);
+	max_w = frame->width;
+	max_h = frame->height;
+	new_w = cr->c.width;
+	new_h = cr->c.height;
+
+	if (V4L2_TYPE_IS_OUTPUT(cr->type)) {
+		align_w = 1;
+		align_h = 1;
+		min_w = 64;
+		min_h = 32;
+	} else {
+		align_w = variant->pix_align->target_w;
+		align_h = variant->pix_align->target_h;
+		if (ctx->ctrls.rotate->val == 90 ||
+		    ctx->ctrls.rotate->val == 270) {
+			max_w = frame->height;
+			max_h = frame->width;
+			min_w = variant->pix_min->target_rot_en_w;
+			min_h = variant->pix_min->target_rot_en_h;
+			new_w = cr->c.height;
+			new_h = cr->c.width;
+		} else {
+			min_w = variant->pix_min->target_rot_dis_w;
+			min_h = variant->pix_min->target_rot_dis_h;
+		}
+	}
+
+	mtk_mdp_dbg(2, "[%d] align:%dx%d, min:%dx%d, new:%dx%d", ctx->id,
+		    align_w, align_h, min_w, min_h, new_w, new_h);
+
+	mtk_mdp_bound_align_image(&new_w, min_w, max_w, align_w,
+				  &new_h, min_h, max_h, align_h);
+
+	if (!V4L2_TYPE_IS_OUTPUT(cr->type) &&
+		(ctx->ctrls.rotate->val == 90 ||
+		ctx->ctrls.rotate->val == 270))
+		mtk_mdp_check_crop_change(new_h, new_w,
+					  &cr->c.width, &cr->c.height);
+	else
+		mtk_mdp_check_crop_change(new_w, new_h,
+					  &cr->c.width, &cr->c.height);
+
+	/* adjust left/top if cropping rectangle is out of bounds */
+	/* Need to add code to algin left value with 2's multiple */
+	if (cr->c.left + new_w > max_w)
+		cr->c.left = max_w - new_w;
+	if (cr->c.top + new_h > max_h)
+		cr->c.top = max_h - new_h;
+
+	if (cr->c.left & 1)
+		cr->c.left -= 1;
+
+	mtk_mdp_dbg(2, "[%d] crop l,t,w,h:%d,%d,%d,%d, max:%dx%d", ctx->id,
+		    cr->c.left, cr->c.top, cr->c.width,
+		    cr->c.height, max_w, max_h);
+	return 0;
+}
 
 static inline struct mtk_mdp_ctx *fh_to_ctx(struct v4l2_fh *fh)
 {
 	return container_of(fh, struct mtk_mdp_ctx, fh);
 }
 
-static void mtk_mdp_ctx_state_lock_set(u32 state, struct mtk_mdp_ctx *ctx)
+static inline struct mtk_mdp_ctx *ctrl_to_ctx(struct v4l2_ctrl *ctrl)
+{
+	return container_of(ctrl->handler, struct mtk_mdp_ctx, ctrl_handler);
+}
+
+void mtk_mdp_ctx_state_lock_set(struct mtk_mdp_ctx *ctx, u32 state)
 {
 	mutex_lock(&ctx->slock);
 	ctx->state |= state;
 	mutex_unlock(&ctx->slock);
 }
 
-static void mtk_mdp_ctx_state_lock_clear(u32 state, struct mtk_mdp_ctx *ctx)
+static void mtk_mdp_ctx_state_lock_clear(struct mtk_mdp_ctx *ctx, u32 state)
 {
 	mutex_lock(&ctx->slock);
 	ctx->state &= ~state;
 	mutex_unlock(&ctx->slock);
 }
 
-static void mtk_mdp_ctx_lock(struct vb2_queue *vq)
-{
-	struct mtk_mdp_ctx *ctx = vb2_get_drv_priv(vq);
-
-	mutex_lock(&ctx->qlock);
-}
-
-static void mtk_mdp_ctx_unlock(struct vb2_queue *vq)
-{
-	struct mtk_mdp_ctx *ctx = vb2_get_drv_priv(vq);
-
-	mutex_unlock(&ctx->qlock);
-}
-
-static bool mtk_mdp_ctx_state_is_set(u32 mask, struct mtk_mdp_ctx *ctx)
+static bool mtk_mdp_ctx_state_is_set(struct mtk_mdp_ctx *ctx, u32 mask)
 {
 	bool ret;
 
@@ -67,58 +366,29 @@ static bool mtk_mdp_ctx_state_is_set(u32 mask, struct mtk_mdp_ctx *ctx)
 	return ret;
 }
 
-static int mtk_mdp_ctx_stop_req(struct mtk_mdp_ctx *ctx)
+static void mtk_mdp_ctx_lock(struct vb2_queue *vq)
 {
-	struct mtk_mdp_ctx *curr_ctx;
-	struct mtk_mdp_dev *mdp = ctx->mdp_dev;
-	int ret;
+	struct mtk_mdp_ctx *ctx = vb2_get_drv_priv(vq);
 
-	curr_ctx = v4l2_m2m_get_curr_priv(mdp->m2m_dev);
-	if (!test_bit(MTK_MDP_M2M_PEND, &mdp->state) || (curr_ctx != ctx))
-		return 0;
-
-	mtk_mdp_ctx_state_lock_set(MTK_MDP_CTX_STOP_REQ, ctx);
-	ret = wait_event_timeout(mdp->irq_queue,
-			!mtk_mdp_ctx_state_is_set(MTK_MDP_CTX_STOP_REQ, ctx),
-			MTK_MDP_SHUTDOWN_TIMEOUT);
-
-	return ret == 0 ? -ETIMEDOUT : ret;
+	mutex_lock(&ctx->mdp_dev->lock);
 }
 
-struct mtk_mdp_frame *mtk_mdp_ctx_get_frame(struct mtk_mdp_ctx *ctx,
-					    enum v4l2_buf_type type)
+static void mtk_mdp_ctx_unlock(struct vb2_queue *vq)
 {
-	struct mtk_mdp_frame *frame;
+	struct mtk_mdp_ctx *ctx = vb2_get_drv_priv(vq);
 
-	if (type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
-		frame = &ctx->s_frame;
-	} else if (type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
-		frame = &ctx->d_frame;
-	} else {
-		dev_err(&ctx->mdp_dev->pdev->dev,
-			"Wrong buffer/video queue type %d",
-			type);
-		return ERR_PTR(-EINVAL);
-	}
-
-	return frame;
+	mutex_unlock(&ctx->mdp_dev->lock);
 }
 
-static void mtk_mdp_ctx_abort(struct mtk_mdp_ctx *ctx)
+static void mtk_mdp_set_frame_size(struct mtk_mdp_frame *frame, int width,
+				   int height)
 {
-	int ret;
-
-	ret = mtk_mdp_ctx_stop_req(ctx);
-	if ((ret == -ETIMEDOUT) || (ctx->state & MTK_MDP_CTX_ABORT)) {
-		mtk_mdp_ctx_state_lock_clear(MTK_MDP_CTX_STOP_REQ |
-					     MTK_MDP_CTX_ABORT, ctx);
-		mtk_mdp_m2m_job_finish(ctx, VB2_BUF_STATE_ERROR);
-	}
-}
-
-void mtk_mdp_ctx_error(struct mtk_mdp_ctx *ctx)
-{
-	mtk_mdp_ctx_state_lock_set(MTK_MDP_CTX_ERROR, ctx);
+	frame->width = width;
+	frame->height = height;
+	frame->crop.width = width;
+	frame->crop.height = height;
+	frame->crop.left = 0;
+	frame->crop.top = 0;
 }
 
 static int mtk_mdp_m2m_start_streaming(struct vb2_queue *q, unsigned int count)
@@ -127,7 +397,11 @@ static int mtk_mdp_m2m_start_streaming(struct vb2_queue *q, unsigned int count)
 	int ret;
 
 	ret = pm_runtime_get_sync(&ctx->mdp_dev->pdev->dev);
-	return ret > 0 ? 0 : ret;
+	if (ret < 0)
+		mtk_mdp_dbg(1, "[%d] pm_runtime_get_sync failed:%d",
+			    ctx->id, ret);
+
+	return 0;
 }
 
 static void *mtk_mdp_m2m_buf_remove(struct mtk_mdp_ctx *ctx,
@@ -144,7 +418,6 @@ static void mtk_mdp_m2m_stop_streaming(struct vb2_queue *q)
 	struct mtk_mdp_ctx *ctx = q->drv_priv;
 	struct vb2_buffer *vb;
 
-	mtk_mdp_ctx_abort(ctx);
 	vb = mtk_mdp_m2m_buf_remove(ctx, q->type);
 	while (vb != NULL) {
 		v4l2_m2m_buf_done(to_vb2_v4l2_buffer(vb), VB2_BUF_STATE_ERROR);
@@ -154,98 +427,88 @@ static void mtk_mdp_m2m_stop_streaming(struct vb2_queue *q)
 	pm_runtime_put(&ctx->mdp_dev->pdev->dev);
 }
 
-void mtk_mdp_m2m_job_finish(struct mtk_mdp_ctx *ctx, int vb_state)
-{
-	struct vb2_buffer *src_vb, *dst_vb;
-	struct vb2_v4l2_buffer *src_vb2_v4l2, *dst_vb2_v4l2;
-
-	if (!ctx || !ctx->m2m_ctx)
-		return;
-
-	src_vb = v4l2_m2m_src_buf_remove(ctx->m2m_ctx);
-	dst_vb = v4l2_m2m_dst_buf_remove(ctx->m2m_ctx);
-
-	if (src_vb && dst_vb) {
-		src_vb2_v4l2 = container_of(src_vb, struct vb2_v4l2_buffer,
-					    vb2_buf);
-		dst_vb2_v4l2 = container_of(dst_vb, struct vb2_v4l2_buffer,
-					    vb2_buf);
-
-		dst_vb2_v4l2->timestamp = src_vb2_v4l2->timestamp;
-		dst_vb2_v4l2->timecode = src_vb2_v4l2->timecode;
-		dst_vb2_v4l2->flags &= ~V4L2_BUF_FLAG_TSTAMP_SRC_MASK;
-		dst_vb2_v4l2->flags |= src_vb2_v4l2->flags &
-					  V4L2_BUF_FLAG_TSTAMP_SRC_MASK;
-
-		v4l2_m2m_buf_done(src_vb2_v4l2, vb_state);
-		v4l2_m2m_buf_done(dst_vb2_v4l2, vb_state);
-
-		v4l2_m2m_job_finish(ctx->mdp_dev->m2m_dev,
-				    ctx->m2m_ctx);
-	}
-}
-
 static void mtk_mdp_m2m_job_abort(void *priv)
 {
-	mtk_mdp_ctx_abort((struct mtk_mdp_ctx *)priv);
 }
 
-static int mtk_mdp_m2m_get_bufs(struct mtk_mdp_ctx *ctx)
+/* The color format (num_planes) must be already configured. */
+static void mtk_mdp_prepare_addr(struct mtk_mdp_ctx *ctx,
+				 struct vb2_buffer *vb,
+				 struct mtk_mdp_frame *frame,
+				 struct mtk_mdp_addr *addr)
+{
+	u32 pix_size, planes, i;
+
+	pix_size = frame->width * frame->height;
+	planes = min_t(u32, frame->fmt->num_planes, ARRAY_SIZE(addr->addr));
+	for (i = 0; i < planes; i++)
+		addr->addr[i] = vb2_dma_contig_plane_dma_addr(vb, i);
+
+	mtk_mdp_dbg(3, "[%d] planes:%d, size:%d, addr:%p,%p,%p",
+		    ctx->id, planes, pix_size, (void *)addr->addr[0],
+		    (void *)addr->addr[1], (void *)addr->addr[2]);
+}
+
+static void mtk_mdp_m2m_get_bufs(struct mtk_mdp_ctx *ctx)
 {
 	struct mtk_mdp_frame *s_frame, *d_frame;
 	struct vb2_buffer *src_vb, *dst_vb;
-	int ret;
-	struct vb2_v4l2_buffer *src_vb2_v4l2, *dst_vb2_v4l2;
+	struct vb2_v4l2_buffer *src_vbuf, *dst_vbuf;
 
 	s_frame = &ctx->s_frame;
 	d_frame = &ctx->d_frame;
 
 	src_vb = v4l2_m2m_next_src_buf(ctx->m2m_ctx);
-	ret = mtk_mdp_prepare_addr(ctx, src_vb, s_frame, &s_frame->addr);
-	if (ret)
-		return ret;
+	mtk_mdp_prepare_addr(ctx, src_vb, s_frame, &s_frame->addr);
 
 	dst_vb = v4l2_m2m_next_dst_buf(ctx->m2m_ctx);
-	ret = mtk_mdp_prepare_addr(ctx, dst_vb, d_frame, &d_frame->addr);
-	if (ret)
-		return ret;
+	mtk_mdp_prepare_addr(ctx, dst_vb, d_frame, &d_frame->addr);
 
-	src_vb2_v4l2 = container_of(src_vb, struct vb2_v4l2_buffer, vb2_buf);
-	dst_vb2_v4l2 = container_of(dst_vb, struct vb2_v4l2_buffer, vb2_buf);
+	src_vbuf = to_vb2_v4l2_buffer(src_vb);
+	dst_vbuf = to_vb2_v4l2_buffer(dst_vb);
+	dst_vbuf->timestamp = src_vbuf->timestamp;
+}
 
-	dst_vb2_v4l2->timestamp = src_vb2_v4l2->timestamp;
+static void mtk_mdp_process_done(void *priv, int vb_state)
+{
+	struct mtk_mdp_dev *mdp = priv;
+	struct mtk_mdp_ctx *ctx;
+	struct vb2_buffer *src_vb, *dst_vb;
+	struct vb2_v4l2_buffer *src_vbuf = 0, *dst_vbuf = 0;
 
-	return 0;
+	ctx = v4l2_m2m_get_curr_priv(mdp->m2m_dev);
+	if (!ctx)
+		return;
+
+	src_vb = v4l2_m2m_src_buf_remove(ctx->m2m_ctx);
+	src_vbuf = to_vb2_v4l2_buffer(src_vb);
+	dst_vb = v4l2_m2m_dst_buf_remove(ctx->m2m_ctx);
+	dst_vbuf = to_vb2_v4l2_buffer(dst_vb);
+
+	dst_vbuf->timestamp = src_vbuf->timestamp;
+	dst_vbuf->timecode = src_vbuf->timecode;
+	dst_vbuf->flags &= ~V4L2_BUF_FLAG_TSTAMP_SRC_MASK;
+	dst_vbuf->flags |= src_vbuf->flags & V4L2_BUF_FLAG_TSTAMP_SRC_MASK;
+
+	v4l2_m2m_buf_done(src_vbuf, vb_state);
+	v4l2_m2m_buf_done(dst_vbuf, vb_state);
+	v4l2_m2m_job_finish(ctx->mdp_dev->m2m_dev, ctx->m2m_ctx);
 }
 
 static void mtk_mdp_m2m_worker(struct work_struct *work)
 {
 	struct mtk_mdp_ctx *ctx =
 				container_of(work, struct mtk_mdp_ctx, work);
-	struct mtk_mdp_dev *mdp;
+	struct mtk_mdp_dev *mdp = ctx->mdp_dev;
 	enum vb2_buffer_state buf_state = VB2_BUF_STATE_ERROR;
 	int ret;
 
-	mdp = ctx->mdp_dev;
-	set_bit(MTK_MDP_M2M_PEND, &mdp->state);
-
-	if (ctx->state & MTK_MDP_CTX_ERROR) {
+	if (mtk_mdp_ctx_state_is_set(ctx, MTK_MDP_CTX_ERROR)) {
 		dev_err(&mdp->pdev->dev, "ctx is in error state");
 		goto worker_end;
 	}
 
-	if (ctx->state & MTK_MDP_CTX_STOP_REQ) {
-		ctx->state &= ~MTK_MDP_CTX_STOP_REQ;
-		ctx->state |= MTK_MDP_CTX_ABORT;
-		wake_up(&mdp->irq_queue);
-		goto worker_end;
-	}
-
-	ret = mtk_mdp_m2m_get_bufs(ctx);
-	if (ret) {
-		dev_err(&mdp->pdev->dev, "Wrong buffer address");
-		goto worker_end;
-	}
+	mtk_mdp_m2m_get_bufs(ctx);
 
 	mtk_mdp_hw_set_input_addr(ctx, &ctx->s_frame.addr);
 	mtk_mdp_hw_set_output_addr(ctx, &ctx->d_frame.addr);
@@ -259,16 +522,15 @@ static void mtk_mdp_m2m_worker(struct work_struct *work)
 	mtk_mdp_hw_set_rotation(ctx);
 	mtk_mdp_hw_set_global_alpha(ctx);
 
-	ret = mtk_mdp_hw_set_sfr_update(ctx);
+	ret = mtk_mdp_vpu_process(&ctx->vpu);
 	if (ret) {
-		dev_err(&mdp->pdev->dev, "process failed");
+		dev_err(&mdp->pdev->dev, "processing failed: %d", ret);
 		goto worker_end;
 	}
 
 	buf_state = VB2_BUF_STATE_DONE;
 
 worker_end:
-	ctx->state &= ~MTK_MDP_PARAMS;
 	mtk_mdp_process_done(mdp, buf_state);
 }
 
@@ -276,7 +538,7 @@ static void mtk_mdp_m2m_device_run(void *priv)
 {
 	struct mtk_mdp_ctx *ctx = priv;
 
-	queue_work(ctx->mdp_dev->workqueue, &ctx->work);
+	queue_work(ctx->mdp_dev->job_wq, &ctx->work);
 }
 
 static int mtk_mdp_m2m_queue_setup(struct vb2_queue *vq,
@@ -289,11 +551,6 @@ static int mtk_mdp_m2m_queue_setup(struct vb2_queue *vq,
 	int i;
 
 	frame = mtk_mdp_ctx_get_frame(ctx, vq->type);
-	if (IS_ERR(frame))
-		return PTR_ERR(frame);
-
-	if (!frame->fmt)
-		return -EINVAL;
 
 	*num_planes = frame->fmt->num_planes;
 	for (i = 0; i < frame->fmt->num_planes; i++) {
@@ -310,8 +567,6 @@ static int mtk_mdp_m2m_buf_prepare(struct vb2_buffer *vb)
 	int i;
 
 	frame = mtk_mdp_ctx_get_frame(ctx, vb->vb2_queue->type);
-	if (IS_ERR(frame))
-		return PTR_ERR(frame);
 
 	if (!V4L2_TYPE_IS_OUTPUT(vb->vb2_queue->type)) {
 		for (i = 0; i < frame->fmt->num_planes; i++)
@@ -325,8 +580,7 @@ static void mtk_mdp_m2m_buf_queue(struct vb2_buffer *vb)
 {
 	struct mtk_mdp_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
 
-	if (ctx->m2m_ctx)
-		v4l2_m2m_buf_queue(ctx->m2m_ctx, to_vb2_v4l2_buffer(vb));
+	v4l2_m2m_buf_queue(ctx->m2m_ctx, to_vb2_v4l2_buffer(vb));
 }
 
 static struct vb2_ops mtk_mdp_m2m_qops = {
@@ -347,26 +601,68 @@ static int mtk_mdp_m2m_querycap(struct file *file, void *fh,
 
 	strlcpy(cap->driver, mdp->pdev->name, sizeof(cap->driver));
 	strlcpy(cap->card, mdp->pdev->name, sizeof(cap->card));
-	strlcpy(cap->bus_info, "platform", sizeof(cap->bus_info));
-	cap->device_caps = V4L2_CAP_STREAMING |
-			   V4L2_CAP_VIDEO_M2M_MPLANE |
-			   V4L2_CAP_VIDEO_CAPTURE_MPLANE |
-			   V4L2_CAP_VIDEO_OUTPUT_MPLANE;
-
+	strlcpy(cap->bus_info, "platform:mt8173", sizeof(cap->bus_info));
+	cap->device_caps = V4L2_CAP_STREAMING | V4L2_CAP_VIDEO_M2M_MPLANE;
 	cap->capabilities = cap->device_caps | V4L2_CAP_DEVICE_CAPS;
+
+	return 0;
+}
+
+static int mtk_mdp_enum_fmt_mplane(struct v4l2_fmtdesc *f, u32 type)
+{
+	const struct mtk_mdp_fmt *fmt;
+
+	fmt = mtk_mdp_find_fmt_by_index(f->index, type);
+	if (!fmt)
+		return -EINVAL;
+
+	strlcpy(f->description, fmt->name, sizeof(f->description));
+	f->pixelformat = fmt->pixelformat;
+
 	return 0;
 }
 
 static int mtk_mdp_m2m_enum_fmt_mplane_vid_cap(struct file *file, void *priv,
 				       struct v4l2_fmtdesc *f)
 {
-	return mtk_mdp_enum_fmt_mplane(f, V4L2_BUF_TYPE_VIDEO_CAPTURE);
+	return mtk_mdp_enum_fmt_mplane(f, V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
 }
 
 static int mtk_mdp_m2m_enum_fmt_mplane_vid_out(struct file *file, void *priv,
 				       struct v4l2_fmtdesc *f)
 {
-	return mtk_mdp_enum_fmt_mplane(f, V4L2_BUF_TYPE_VIDEO_OUTPUT);
+	return mtk_mdp_enum_fmt_mplane(f, V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
+}
+
+static int mtk_mdp_g_fmt_mplane(struct mtk_mdp_ctx *ctx, struct v4l2_format *f)
+{
+	struct mtk_mdp_frame *frame;
+	struct v4l2_pix_format_mplane *pix_mp;
+	int i;
+
+	mtk_mdp_dbg(2, "[%d] type:%d", ctx->id, f->type);
+
+	frame = mtk_mdp_ctx_get_frame(ctx, f->type);
+	pix_mp = &f->fmt.pix_mp;
+
+	pix_mp->width = frame->width;
+	pix_mp->height = frame->height;
+	pix_mp->field = V4L2_FIELD_NONE;
+	pix_mp->pixelformat = frame->fmt->pixelformat;
+	pix_mp->num_planes = frame->fmt->num_planes;
+
+	for (i = 0; i < pix_mp->num_planes; ++i) {
+		pix_mp->plane_fmt[i].bytesperline = (frame->width *
+			frame->fmt->depth[i]) / 8;
+		pix_mp->plane_fmt[i].sizeimage =
+			 pix_mp->plane_fmt[i].bytesperline * frame->height;
+
+		mtk_mdp_dbg(2, "[%d] p%d, bpl:%d, sizeimage:%d", ctx->id, i,
+			    pix_mp->plane_fmt[i].bytesperline,
+			    pix_mp->plane_fmt[i].sizeimage);
+	}
+
+	return 0;
 }
 
 static int mtk_mdp_m2m_g_fmt_mplane(struct file *file, void *fh,
@@ -382,7 +678,9 @@ static int mtk_mdp_m2m_try_fmt_mplane(struct file *file, void *fh,
 {
 	struct mtk_mdp_ctx *ctx = fh_to_ctx(fh);
 
-	return mtk_mdp_try_fmt_mplane(ctx, f);
+	if (!mtk_mdp_try_fmt_mplane(ctx, f))
+		return -EINVAL;
+	return 0;
 }
 
 static int mtk_mdp_m2m_s_fmt_mplane(struct file *file, void *fh,
@@ -392,34 +690,24 @@ static int mtk_mdp_m2m_s_fmt_mplane(struct file *file, void *fh,
 	struct vb2_queue *vq;
 	struct mtk_mdp_frame *frame;
 	struct v4l2_pix_format_mplane *pix;
-	int i, ret = 0;
+	int i;
 
-	mtk_mdp_dbg(2, "[%d]", ctx->id);
+	mtk_mdp_dbg(2, "[%d] type:%d", ctx->id, f->type);
 
-	ret = mtk_mdp_m2m_try_fmt_mplane(file, fh, f);
-	if (ret)
-		return ret;
-
-	vq = v4l2_m2m_get_vq(ctx->m2m_ctx, f->type);
-
-	if (vb2_is_streaming(vq)) {
-		dev_err(&ctx->mdp_dev->pdev->dev, "queue%d busy", f->type);
-		return -EBUSY;
-	}
-
-	if (V4L2_TYPE_IS_OUTPUT(f->type))
-		frame = &ctx->s_frame;
-	else
-		frame = &ctx->d_frame;
-
-	pix = &f->fmt.pix_mp;
-	frame->fmt = mtk_mdp_find_fmt(&pix->pixelformat, 0, f->type);
-	frame->colorspace = pix->colorspace;
+	frame = mtk_mdp_ctx_get_frame(ctx, f->type);
+	frame->fmt = mtk_mdp_try_fmt_mplane(ctx, f);
 	if (!frame->fmt) {
-		mtk_mdp_err("find_fmt failed");
+		mtk_mdp_err("try_fmt failed");
 		return -EINVAL;
 	}
 
+	vq = v4l2_m2m_get_vq(ctx->m2m_ctx, f->type);
+	if (vb2_is_streaming(vq)) {
+		dev_info(&ctx->mdp_dev->pdev->dev, "queue %d busy", f->type);
+		return -EBUSY;
+	}
+
+	pix = &f->fmt.pix_mp;
 	for (i = 0; i < frame->fmt->num_planes; i++) {
 		frame->payload[i] = pix->plane_fmt[i].sizeimage;
 		frame->pitch[i] = pix->plane_fmt[i].bytesperline;
@@ -427,13 +715,13 @@ static int mtk_mdp_m2m_s_fmt_mplane(struct file *file, void *fh,
 
 	mtk_mdp_set_frame_size(frame, pix->width, pix->height);
 
-	if (f->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE)
-		mtk_mdp_ctx_state_lock_set(MTK_MDP_PARAMS | MTK_MDP_DST_FMT,
-					   ctx);
+	if (V4L2_TYPE_IS_OUTPUT(f->type))
+		mtk_mdp_ctx_state_lock_set(ctx, MTK_MDP_SRC_FMT);
 	else
-		mtk_mdp_ctx_state_lock_set(MTK_MDP_PARAMS | MTK_MDP_SRC_FMT,
-					   ctx);
-	mtk_mdp_dbg(2, "frame:%dx%d", frame->f_width, frame->f_height);
+		mtk_mdp_ctx_state_lock_set(ctx, MTK_MDP_DST_FMT);
+
+	mtk_mdp_dbg(2, "[%d] type:%d, frame:%dx%d", ctx->id, f->type,
+		    frame->width, frame->height);
 
 	return 0;
 }
@@ -443,17 +731,19 @@ static int mtk_mdp_m2m_reqbufs(struct file *file, void *fh,
 {
 	struct mtk_mdp_ctx *ctx = fh_to_ctx(fh);
 	struct mtk_mdp_dev *mdp = ctx->mdp_dev;
-	u32 max_cnt;
 
-	max_cnt = (reqbufs->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) ?
-		mdp->variant->in_buf_cnt : mdp->variant->out_buf_cnt;
-	if (reqbufs->count > max_cnt) {
+	if (reqbufs->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE &&
+	    reqbufs->type != V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) {
+		dev_err(&mdp->pdev->dev, "Wrong buffer type %d",
+			reqbufs->type);
 		return -EINVAL;
-	} else if (reqbufs->count == 0) {
+	}
+
+	if (reqbufs->count == 0) {
 		if (reqbufs->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE)
-			mtk_mdp_ctx_state_lock_clear(MTK_MDP_SRC_FMT, ctx);
+			mtk_mdp_ctx_state_lock_clear(ctx, MTK_MDP_SRC_FMT);
 		else
-			mtk_mdp_ctx_state_lock_clear(MTK_MDP_DST_FMT, ctx);
+			mtk_mdp_ctx_state_lock_clear(ctx, MTK_MDP_DST_FMT);
 	}
 
 	return v4l2_m2m_reqbufs(file, ctx->m2m_ctx, reqbufs);
@@ -498,9 +788,9 @@ static int mtk_mdp_m2m_streamon(struct file *file, void *fh,
 
 	/* The source and target color format need to be set */
 	if (V4L2_TYPE_IS_OUTPUT(type)) {
-		if (!mtk_mdp_ctx_state_is_set(MTK_MDP_SRC_FMT, ctx))
+		if (!mtk_mdp_ctx_state_is_set(ctx, MTK_MDP_SRC_FMT))
 			return -EINVAL;
-	} else if (!mtk_mdp_ctx_state_is_set(MTK_MDP_DST_FMT, ctx)) {
+	} else if (!mtk_mdp_ctx_state_is_set(ctx, MTK_MDP_DST_FMT)) {
 		return -EINVAL;
 	}
 
@@ -515,20 +805,22 @@ static int mtk_mdp_m2m_streamoff(struct file *file, void *fh,
 	return v4l2_m2m_streamoff(file, ctx->m2m_ctx, type);
 }
 
-/* Return 1 if rectangle a is enclosed in rectangle b, or 0 otherwise. */
-static int mtk_mdp_m2m_is_rectangle_enclosed(struct v4l2_rect *a,
+/*
+ * Return true if rectangle a is enclosed in rectangle b, or false otherwise.
+ */
+static bool mtk_mdp_m2m_is_rectangle_enclosed(struct v4l2_rect *a,
 					     struct v4l2_rect *b)
 {
 	if (a->left < b->left || a->top < b->top)
-		return 0;
+		return false;
 
 	if (a->left + a->width > b->left + b->width)
-		return 0;
+		return false;
 
 	if (a->top + a->height > b->top + b->height)
-		return 0;
+		return false;
 
-	return 1;
+	return true;
 }
 
 static int mtk_mdp_m2m_g_selection(struct file *file, void *fh,
@@ -537,13 +829,7 @@ static int mtk_mdp_m2m_g_selection(struct file *file, void *fh,
 	struct mtk_mdp_frame *frame;
 	struct mtk_mdp_ctx *ctx = fh_to_ctx(fh);
 
-	if ((s->type != V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) &&
-	    (s->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE))
-		return -EINVAL;
-
 	frame = mtk_mdp_ctx_get_frame(ctx, s->type);
-	if (IS_ERR(frame))
-		return PTR_ERR(frame);
 
 	switch (s->target) {
 	case V4L2_SEL_TGT_COMPOSE_DEFAULT:
@@ -552,8 +838,8 @@ static int mtk_mdp_m2m_g_selection(struct file *file, void *fh,
 	case V4L2_SEL_TGT_CROP_DEFAULT:
 		s->r.left = 0;
 		s->r.top = 0;
-		s->r.width = frame->f_width;
-		s->r.height = frame->f_height;
+		s->r.width = frame->width;
+		s->r.height = frame->height;
 		return 0;
 
 	case V4L2_SEL_TGT_COMPOSE:
@@ -568,6 +854,28 @@ static int mtk_mdp_m2m_g_selection(struct file *file, void *fh,
 	return -EINVAL;
 }
 
+static int mtk_mdp_check_scaler_ratio(struct mtk_mdp_variant *var, int src_w,
+				      int src_h, int dst_w, int dst_h, int rot)
+{
+	int tmp_w, tmp_h;
+
+	if (rot == 90 || rot == 270) {
+		tmp_w = dst_h;
+		tmp_h = dst_w;
+	} else {
+		tmp_w = dst_w;
+		tmp_h = dst_h;
+	}
+
+	if ((src_w / tmp_w) > var->h_scale_down_max ||
+	    (src_h / tmp_h) > var->v_scale_down_max ||
+	    (tmp_w / src_w) > var->h_scale_up_max ||
+	    (tmp_h / src_h) > var->v_scale_up_max)
+		return -EINVAL;
+
+	return 0;
+}
+
 static int mtk_mdp_m2m_s_selection(struct file *file, void *fh,
 				   struct v4l2_selection *s)
 {
@@ -579,10 +887,6 @@ static int mtk_mdp_m2m_s_selection(struct file *file, void *fh,
 
 	cr.type = s->type;
 	cr.c = s->r;
-
-	if ((s->type != V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE) &&
-	    (s->type != V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE))
-		return -EINVAL;
 
 	ret = mtk_mdp_try_crop(ctx, &cr);
 	if (ret)
@@ -616,8 +920,8 @@ static int mtk_mdp_m2m_s_selection(struct file *file, void *fh,
 	}
 
 	/* Check to see if scaling ratio is within supported range */
-	if (mtk_mdp_ctx_state_is_set(MTK_MDP_DST_FMT | MTK_MDP_SRC_FMT, ctx)) {
-		if (s->type == V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE) {
+	if (mtk_mdp_ctx_state_is_set(ctx, MTK_MDP_DST_FMT | MTK_MDP_SRC_FMT)) {
+		if (V4L2_TYPE_IS_OUTPUT(s->type)) {
 			ret = mtk_mdp_check_scaler_ratio(variant, cr.c.width,
 				cr.c.height, ctx->d_frame.crop.width,
 				ctx->d_frame.crop.height,
@@ -630,7 +934,7 @@ static int mtk_mdp_m2m_s_selection(struct file *file, void *fh,
 		}
 
 		if (ret) {
-			dev_err(&ctx->mdp_dev->pdev->dev,
+			dev_info(&ctx->mdp_dev->pdev->dev,
 				"Out of scaler range");
 			return -EINVAL;
 		}
@@ -638,7 +942,6 @@ static int mtk_mdp_m2m_s_selection(struct file *file, void *fh,
 
 	frame->crop = cr.c;
 
-	mtk_mdp_ctx_state_lock_set(MTK_MDP_PARAMS, ctx);
 	return 0;
 }
 
@@ -694,6 +997,83 @@ static int mtk_mdp_m2m_queue_init(void *priv, struct vb2_queue *src_vq,
 	return vb2_queue_init(dst_vq);
 }
 
+static int mtk_mdp_s_ctrl(struct v4l2_ctrl *ctrl)
+{
+	struct mtk_mdp_ctx *ctx = ctrl_to_ctx(ctrl);
+	struct mtk_mdp_dev *mdp = ctx->mdp_dev;
+	struct mtk_mdp_variant *variant = mdp->variant;
+	u32 state = MTK_MDP_DST_FMT | MTK_MDP_SRC_FMT;
+	int ret = 0;
+
+	if (ctrl->flags & V4L2_CTRL_FLAG_INACTIVE)
+		return 0;
+
+	switch (ctrl->id) {
+	case V4L2_CID_HFLIP:
+		ctx->hflip = ctrl->val;
+		break;
+	case V4L2_CID_VFLIP:
+		ctx->vflip = ctrl->val;
+		break;
+	case V4L2_CID_ROTATE:
+		if (mtk_mdp_ctx_state_is_set(ctx, state)) {
+			ret = mtk_mdp_check_scaler_ratio(variant,
+					ctx->s_frame.crop.width,
+					ctx->s_frame.crop.height,
+					ctx->d_frame.crop.width,
+					ctx->d_frame.crop.height,
+					ctx->ctrls.rotate->val);
+
+			if (ret)
+				return -EINVAL;
+		}
+
+		ctx->rotation = ctrl->val;
+		break;
+	case V4L2_CID_ALPHA_COMPONENT:
+		ctx->d_frame.alpha = ctrl->val;
+		break;
+	}
+
+	return 0;
+}
+
+static const struct v4l2_ctrl_ops mtk_mdp_ctrl_ops = {
+	.s_ctrl = mtk_mdp_s_ctrl,
+};
+
+static int mtk_mdp_ctrls_create(struct mtk_mdp_ctx *ctx)
+{
+	v4l2_ctrl_handler_init(&ctx->ctrl_handler, MTK_MDP_MAX_CTRL_NUM);
+
+	ctx->ctrls.rotate = v4l2_ctrl_new_std(&ctx->ctrl_handler,
+			&mtk_mdp_ctrl_ops, V4L2_CID_ROTATE, 0, 270, 90, 0);
+	ctx->ctrls.hflip = v4l2_ctrl_new_std(&ctx->ctrl_handler,
+					     &mtk_mdp_ctrl_ops,
+					     V4L2_CID_HFLIP,
+					     0, 1, 1, 0);
+	ctx->ctrls.vflip = v4l2_ctrl_new_std(&ctx->ctrl_handler,
+					     &mtk_mdp_ctrl_ops,
+					     V4L2_CID_VFLIP,
+					     0, 1, 1, 0);
+	ctx->ctrls.global_alpha = v4l2_ctrl_new_std(&ctx->ctrl_handler,
+						    &mtk_mdp_ctrl_ops,
+						    V4L2_CID_ALPHA_COMPONENT,
+						    0, 255, 1, 0);
+	ctx->ctrls_rdy = ctx->ctrl_handler.error == 0;
+
+	if (ctx->ctrl_handler.error) {
+		int err = ctx->ctrl_handler.error;
+
+		v4l2_ctrl_handler_free(&ctx->ctrl_handler);
+		dev_err(&ctx->mdp_dev->pdev->dev,
+			"Failed to create control handlers\n");
+		return err;
+	}
+
+	return 0;
+}
+
 static int mtk_mdp_m2m_open(struct file *file)
 {
 	struct mtk_mdp_dev *mdp = video_drvdata(file);
@@ -710,7 +1090,6 @@ static int mtk_mdp_m2m_open(struct file *file)
 		goto err_ctx_alloc;
 	}
 
-	mutex_init(&ctx->qlock);
 	mutex_init(&ctx->slock);
 	ctx->id = mdp->id_counter++;
 	v4l2_fh_init(&ctx->fh, vfd);
@@ -726,11 +1105,10 @@ static int mtk_mdp_m2m_open(struct file *file)
 
 	ctx->mdp_dev = mdp;
 	/* Default color format */
-	ctx->s_frame.fmt = mtk_mdp_find_fmt(0, 0, V4L2_BUF_TYPE_VIDEO_OUTPUT);
-	ctx->d_frame.fmt = mtk_mdp_find_fmt(0, 0, V4L2_BUF_TYPE_VIDEO_CAPTURE);
-	/* Setup the device context for mem2mem mode. */
-	ctx->state = MTK_MDP_CTX_M2M;
-	ctx->flags = 0;
+	ctx->s_frame.fmt = mtk_mdp_find_fmt_by_index(0,
+					V4L2_BUF_TYPE_VIDEO_OUTPUT_MPLANE);
+	ctx->d_frame.fmt = mtk_mdp_find_fmt_by_index(0,
+					V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE);
 
 	INIT_WORK(&ctx->work, mtk_mdp_m2m_worker);
 	ctx->m2m_ctx = v4l2_m2m_ctx_init(mdp->m2m_dev, ctx,
@@ -742,25 +1120,24 @@ static int mtk_mdp_m2m_open(struct file *file)
 	}
 	ctx->fh.m2m_ctx = ctx->m2m_ctx;
 	if (mdp->ctx_num++ == 0) {
-		set_bit(MTK_MDP_M2M_OPEN, &mdp->state);
-
 		ret = vpu_load_firmware(mdp->vpu_dev);
 		if (ret < 0) {
 			dev_err(&mdp->pdev->dev,
-				"vpu_load_firmware failed\n");
+				"vpu_load_firmware failed %d\n", ret);
 			goto err_load_vpu;
 		}
 
 		ret = mtk_mdp_vpu_register(mdp->pdev);
 		if (ret < 0) {
-			dev_err(&mdp->pdev->dev, "mdp_vpu register failed\n");
+			dev_err(&mdp->pdev->dev,
+				"mdp_vpu register failed %d\n", ret);
 			goto err_load_vpu;
 		}
 	}
 
 	ret = mtk_mdp_vpu_init(&ctx->vpu);
 	if (ret < 0) {
-		dev_err(&mdp->pdev->dev, "Failed to initialize vpu\n");
+		dev_err(&mdp->pdev->dev, "Initialize vpu failed %d\n", ret);
 		ret = -EINVAL;
 		goto err_load_vpu;
 	}
@@ -775,13 +1152,13 @@ err_load_vpu:
 	mdp->ctx_num--;
 	v4l2_m2m_ctx_release(ctx->m2m_ctx);
 error_m2m_ctx:
-	mtk_mdp_ctrls_delete(ctx);
+	v4l2_ctrl_handler_free(&ctx->ctrl_handler);
 error_ctrls:
 	v4l2_fh_del(&ctx->fh);
 	v4l2_fh_exit(&ctx->fh);
 	kfree(ctx);
-err_ctx_alloc:
 	mutex_unlock(&mdp->lock);
+err_ctx_alloc:
 
 	return ret;
 }
@@ -791,24 +1168,21 @@ static int mtk_mdp_m2m_release(struct file *file)
 	struct mtk_mdp_ctx *ctx = fh_to_ctx(file->private_data);
 	struct mtk_mdp_dev *mdp = ctx->mdp_dev;
 
-	flush_workqueue(mdp->workqueue);
+	flush_workqueue(mdp->job_wq);
 	mutex_lock(&mdp->lock);
 	v4l2_m2m_ctx_release(ctx->m2m_ctx);
-	mutex_destroy(&ctx->qlock);
-	mtk_mdp_ctrls_delete(ctx);
+	v4l2_ctrl_handler_free(&ctx->ctrl_handler);
 	v4l2_fh_del(&ctx->fh);
 	v4l2_fh_exit(&ctx->fh);
-	if (mdp->ctx_num > 0) {
-		mtk_mdp_vpu_deinit(&ctx->vpu);
-		mdp->ctx_num--;
-	} else {
-		clear_bit(MTK_MDP_M2M_OPEN, &mdp->state);
-		mdp->ctx_num = 0;
-	}
+	mtk_mdp_vpu_deinit(&ctx->vpu);
+	mdp->ctx_num--;
 	list_del_init(&ctx->list);
-	kfree(ctx);
+
+	mtk_mdp_dbg(0, "%s [%d]", dev_name(&mdp->pdev->dev), ctx->id);
 
 	mutex_unlock(&mdp->lock);
+	kfree(ctx);
+
 	return 0;
 }
 
@@ -862,6 +1236,8 @@ int mtk_mdp_register_m2m_device(struct mtk_mdp_dev *mdp)
 	struct device *dev = &mdp->pdev->dev;
 	int ret;
 
+	mdp->variant = &mtk_mdp_default_variant;
+	mdp->vdev.device_caps = V4L2_CAP_VIDEO_M2M_MPLANE | V4L2_CAP_STREAMING;
 	mdp->vdev.fops = &mtk_mdp_m2m_fops;
 	mdp->vdev.ioctl_ops = &mtk_mdp_m2m_ioctl_ops;
 	mdp->vdev.release = video_device_release_empty;
@@ -878,10 +1254,6 @@ int mtk_mdp_register_m2m_device(struct mtk_mdp_dev *mdp)
 		ret = PTR_ERR(mdp->m2m_dev);
 		goto err_m2m_init;
 	}
-
-	v4l2_disable_ioctl_locking(&mdp->vdev, VIDIOC_QBUF);
-	v4l2_disable_ioctl_locking(&mdp->vdev, VIDIOC_DQBUF);
-	v4l2_disable_ioctl_locking(&mdp->vdev, VIDIOC_S_CTRL);
 
 	ret = video_register_device(&mdp->vdev, VFL_TYPE_GRABBER, 2);
 	if (ret) {
@@ -903,9 +1275,6 @@ err_m2m_init:
 
 void mtk_mdp_unregister_m2m_device(struct mtk_mdp_dev *mdp)
 {
-	if (!mdp)
-		return;
-
 	video_device_release(&mdp->vdev);
 	v4l2_m2m_release(mdp->m2m_dev);
 }

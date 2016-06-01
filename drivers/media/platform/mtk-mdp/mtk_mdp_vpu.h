@@ -16,8 +16,6 @@
 #ifndef __MTK_MDP_VPU_H__
 #define __MTK_MDP_VPU_H__
 
-#include <linux/dma-direction.h>
-
 #include "mtk_mdp_ipi.h"
 
 
@@ -31,7 +29,7 @@
 struct mtk_mdp_vpu {
 	struct platform_device	*pdev;
 	uint32_t		inst_addr;
-	unsigned int		failure;
+	int32_t			failure;
 	struct mdp_process_vsi	*vsi;
 };
 

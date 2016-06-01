@@ -1,7 +1,6 @@
 /*
- * Copyright (c) 2015-2016 MediaTek Inc.
- * Author: Houlong Wei <houlong.wei@mediatek.com>
- *         Ming Hsiu Tsai <minghsiu.tsai@mediatek.com>
+ * Copyright (c) 2016 MediaTek Inc.
+ * Author: Ming Hsiu Tsai <minghsiu.tsai@mediatek.com>
  *
  * This program is free software; you can redistribute it and/or modify
  * it under the terms of the GNU General Public License version 2 as
@@ -16,6 +15,13 @@
 #ifndef __MTK_MDP_COMP_H__
 #define __MTK_MDP_COMP_H__
 
+/**
+ * enum mtk_mdp_comp_type - the MDP component
+ * @MTK_MDP_RDMA:	Read DMA
+ * @MTK_MDP_RSZ:	Riszer
+ * @MTK_MDP_WDMA:	Write DMA
+ * @MTK_MDP_WROT:	Write DMA with rotation
+ */
 enum mtk_mdp_comp_type {
 	MTK_MDP_RDMA,
 	MTK_MDP_RSZ,
@@ -57,7 +63,7 @@ struct mtk_mdp_comp {
 int mtk_mdp_comp_init(struct device *dev, struct device_node *node,
 		      struct mtk_mdp_comp *comp, enum mtk_mdp_comp_id comp_id);
 void mtk_mdp_comp_deinit(struct device *dev, struct mtk_mdp_comp *comp);
-int mtk_mdp_comp_get_id(struct device_node *node,
+int mtk_mdp_comp_get_id(struct device *dev, struct device_node *node,
 			enum mtk_mdp_comp_type comp_type);
 void mtk_mdp_comp_clock_on(struct device *dev, struct mtk_mdp_comp *comp);
 void mtk_mdp_comp_clock_off(struct device *dev, struct mtk_mdp_comp *comp);

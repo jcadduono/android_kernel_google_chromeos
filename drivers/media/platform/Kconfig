@@ -176,7 +176,7 @@ config VIDEO_MEDIATEK_MDP
 	select VIDEO_MEDIATEK_VPU
 	default n
 	---help---
-	    It is v4l2 driver and present in Mediatek MT8173 SoCs.
+	    It is a v4l2 driver and present in Mediatek MT8173 SoCs.
 	    The driver supports for scaling and color space conversion.
 
 	    To compile this driver as a module, choose M here: the

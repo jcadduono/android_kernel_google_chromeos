@@ -16,6 +16,8 @@
 #ifndef __MTK_MDP_IPI_H__
 #define __MTK_MDP_IPI_H__
 
+#define MTK_MDP_MAX_NUM_PLANE		3
+
 enum mdp_ipi_msgid {
 	AP_MDP_INIT		= 0xd000,
 	AP_MDP_DEINIT		= 0xd001,
@@ -24,12 +26,6 @@ enum mdp_ipi_msgid {
 	VPU_MDP_INIT_ACK	= 0xe000,
 	VPU_MDP_DEINIT_ACK	= 0xe001,
 	VPU_MDP_PROCESS_ACK	= 0xe002
-};
-
-enum mdp_ipi_msg_status {
-	MDP_IPI_MSG_STATUS_OK	= 0,
-	MDP_IPI_MSG_STATUS_FAIL	= -1,
-	MDP_IPI_MSG_TIMEOUT	= -2
 };
 
 #pragma pack(push, 4)
@@ -76,7 +72,21 @@ struct mdp_ipi_comm_ack {
 	int32_t status;
 };
 
-struct mdp_src_config {
+/**
+ * struct mdp_config - configured for source/destination image
+ * @x        : left
+ * @y        : top
+ * @w        : width
+ * @h        : height
+ * @w_stride : bytes in horizontal
+ * @h_stride : bytes in vertical
+ * @crop_x   : cropped left
+ * @crop_y   : cropped top
+ * @crop_w   : cropped width
+ * @crop_h   : cropped height
+ * @format   : color format
+ */
+struct mdp_config {
 	int32_t x;
 	int32_t y;
 	int32_t w;
@@ -90,44 +100,24 @@ struct mdp_src_config {
 	int32_t format;
 };
 
-struct mdp_src_buffer {
-	uint64_t addr_mva[3];
-	int32_t plane_size[3];
-	int32_t plane_num;
-};
-
-struct mdp_dst_config {
-	int32_t x;
-	int32_t y;
-	int32_t w;
-	int32_t h;
-	int32_t w_stride;
-	int32_t h_stride;
-	int32_t crop_x;
-	int32_t crop_y;
-	int32_t crop_w;
-	int32_t crop_h;
-	int32_t format;
-};
-
-struct mdp_dst_buffer {
-	uint64_t addr_mva[3];
-	int32_t plane_size[3];
+struct mdp_buffer {
+	uint64_t addr_mva[MTK_MDP_MAX_NUM_PLANE];
+	int32_t plane_size[MTK_MDP_MAX_NUM_PLANE];
 	int32_t plane_num;
 };
 
 struct mdp_config_misc {
 	int32_t orientation; /* 0, 90, 180, 270 */
-	int32_t hflip;
-	int32_t vflip;
+	int32_t hflip; /* 1 will enable the flip */
+	int32_t vflip; /* 1 will enable the flip */
 	int32_t alpha; /* global alpha */
 };
 
 struct mdp_process_vsi {
-	struct mdp_src_config src_config;
-	struct mdp_src_buffer src_buffer;
-	struct mdp_dst_config dst_config;
-	struct mdp_dst_buffer dst_buffer;
+	struct mdp_config src_config;
+	struct mdp_buffer src_buffer;
+	struct mdp_config dst_config;
+	struct mdp_buffer dst_buffer;
 	struct mdp_config_misc misc;
 };
 
