@@ -1,6 +1,8 @@
 /*************************************************************************/ /*!
-@Title          Direct client bridge header for cachegeneric
+@File
+@Title          Client bridge header for cachegeneric
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
+@Description    Exports the client bridge functions for cachegeneric
 @License        Dual MIT/GPLv2
 
 The contents of this file are subject to the MIT license as set out below.
@@ -41,6 +43,14 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 #ifndef CLIENT_CACHEGENERIC_BRIDGE_H
 #define CLIENT_CACHEGENERIC_BRIDGE_H
+
+#include "img_defs.h"
+#include "pvrsrv_error.h"
+
+#if defined(PVR_INDIRECT_BRIDGE_CLIENTS)
+#include "pvr_bridge_client.h"
+#include "pvr_bridge.h"
+#endif
 
 #include "common_cachegeneric_bridge.h"
 
