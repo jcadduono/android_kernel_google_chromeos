@@ -368,11 +368,12 @@ config ACPI_THERMAL_REL
 	depends on ACPI
 
 config MTK_THERMAL
-	tristate "Temperature sensor driver for mediatek SoCs"
+	bool "Temperature sensor driver for mediatek SoCs"
 	depends on ARCH_MEDIATEK || COMPILE_TEST
 	depends on HAS_IOMEM
 	depends on NVMEM || NVMEM=n
 	depends on RESET_CONTROLLER
+	depends on CPU_FREQ
 	default y
 	help
 	  Enable this option if you want to have support for thermal management
