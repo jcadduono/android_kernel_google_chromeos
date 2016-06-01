@@ -169,7 +169,7 @@ static int devfreq_get_dev_status(struct device *dev, struct devfreq_dev_status 
 		return -EAGAIN;
 	}
 
-	stat->busy_time = sGpuUtilStats.ui64GpuStatActiveHigh;
+	stat->busy_time = sGpuUtilStats.ui64GpuStatActiveHigh + sGpuUtilStats.ui64GpuStatActiveLow;
 	stat->total_time = sGpuUtilStats.ui64GpuStatCumulative;
 
 	return 0;
