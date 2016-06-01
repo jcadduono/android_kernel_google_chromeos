@@ -1402,6 +1402,8 @@ static void __msm_console_write(struct uart_port *port, const char *s,
 	int num_newlines = 0;
 	bool replaced = false;
 	void __iomem *tf;
+	struct msm_port *msm_port = UART_TO_MSM(port);
+	struct msm_dma *dma = &msm_port->tx_dma;
 
 	if (is_uartdm)
 		tf = port->membase + UARTDM_TF;
@@ -1415,6 +1417,16 @@ static void __msm_console_write(struct uart_port *port, const char *s,
 	count += num_newlines;
 
 	spin_lock(&port->lock);
+
+	/*
+	* If any TX DMA operation is ongoing in BAM DMA then console write
+	* can not be used since it uses the FIFO mode.
+	*/
+	if (dma->count) {
+		spin_unlock(&port->lock);
+		return;
+	}
+
 	if (is_uartdm)
 		msm_reset_dm_count(port, count);
 
