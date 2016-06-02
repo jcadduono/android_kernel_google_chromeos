@@ -379,17 +379,11 @@ static enum drm_connector_status ps8640_detect(struct drm_connector *connector,
 	return connector_status_connected;
 }
 
-static void ps8640_connector_destroy(struct drm_connector *connector)
-{
-	drm_connector_unregister(connector);
-	drm_connector_cleanup(connector);
-}
-
 static const struct drm_connector_funcs ps8640_connector_funcs = {
 	.dpms = drm_atomic_helper_connector_dpms,
 	.fill_modes = drm_helper_probe_single_connector_modes,
 	.detect = ps8640_detect,
-	.destroy = ps8640_connector_destroy,
+	.destroy = drm_connector_cleanup,
 	.reset = drm_atomic_helper_connector_reset,
 	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
@@ -416,7 +410,6 @@ int ps8640_bridge_attach(struct drm_bridge *bridge)
 
 	drm_connector_helper_add(&ps_bridge->connector,
 				 &ps8640_connector_helper_funcs);
-	drm_connector_register(&ps_bridge->connector);
 
 	ps_bridge->connector.dpms = DRM_MODE_DPMS_ON;
 	drm_mode_connector_attach_encoder(&ps_bridge->connector,
@@ -457,7 +450,6 @@ int ps8640_bridge_attach(struct drm_bridge *bridge)
 err:
 	if (ps_bridge->panel)
 		drm_panel_detach(ps_bridge->panel);
-	drm_connector_unregister(&ps_bridge->connector);
 	drm_connector_cleanup(&ps_bridge->connector);
 	return ret;
 }
