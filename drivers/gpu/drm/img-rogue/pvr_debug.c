@@ -992,7 +992,6 @@ static struct seq_operations gsDumpDebugReadOps =
  Firmware Trace DebugFS entry
 */ /**************************************************************************/
 
-#if defined(PVRSRV_ENABLE_FW_TRACE_DEBUGFS)
 static void *_DebugFWTraceCompare_AnyVaCb(PVRSRV_DEVICE_NODE *psDevNode, va_list va)
 {
 	loff_t *puiCurrentPosition = va_arg(va, loff_t *);
@@ -1085,8 +1084,6 @@ static struct seq_operations gsFWTraceReadOps =
 	.next  = _DebugFWTraceSeqNext,
 	.show  = _DebugFWTraceSeqShow,
 };
-#endif
-
 
 /*************************************************************************/ /*!
  Debug level DebugFS entry
@@ -1188,9 +1185,7 @@ static PVR_DEBUGFS_ENTRY_DATA *gpsVersionDebugFSEntry;
 static PVR_DEBUGFS_ENTRY_DATA *gpsStatusDebugFSEntry;
 static PVR_DEBUGFS_ENTRY_DATA *gpsDumpDebugDebugFSEntry;
 
-#if defined(PVRSRV_ENABLE_FW_TRACE_DEBUGFS)
 static PVR_DEBUGFS_ENTRY_DATA *gpsFWTraceDebugFSEntry;
-#endif
 
 #if defined(DEBUG)
 static PVR_DEBUGFS_ENTRY_DATA *gpsDebugLevelDebugFSEntry;
@@ -1244,7 +1239,6 @@ int PVRDebugCreateDebugFSEntries(void)
 		goto ErrorRemoveStatusEntry;
 	}
 
-#if defined(PVRSRV_ENABLE_FW_TRACE_DEBUGFS)
 	iResult = PVRDebugFSCreateEntry("firmware_trace",
 									NULL,
 									&gsFWTraceReadOps,
@@ -1255,7 +1249,6 @@ int PVRDebugCreateDebugFSEntries(void)
 	{
 		goto ErrorRemoveDumpDebugEntry;
 	}
-#endif
 
 #if defined(DEBUG)
 	iResult = PVRDebugFSCreateEntry("debug_level",
@@ -1266,25 +1259,19 @@ int PVRDebugCreateDebugFSEntries(void)
 									&gpsDebugLevelDebugFSEntry);
 	if (iResult != 0)
 	{
-#if defined(PVRSRV_ENABLE_FW_TRACE_DEBUGFS)
 		goto ErrorRemoveFWTraceLogEntry;
-#else
-		goto ErrorRemoveDumpDebugEntry;
-#endif
 	}
 #endif
 
 	return 0;
 
-#if (defined(DEBUG) && defined(PVRSRV_ENABLE_FW_TRACE_DEBUGFS))
+#if defined(DEBUG) || defined(PVR_DPF_ADHOC_DEBUG_ON)
 ErrorRemoveFWTraceLogEntry:
 	PVRDebugFSRemoveEntry(&gpsFWTraceDebugFSEntry);
 #endif
 
-#if (defined(DEBUG) || defined(PVRSRV_ENABLE_FW_TRACE_DEBUGFS))
 ErrorRemoveDumpDebugEntry:
 	PVRDebugFSRemoveEntry(&gpsDumpDebugDebugFSEntry);
-#endif
 
 ErrorRemoveStatusEntry:
 	PVRDebugFSRemoveEntry(&gpsStatusDebugFSEntry);
@@ -1308,12 +1295,10 @@ void PVRDebugRemoveDebugFSEntries(void)
 	}
 #endif
 
-#if defined(PVRSRV_ENABLE_FW_TRACE_DEBUGFS)
 	if (gpsFWTraceDebugFSEntry != NULL)
 	{
 		PVRDebugFSRemoveEntry(&gpsFWTraceDebugFSEntry);
 	}
-#endif
 
 	if (gpsDumpDebugDebugFSEntry != NULL)
 	{

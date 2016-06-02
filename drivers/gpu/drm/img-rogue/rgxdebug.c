@@ -62,13 +62,9 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "services_km.h"
 
 #include "devicemem_pdump.h"
-
 #include "rgx_fwif.h"
-
-#if defined(PVRSRV_ENABLE_FW_TRACE_DEBUGFS)
 #include "rgx_fwif_sf.h"
 #include "rgxfw_log_helper.h"
-#endif
 
 #include "rgxta3d.h"
 #include "rgxcompute.h"
@@ -2968,7 +2964,6 @@ void RGXDumpDebugInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 #if defined(PVRSRV_GPUVIRT_GUESTDRV)
 	/* Guest driver do not support Firmware Trace log */
 #else
-#if defined(PVRSRV_ENABLE_FW_TRACE_DEBUGFS)
 /*
  *  Array of all the Firmware Trace log IDs used to convert the trace data.
  */
@@ -3194,7 +3189,6 @@ void RGXDumpFirmwareTrace(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 		}
 	}
 }
-#endif
 
 
 static IMG_CHAR* _RGXGetDebugDevPowerStateString(PVRSRV_DEV_POWER_STATE ePowerState)

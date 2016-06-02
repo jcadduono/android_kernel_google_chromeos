@@ -109,7 +109,6 @@ void RGXDebugRequestProcess(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 							IMG_UINT32			ui32VerbLevel);
 
 
-#if defined(PVRSRV_ENABLE_FW_TRACE_DEBUGFS)
 /*!
 *******************************************************************************
 
@@ -127,7 +126,6 @@ void RGXDebugRequestProcess(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 ******************************************************************************/
 void RGXDumpFirmwareTrace(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 						  PVRSRV_RGXDEV_INFO	*psDevInfo);
-#endif
 
 
 /*!
