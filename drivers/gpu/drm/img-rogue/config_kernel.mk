@@ -8,6 +8,7 @@ override SUPPORT_COMPUTE := 1
 override SUPPORT_DRM := 1
 override SUPPORT_ES32 := 1
 override SUPPORT_GPUTRACE_EVENTS := 1
+override SUPPORT_KERNEL_SRVINIT := 1
 override SUPPORT_SECURE_EXPORT := 1
 override SUPPORT_SERVER_SYNC := 1
 override SUPPORT_TLA := 1
@@ -19,9 +20,6 @@ override SUPPORT_PAGE_FAULT_DEBUG := 1
 else
 override BUILD := release
 override PVR_BUILD_TYPE := release
-endif
-ifeq ($(CONFIG_DRM_POWERVR_ROGUE_KERNEL_SRVINIT),y)
-override SUPPORT_KERNEL_SRVINIT := 1
 endif
 ifeq ($(CONFIG_DRM_POWERVR_ROGUE_PDUMP),y)
 override EXTRA_PVRSRVKM_COMPONENTS := dbgdrv

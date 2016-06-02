@@ -97,15 +97,7 @@ pvrsrvkm-y += \
  sync.o \
  tlclient.o \
  uniq_key_splay_tree.o \
- rgx_compat_bvnc.o
-pvrsrvkm-$(CONFIG_DRM_POWERVR_ROGUE_DEBUG) += \
- client_devicememhistory_bridge.o \
- server_devicememhistory_bridge.o \
- client_ri_bridge.o \
- server_ri_bridge.o \
- devicemem_history_server.o \
- ri_server.o
-pvrsrvkm-$(CONFIG_DRM_POWERVR_ROGUE_KERNEL_SRVINIT) += \
+ rgx_compat_bvnc.o \
  client_rgxinit_bridge.o \
  rgx_hwperf_table.o \
  htbinit.o \
@@ -117,6 +109,13 @@ pvrsrvkm-$(CONFIG_DRM_POWERVR_ROGUE_KERNEL_SRVINIT) += \
  rgxsrvinit_script.o \
  os_srvinit_param.o \
  srvinit_km.o
+pvrsrvkm-$(CONFIG_DRM_POWERVR_ROGUE_DEBUG) += \
+ client_devicememhistory_bridge.o \
+ server_devicememhistory_bridge.o \
+ client_ri_bridge.o \
+ server_ri_bridge.o \
+ devicemem_history_server.o \
+ ri_server.o
 pvrsrvkm-$(CONFIG_DRM_POWERVR_ROGUE_PDUMP) += \
  client_pdump_bridge.o \
  client_pdumpctrl_bridge.o \
