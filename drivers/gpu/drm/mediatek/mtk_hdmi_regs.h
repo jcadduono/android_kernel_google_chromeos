@@ -28,6 +28,12 @@
 #define GRL_I2S_C_STA3		0x14C
 #define GRL_I2S_C_STA4		0x150
 #define GRL_I2S_UV		0x154
+#define I2S_UV_V			BIT(0)
+#define I2S_UV_U			BIT(1)
+#define I2S_UV_CH_EN_MASK		0x3c
+#define I2S_UV_CH_EN(x)			BIT((x) + 2)
+#define I2S_UV_TMDS_DEBUG		BIT(6)
+#define I2S_UV_NORMAL_INFO_INV		BIT(7)
 #define GRL_ACP_ISRC_CTRL	0x158
 #define VS_EN				BIT(0)
 #define ACP_EN				BIT(1)
@@ -66,11 +72,12 @@
 #define DSD_INV				BIT(4)
 #define LR_INV				BIT(5)
 #define LR_MIX				BIT(6)
-#define SACD_SEL			BIT(7)
+#define DSD_SEL				BIT(7)
 #define GRL_NCTS		0x184
 #define GRL_CH_SW0		0x18C
 #define GRL_CH_SW1		0x190
 #define GRL_CH_SW2		0x194
+#define CH_SWITCH(from, to)		((from) << ((to) * 3))
 #define GRL_INFOFRM_VER		0x19C
 #define GRL_INFOFRM_TYPE	0x1A0
 #define GRL_INFOFRM_LNG		0x1A4
@@ -78,28 +85,37 @@
 #define MIX_CTRL_SRC_EN			BIT(0)
 #define BYPASS_VOLUME			BIT(1)
 #define MIX_CTRL_FLAT			BIT(7)
-#define GRL_AOUT_BNUM_SEL	0x1C4
+#define GRL_AOUT_CFG		0x1C4
+#define AOUT_BNUM_SEL_MASK		0x03
 #define AOUT_24BIT			0x00
 #define AOUT_20BIT			0x02
 #define AOUT_16BIT			0x03
-#define HIGH_BIT_RATE_PACKET_ALIGN	(0x3 << 6)
+#define AOUT_FIFO_ADAP_CTRL		BIT(6)
+#define AOUT_BURST_PREAMBLE_EN		BIT(7)
+#define HIGH_BIT_RATE_PACKET_ALIGN	(AOUT_BURST_PREAMBLE_EN | \
+					 AOUT_FIFO_ADAP_CTRL)
 #define GRL_SHIFT_L1		0x1C0
 #define GRL_SHIFT_R2		0x1B0
 #define AUDIO_PACKET_OFF		BIT(6)
 #define GRL_CFG0		0x24
+#define CFG0_I2S_MODE_MASK		0x3
 #define CFG0_I2S_MODE_RTJ		0x1
 #define CFG0_I2S_MODE_LTJ		0x0
 #define CFG0_I2S_MODE_I2S		0x2
-#define CFG0_I2S_MODE_24BIT		0x00
-#define CFG0_I2S_MODE_16BIT		0x10
+#define CFG0_W_LENGTH_MASK		0x30
+#define CFG0_W_LENGTH_24BIT		0x00
+#define CFG0_W_LENGTH_16BIT		0x10
 #define GRL_CFG1		0x28
 #define CFG1_EDG_SEL			BIT(0)
 #define CFG1_SPDIF			BIT(1)
 #define CFG1_DVI			BIT(2)
 #define CFG1_HDCP_DEBUG			BIT(3)
 #define GRL_CFG2		0x2c
+#define CFG2_MHL_DE_SEL			BIT(3)
+#define CFG2_MHL_FAKE_DE_SEL		BIT(4)
+#define CFG2_MHL_DATA_REMAP		BIT(5)
 #define CFG2_NOTICE_EN			BIT(6)
-#define MHL_DE_SEL			BIT(3)
+#define CFG2_ACLK_INV			BIT(7)
 #define GRL_CFG3		0x30
 #define CFG3_AES_KEY_INDEX_MASK		0x3f
 #define CFG3_CONTROL_PACKET_DELAY	BIT(6)
@@ -108,7 +124,7 @@
 #define CFG4_AES_KEY_LOAD		BIT(4)
 #define CFG4_AV_UNMUTE_EN		BIT(5)
 #define CFG4_AV_UNMUTE_SET		BIT(6)
-#define CFG_MHL_MODE			BIT(7)
+#define CFG4_MHL_MODE			BIT(7)
 #define GRL_CFG5		0x38
 #define CFG5_CD_RATIO_MASK	0x8F
 #define CFG5_FS128			(0x1 << 4)

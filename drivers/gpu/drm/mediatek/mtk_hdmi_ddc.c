@@ -22,6 +22,7 @@
 #include <linux/clk.h>
 #include <linux/slab.h>
 #include <linux/io.h>
+#include <linux/iopoll.h>
 #include <linux/of_address.h>
 #include <linux/of_irq.h>
 #include <linux/of_platform.h>
@@ -60,78 +61,74 @@
 #define DDCM_DATA5			(0xff << 8)
 #define DDCM_DATA4			(0xff << 0)
 
-struct mtk_hdmi_i2c {
+struct mtk_hdmi_ddc {
 	struct i2c_adapter adap;
 	struct clk *clk;
 	void __iomem *regs;
 };
 
-static inline void sif_set_bit(struct mtk_hdmi_i2c *i2c, unsigned int offset,
+static inline void sif_set_bit(struct mtk_hdmi_ddc *ddc, unsigned int offset,
 			       unsigned int val)
 {
-	writel(readl(i2c->regs + offset) | val, i2c->regs + offset);
+	writel(readl(ddc->regs + offset) | val, ddc->regs + offset);
 }
 
-static inline void sif_clr_bit(struct mtk_hdmi_i2c *i2c, unsigned int offset,
+static inline void sif_clr_bit(struct mtk_hdmi_ddc *ddc, unsigned int offset,
 			       unsigned int val)
 {
-	writel(readl(i2c->regs + offset) & ~val, i2c->regs + offset);
+	writel(readl(ddc->regs + offset) & ~val, ddc->regs + offset);
 }
 
-static inline bool sif_bit_is_set(struct mtk_hdmi_i2c *i2c, unsigned int offset,
+static inline bool sif_bit_is_set(struct mtk_hdmi_ddc *ddc, unsigned int offset,
 				  unsigned int val)
 {
-	return (readl(i2c->regs + offset) & val) == val;
+	return (readl(ddc->regs + offset) & val) == val;
 }
 
-static inline void sif_write_mask(struct mtk_hdmi_i2c *i2c, unsigned int offset,
+static inline void sif_write_mask(struct mtk_hdmi_ddc *ddc, unsigned int offset,
 				  unsigned int mask, unsigned int shift,
 				  unsigned int val)
 {
 	unsigned int tmp;
 
-	tmp = readl(i2c->regs + offset);
+	tmp = readl(ddc->regs + offset);
 	tmp &= ~mask;
 	tmp |= (val << shift) & mask;
-	writel(tmp, i2c->regs + offset);
+	writel(tmp, ddc->regs + offset);
 }
 
-static inline unsigned int sif_read_mask(struct mtk_hdmi_i2c *i2c,
+static inline unsigned int sif_read_mask(struct mtk_hdmi_ddc *ddc,
 					 unsigned int offset, unsigned int mask,
 					 unsigned int shift)
 {
-	return (readl(i2c->regs + offset) & mask) >> shift;
+	return (readl(ddc->regs + offset) & mask) >> shift;
 }
 
-static void ddcm_trigger_mode(struct mtk_hdmi_i2c *i2c, int mode)
+static void ddcm_trigger_mode(struct mtk_hdmi_ddc *ddc, int mode)
 {
-	int timeout = 20 * 1000;
+	u32 val;
 
-	sif_write_mask(i2c, DDC_DDCMCTL1, DDCM_SIF_MODE_MASK,
+	sif_write_mask(ddc, DDC_DDCMCTL1, DDCM_SIF_MODE_MASK,
 		       DDCM_SIF_MODE_OFFSET, mode);
-	sif_set_bit(i2c, DDC_DDCMCTL1, DDCM_TRI);
-	while (sif_bit_is_set(i2c, DDC_DDCMCTL1, DDCM_TRI)) {
-		timeout -= 2;
-		udelay(2);
-		if (timeout <= 0)
-			break;
-	}
+	sif_set_bit(ddc, DDC_DDCMCTL1, DDCM_TRI);
+	readl_poll_timeout(ddc->regs + DDC_DDCMCTL1, val,
+			   (val & DDCM_TRI) != DDCM_TRI, 4, 20000);
 }
 
-static int mtk_hdmi_i2c_read_msg(struct mtk_hdmi_i2c *i2c, struct i2c_msg *msg)
+static int mtk_hdmi_ddc_read_msg(struct mtk_hdmi_ddc *ddc, struct i2c_msg *msg)
 {
-	struct device *dev = i2c->adap.dev.parent;
+	struct device *dev = ddc->adap.dev.parent;
 	u32 remain_count, ack_count, ack_final, read_count, temp_count;
 	u32 index = 0;
 	u32 ack;
 	int i;
 
-	ddcm_trigger_mode(i2c, DDCM_START);
-	sif_write_mask(i2c, DDC_DDCMD0, 0xff, 0, (msg->addr << 1) | 0x01);
-	sif_write_mask(i2c, DDC_DDCMCTL1, DDCM_PGLEN_MASK, DDCM_PGLEN_OFFSET,
+	ddcm_trigger_mode(ddc, DDCM_START);
+	sif_write_mask(ddc, DDC_DDCMD0, 0xff, 0, (msg->addr << 1) | 0x01);
+	sif_write_mask(ddc, DDC_DDCMCTL1, DDCM_PGLEN_MASK, DDCM_PGLEN_OFFSET,
 		       0x00);
-	ddcm_trigger_mode(i2c, DDCM_WRITE_DATA);
-	ack = sif_read_mask(i2c, DDC_DDCMCTL1, DDCM_ACK_MASK, DDCM_ACK_OFFSET);
+	ddcm_trigger_mode(ddc, DDCM_WRITE_DATA);
+	ack = sif_read_mask(ddc, DDC_DDCMCTL1, DDCM_ACK_MASK, DDCM_ACK_OFFSET);
 	dev_dbg(dev, "ack = 0x%x\n", ack);
 	if (ack != 0x01) {
 		dev_err(dev, "i2c ack err!\n");
@@ -152,13 +149,13 @@ static int mtk_hdmi_i2c_read_msg(struct mtk_hdmi_i2c *i2c, struct i2c_msg *msg)
 			ack_final = 1;
 		}
 
-		sif_write_mask(i2c, DDC_DDCMCTL1, DDCM_PGLEN_MASK,
+		sif_write_mask(ddc, DDC_DDCMCTL1, DDCM_PGLEN_MASK,
 			       DDCM_PGLEN_OFFSET, read_count - 1);
-		ddcm_trigger_mode(i2c, (ack_final == 1) ?
+		ddcm_trigger_mode(ddc, (ack_final == 1) ?
 				  DDCM_READ_DATA_NO_ACK :
 				  DDCM_READ_DATA_ACK);
 
-		ack = sif_read_mask(i2c, DDC_DDCMCTL1, DDCM_ACK_MASK,
+		ack = sif_read_mask(ddc, DDC_DDCMCTL1, DDCM_ACK_MASK,
 				    DDCM_ACK_OFFSET);
 		temp_count = 0;
 		while (((ack & (1 << temp_count)) != 0) && (temp_count < 8))
@@ -181,7 +178,7 @@ static int mtk_hdmi_i2c_read_msg(struct mtk_hdmi_i2c *i2c, struct i2c_msg *msg)
 				shift = (i - 1) * 8;
 			}
 
-			msg->buf[index + i - 1] = sif_read_mask(i2c, offset,
+			msg->buf[index + i - 1] = sif_read_mask(ddc, offset,
 								0xff << shift,
 								shift);
 		}
@@ -193,19 +190,19 @@ static int mtk_hdmi_i2c_read_msg(struct mtk_hdmi_i2c *i2c, struct i2c_msg *msg)
 	return 0;
 }
 
-static int mtk_hdmi_i2c_write_msg(struct mtk_hdmi_i2c *i2c, struct i2c_msg *msg)
+static int mtk_hdmi_ddc_write_msg(struct mtk_hdmi_ddc *ddc, struct i2c_msg *msg)
 {
-	struct device *dev = i2c->adap.dev.parent;
+	struct device *dev = ddc->adap.dev.parent;
 	u32 ack;
 
-	ddcm_trigger_mode(i2c, DDCM_START);
-	sif_write_mask(i2c, DDC_DDCMD0, DDCM_DATA0, 0, msg->addr << 1);
-	sif_write_mask(i2c, DDC_DDCMD0, DDCM_DATA1, 8, msg->buf[0]);
-	sif_write_mask(i2c, DDC_DDCMCTL1, DDCM_PGLEN_MASK, DDCM_PGLEN_OFFSET,
+	ddcm_trigger_mode(ddc, DDCM_START);
+	sif_write_mask(ddc, DDC_DDCMD0, DDCM_DATA0, 0, msg->addr << 1);
+	sif_write_mask(ddc, DDC_DDCMD0, DDCM_DATA1, 8, msg->buf[0]);
+	sif_write_mask(ddc, DDC_DDCMCTL1, DDCM_PGLEN_MASK, DDCM_PGLEN_OFFSET,
 		       0x1);
-	ddcm_trigger_mode(i2c, DDCM_WRITE_DATA);
+	ddcm_trigger_mode(ddc, DDCM_WRITE_DATA);
 
-	ack = sif_read_mask(i2c, DDC_DDCMCTL1, DDCM_ACK_MASK, DDCM_ACK_OFFSET);
+	ack = sif_read_mask(ddc, DDC_DDCMCTL1, DDCM_ACK_MASK, DDCM_ACK_OFFSET);
 	dev_dbg(dev, "ack = %d\n", ack);
 
 	if (ack != 0x03) {
@@ -216,29 +213,29 @@ static int mtk_hdmi_i2c_write_msg(struct mtk_hdmi_i2c *i2c, struct i2c_msg *msg)
 	return 0;
 }
 
-static int mtk_hdmi_i2c_xfer(struct i2c_adapter *adapter,
+static int mtk_hdmi_ddc_xfer(struct i2c_adapter *adapter,
 			     struct i2c_msg *msgs, int num)
 {
-	struct mtk_hdmi_i2c *i2c = adapter->algo_data;
+	struct mtk_hdmi_ddc *ddc = adapter->algo_data;
 	struct device *dev = adapter->dev.parent;
 	int ret;
 	int i;
 
-	if (!i2c) {
+	if (!ddc) {
 		dev_err(dev, "invalid arguments\n");
 		return -EINVAL;
 	}
 
-	sif_set_bit(i2c, DDC_DDCMCTL0, DDCM_SCL_STRECH);
-	sif_set_bit(i2c, DDC_DDCMCTL0, DDCM_SM0EN);
-	sif_clr_bit(i2c, DDC_DDCMCTL0, DDCM_ODRAIN);
+	sif_set_bit(ddc, DDC_DDCMCTL0, DDCM_SCL_STRECH);
+	sif_set_bit(ddc, DDC_DDCMCTL0, DDCM_SM0EN);
+	sif_clr_bit(ddc, DDC_DDCMCTL0, DDCM_ODRAIN);
 
-	if (sif_bit_is_set(i2c, DDC_DDCMCTL1, DDCM_TRI)) {
+	if (sif_bit_is_set(ddc, DDC_DDCMCTL1, DDCM_TRI)) {
 		dev_err(dev, "ddc line is busy!\n");
 		return -EBUSY;
 	}
 
-	sif_write_mask(i2c, DDC_DDCMCTL0, DDCM_CLK_DIV_MASK,
+	sif_write_mask(ddc, DDC_DDCMCTL0, DDCM_CLK_DIV_MASK,
 		       DDCM_CLK_DIV_OFFSET, SIF1_CLOK);
 
 	for (i = 0; i < num; i++) {
@@ -248,115 +245,114 @@ static int mtk_hdmi_i2c_xfer(struct i2c_adapter *adapter,
 			msg->addr, msg->flags, msg->len);
 
 		if (msg->flags & I2C_M_RD)
-			ret = mtk_hdmi_i2c_read_msg(i2c, msg);
+			ret = mtk_hdmi_ddc_read_msg(ddc, msg);
 		else
-			ret = mtk_hdmi_i2c_write_msg(i2c, msg);
+			ret = mtk_hdmi_ddc_write_msg(ddc, msg);
 		if (ret < 0)
 			goto xfer_end;
 	}
 
-	ddcm_trigger_mode(i2c, DDCM_STOP);
+	ddcm_trigger_mode(ddc, DDCM_STOP);
 
 	return i;
 
 xfer_end:
-	ddcm_trigger_mode(i2c, DDCM_STOP);
+	ddcm_trigger_mode(ddc, DDCM_STOP);
 	dev_err(dev, "ddc failed!\n");
 	return ret;
 }
 
-static u32 mtk_hdmi_i2c_func(struct i2c_adapter *adapter)
+static u32 mtk_hdmi_ddc_func(struct i2c_adapter *adapter)
 {
 	return I2C_FUNC_I2C | I2C_FUNC_SMBUS_EMUL;
 }
 
-static const struct i2c_algorithm mtk_hdmi_i2c_algorithm = {
-	.master_xfer = mtk_hdmi_i2c_xfer,
-	.functionality = mtk_hdmi_i2c_func,
+static const struct i2c_algorithm mtk_hdmi_ddc_algorithm = {
+	.master_xfer = mtk_hdmi_ddc_xfer,
+	.functionality = mtk_hdmi_ddc_func,
 };
 
-static int mtk_hdmi_i2c_probe(struct platform_device *pdev)
+static int mtk_hdmi_ddc_probe(struct platform_device *pdev)
 {
 	struct device *dev = &pdev->dev;
-	struct mtk_hdmi_i2c *i2c;
+	struct mtk_hdmi_ddc *ddc;
 	struct resource *mem;
 	int ret;
 
-	i2c = devm_kzalloc(dev, sizeof(struct mtk_hdmi_i2c), GFP_KERNEL);
-	if (!i2c)
+	ddc = devm_kzalloc(dev, sizeof(struct mtk_hdmi_ddc), GFP_KERNEL);
+	if (!ddc)
 		return -ENOMEM;
 
-	i2c->clk = devm_clk_get(dev, "ddc-i2c");
-	if (IS_ERR(i2c->clk)) {
-		dev_err(dev, "get ddc_clk failed : %p ,\n", i2c->clk);
-		return PTR_ERR(i2c->clk);
+	ddc->clk = devm_clk_get(dev, "ddc-i2c");
+	if (IS_ERR(ddc->clk)) {
+		dev_err(dev, "get ddc_clk failed: %p ,\n", ddc->clk);
+		return PTR_ERR(ddc->clk);
 	}
 
 	mem = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-	i2c->regs = devm_ioremap_resource(&pdev->dev, mem);
-	if (IS_ERR(i2c->regs)) {
-		dev_err(dev, "get memory source fail!\n");
-		return PTR_ERR(i2c->regs);
-	}
+	ddc->regs = devm_ioremap_resource(&pdev->dev, mem);
+	if (IS_ERR(ddc->regs))
+		return PTR_ERR(ddc->regs);
 
-	ret = clk_prepare_enable(i2c->clk);
+	ret = clk_prepare_enable(ddc->clk);
 	if (ret) {
 		dev_err(dev, "enable ddc clk failed!\n");
 		return ret;
 	}
 
-	strlcpy(i2c->adap.name, "mediatek-hdmi-i2c", sizeof(i2c->adap.name));
-	i2c->adap.owner = THIS_MODULE;
-	i2c->adap.algo = &mtk_hdmi_i2c_algorithm;
-	i2c->adap.retries = 3;
-	i2c->adap.dev.of_node = dev->of_node;
-	i2c->adap.algo_data = i2c;
-	i2c->adap.dev.parent = &pdev->dev;
+	strlcpy(ddc->adap.name, "mediatek-hdmi-ddc", sizeof(ddc->adap.name));
+	ddc->adap.owner = THIS_MODULE;
+	ddc->adap.class = I2C_CLASS_DDC;
+	ddc->adap.algo = &mtk_hdmi_ddc_algorithm;
+	ddc->adap.retries = 3;
+	ddc->adap.dev.of_node = dev->of_node;
+	ddc->adap.algo_data = ddc;
+	ddc->adap.dev.parent = &pdev->dev;
 
-	ret = i2c_add_adapter(&i2c->adap);
+	ret = i2c_add_adapter(&ddc->adap);
 	if (ret < 0) {
 		dev_err(dev, "failed to add bus to i2c core\n");
 		goto err_clk_disable;
 	}
 
-	platform_set_drvdata(pdev, i2c);
+	platform_set_drvdata(pdev, ddc);
 
-	dev_dbg(dev, "i2c->adap: %p\n", &i2c->adap);
-	dev_dbg(dev, "i2c->clk: %p\n", i2c->clk);
+	dev_dbg(dev, "ddc->adap: %p\n", &ddc->adap);
+	dev_dbg(dev, "ddc->clk: %p\n", ddc->clk);
 	dev_dbg(dev, "physical adr: 0x%llx, end: 0x%llx\n", mem->start,
 		mem->end);
 
 	return 0;
 
 err_clk_disable:
-	clk_disable_unprepare(i2c->clk);
+	clk_disable_unprepare(ddc->clk);
 	return ret;
 }
 
-static int mtk_hdmi_i2c_remove(struct platform_device *pdev)
+static int mtk_hdmi_ddc_remove(struct platform_device *pdev)
 {
-	struct mtk_hdmi_i2c *i2c = platform_get_drvdata(pdev);
+	struct mtk_hdmi_ddc *ddc = platform_get_drvdata(pdev);
 
-	clk_disable_unprepare(i2c->clk);
-	i2c_del_adapter(&i2c->adap);
+	i2c_del_adapter(&ddc->adap);
+	clk_disable_unprepare(ddc->clk);
 
 	return 0;
 }
 
-static const struct of_device_id mtk_hdmi_i2c_match[] = {
+static const struct of_device_id mtk_hdmi_ddc_match[] = {
 	{ .compatible = "mediatek,mt8173-hdmi-ddc", },
 	{},
 };
 
 struct platform_driver mtk_hdmi_ddc_driver = {
-	.probe = mtk_hdmi_i2c_probe,
-	.remove = mtk_hdmi_i2c_remove,
+	.probe = mtk_hdmi_ddc_probe,
+	.remove = mtk_hdmi_ddc_remove,
 	.driver = {
 		.name = "mediatek-hdmi-ddc",
-		.of_match_table = mtk_hdmi_i2c_match,
+		.of_match_table = mtk_hdmi_ddc_match,
 	},
 };
 
 MODULE_AUTHOR("Jie Qiu <jie.qiu@mediatek.com>");
-MODULE_DESCRIPTION("MediaTek HDMI i2c Driver");
+MODULE_DESCRIPTION("MediaTek HDMI DDC Driver");
 MODULE_LICENSE("GPL v2");

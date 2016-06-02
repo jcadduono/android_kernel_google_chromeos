@@ -185,13 +185,37 @@ static const u8 HTPLLBR[3][4] = {
 	{0x1, 0x2, 0x2, 0x1}	/* 148Mhz */
 };
 
+static void mtk_hdmi_phy_clear_bits(struct mtk_hdmi_phy *hdmi_phy, u32 offset,
+				    u32 bits)
+{
+	void __iomem *reg = hdmi_phy->regs + offset;
+	u32 tmp;
+
+	tmp = readl(reg);
+	tmp &= ~bits;
+	writel(tmp, reg);
+}
+
+static void mtk_hdmi_phy_set_bits(struct mtk_hdmi_phy *hdmi_phy, u32 offset,
+				  u32 bits)
+{
+	void __iomem *reg = hdmi_phy->regs + offset;
+	u32 tmp;
+
+	tmp = readl(reg);
+	tmp |= bits;
+	writel(tmp, reg);
+}
+
 static void mtk_hdmi_phy_mask(struct mtk_hdmi_phy *hdmi_phy, u32 offset,
 			      u32 val, u32 mask)
 {
-	u32 tmp = readl(hdmi_phy->regs  + offset) & ~mask;
+	void __iomem *reg = hdmi_phy->regs + offset;
+	u32 tmp;
 
-	tmp |= (val & mask);
-	writel(tmp, hdmi_phy->regs + offset);
+	tmp = readl(reg);
+	tmp = (tmp & ~mask) | (val & mask);
+	writel(tmp, reg);
 }
 
 static inline struct mtk_hdmi_phy *to_mtk_hdmi_phy(struct clk_hw *hw)
@@ -203,23 +227,17 @@ static int mtk_hdmi_pll_prepare(struct clk_hw *hw)
 {
 	struct mtk_hdmi_phy *hdmi_phy = to_mtk_hdmi_phy(hw);
 
-	dev_dbg(hdmi_phy->dev, "prepare\n");
+	dev_dbg(hdmi_phy->dev, "%s\n", __func__);
 
-	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON1, RG_HDMITX_PLL_AUTOK_EN,
-			  RG_HDMITX_PLL_AUTOK_EN);
-	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON0, RG_HDMITX_PLL_POSDIV,
-			  RG_HDMITX_PLL_POSDIV);
-	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON3, 0, RG_HDMITX_MHLCK_EN);
-	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON1, RG_HDMITX_PLL_BIAS_EN,
-			  RG_HDMITX_PLL_BIAS_EN);
+	mtk_hdmi_phy_set_bits(hdmi_phy, HDMI_CON1, RG_HDMITX_PLL_AUTOK_EN);
+	mtk_hdmi_phy_set_bits(hdmi_phy, HDMI_CON0, RG_HDMITX_PLL_POSDIV);
+	mtk_hdmi_phy_clear_bits(hdmi_phy, HDMI_CON3, RG_HDMITX_MHLCK_EN);
+	mtk_hdmi_phy_set_bits(hdmi_phy, HDMI_CON1, RG_HDMITX_PLL_BIAS_EN);
 	usleep_range(100, 150);
-	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON0, RG_HDMITX_PLL_EN,
-			  RG_HDMITX_PLL_EN);
+	mtk_hdmi_phy_set_bits(hdmi_phy, HDMI_CON0, RG_HDMITX_PLL_EN);
 	usleep_range(100, 150);
-	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON1, RG_HDMITX_PLL_BIAS_LPF_EN,
-			  RG_HDMITX_PLL_BIAS_LPF_EN);
-	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON1, RG_HDMITX_PLL_TXDIV_EN,
-			  RG_HDMITX_PLL_TXDIV_EN);
+	mtk_hdmi_phy_set_bits(hdmi_phy, HDMI_CON1, RG_HDMITX_PLL_BIAS_LPF_EN);
+	mtk_hdmi_phy_set_bits(hdmi_phy, HDMI_CON1, RG_HDMITX_PLL_TXDIV_EN);
 
 	return 0;
 }
@@ -228,16 +246,16 @@ static void mtk_hdmi_pll_unprepare(struct clk_hw *hw)
 {
 	struct mtk_hdmi_phy *hdmi_phy = to_mtk_hdmi_phy(hw);
 
-	dev_dbg(hdmi_phy->dev, "prepare\n");
+	dev_dbg(hdmi_phy->dev, "%s\n", __func__);
 
-	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON1, 0, RG_HDMITX_PLL_TXDIV_EN);
-	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON1, 0, RG_HDMITX_PLL_BIAS_LPF_EN);
+	mtk_hdmi_phy_clear_bits(hdmi_phy, HDMI_CON1, RG_HDMITX_PLL_TXDIV_EN);
+	mtk_hdmi_phy_clear_bits(hdmi_phy, HDMI_CON1, RG_HDMITX_PLL_BIAS_LPF_EN);
 	usleep_range(100, 150);
-	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON0, 0, RG_HDMITX_PLL_EN);
+	mtk_hdmi_phy_clear_bits(hdmi_phy, HDMI_CON0, RG_HDMITX_PLL_EN);
 	usleep_range(100, 150);
-	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON1, 0, RG_HDMITX_PLL_BIAS_EN);
-	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON0, 0, RG_HDMITX_PLL_POSDIV);
-	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON1, 0, RG_HDMITX_PLL_AUTOK_EN);
+	mtk_hdmi_phy_clear_bits(hdmi_phy, HDMI_CON1, RG_HDMITX_PLL_BIAS_EN);
+	mtk_hdmi_phy_clear_bits(hdmi_phy, HDMI_CON0, RG_HDMITX_PLL_POSDIV);
+	mtk_hdmi_phy_clear_bits(hdmi_phy, HDMI_CON1, RG_HDMITX_PLL_AUTOK_EN);
 	usleep_range(100, 150);
 }
 
@@ -248,8 +266,8 @@ static int mtk_hdmi_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 	unsigned int pre_div;
 	unsigned int div;
 
-	dev_dbg(hdmi_phy->dev, "set rate : %lu, parent: %lu\n", rate,
-		parent_rate);
+	dev_dbg(hdmi_phy->dev, "%s: %lu Hz, parent: %lu Hz\n", __func__,
+		rate, parent_rate);
 
 	if (rate <= 27000000) {
 		pre_div = 0;
@@ -263,28 +281,24 @@ static int mtk_hdmi_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 	}
 
 	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON0,
-			  (pre_div << PREDIV_SHIFT),
-			  RG_HDMITX_PLL_PREDIV);
-	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON0, RG_HDMITX_PLL_POSDIV,
-			  RG_HDMITX_PLL_POSDIV);
+			  (pre_div << PREDIV_SHIFT), RG_HDMITX_PLL_PREDIV);
+	mtk_hdmi_phy_set_bits(hdmi_phy, HDMI_CON0, RG_HDMITX_PLL_POSDIV);
 	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON0,
 			  (0x1 << PLL_IC_SHIFT) | (0x1 << PLL_IR_SHIFT),
 			  RG_HDMITX_PLL_IC | RG_HDMITX_PLL_IR);
 	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON1,
-			  (div << PLL_TXDIV_SHIFT),
-			  RG_HDMITX_PLL_TXDIV);
+			  (div << PLL_TXDIV_SHIFT), RG_HDMITX_PLL_TXDIV);
 	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON0,
 			  (0x1 << PLL_FBKSEL_SHIFT) | (19 << PLL_FBKDIV_SHIFT),
 			  RG_HDMITX_PLL_FBKSEL | RG_HDMITX_PLL_FBKDIV);
 	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON1,
-			  (0x2 << PLL_DIVEN_SHIFT),
-			  RG_HDMITX_PLL_DIVEN);
+			  (0x2 << PLL_DIVEN_SHIFT), RG_HDMITX_PLL_DIVEN);
 	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON0,
 			  (0xc << PLL_BP_SHIFT) | (0x2 << PLL_BC_SHIFT) |
 			  (0x1 << PLL_BR_SHIFT),
 			  RG_HDMITX_PLL_BP | RG_HDMITX_PLL_BC |
 			  RG_HDMITX_PLL_BR);
-	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON3, 0, RG_HDMITX_PRD_IMP_EN);
+	mtk_hdmi_phy_clear_bits(hdmi_phy, HDMI_CON3, RG_HDMITX_PRD_IMP_EN);
 	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON4,
 			  (0x3 << PRD_IBIAS_CLK_SHIFT) |
 			  (0x3 << PRD_IBIAS_D2_SHIFT) |
@@ -295,8 +309,7 @@ static int mtk_hdmi_pll_set_rate(struct clk_hw *hw, unsigned long rate,
 			  RG_HDMITX_PRD_IBIAS_D1 |
 			  RG_HDMITX_PRD_IBIAS_D0);
 	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON3,
-			  (0x0 << DRV_IMP_EN_SHIFT),
-			  RG_HDMITX_DRV_IMP_EN);
+			  (0x0 << DRV_IMP_EN_SHIFT), RG_HDMITX_DRV_IMP_EN);
 	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON6,
 			  (hdmi_phy->drv_imp_clk << DRV_IMP_CLK_SHIFT) |
 			  (hdmi_phy->drv_imp_d2 << DRV_IMP_D2_SHIFT) |
@@ -346,20 +359,17 @@ static const struct clk_ops mtk_hdmi_pll_ops = {
 
 static void mtk_hdmi_phy_enable_tmds(struct mtk_hdmi_phy *hdmi_phy)
 {
-	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON3, RG_HDMITX_SER_EN,
-			  RG_HDMITX_SER_EN);
-	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON3, RG_HDMITX_PRD_EN,
-			  RG_HDMITX_PRD_EN);
-	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON3, RG_HDMITX_DRV_EN,
-			  RG_HDMITX_DRV_EN);
+	mtk_hdmi_phy_set_bits(hdmi_phy, HDMI_CON3,
+			      RG_HDMITX_SER_EN | RG_HDMITX_PRD_EN |
+			      RG_HDMITX_DRV_EN);
 	usleep_range(100, 150);
 }
 
 static void mtk_hdmi_phy_disable_tmds(struct mtk_hdmi_phy *hdmi_phy)
 {
-	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON3, 0, RG_HDMITX_DRV_EN);
-	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON3, 0, RG_HDMITX_PRD_EN);
-	mtk_hdmi_phy_mask(hdmi_phy, HDMI_CON3, 0, RG_HDMITX_SER_EN);
+	mtk_hdmi_phy_clear_bits(hdmi_phy, HDMI_CON3,
+				RG_HDMITX_DRV_EN | RG_HDMITX_PRD_EN |
+				RG_HDMITX_SER_EN);
 }
 
 static int mtk_hdmi_phy_power_on(struct phy *phy)
@@ -386,7 +396,7 @@ static int mtk_hdmi_phy_power_off(struct phy *phy)
 	return 0;
 }
 
-static struct phy_ops mtk_hdmi_phy_ops = {
+static const struct phy_ops mtk_hdmi_phy_ops = {
 	.power_on = mtk_hdmi_phy_power_on,
 	.power_off = mtk_hdmi_phy_power_off,
 	.owner = THIS_MODULE,

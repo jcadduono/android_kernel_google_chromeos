@@ -15,11 +15,10 @@ mediatek-drm-$(CONFIG_DRM_FBDEV_EMULATION) += mtk_drm_fbdev.o
 
 obj-$(CONFIG_DRM_MEDIATEK) += mediatek-drm.o
 
+
 mediatek-drm-hdmi-objs := mtk_cec.o \
-			  mtk_drm_hdmi_drv.o \
 			  mtk_hdmi.o \
-			  mtk_hdmi_ddc_drv.o \
-			  mtk_hdmi_hw.o \
+			  mtk_hdmi_ddc.o \
 			  mtk_mt8173_hdmi_phy.o
 
 obj-$(CONFIG_DRM_MEDIATEK_HDMI) += mediatek-drm-hdmi.o
