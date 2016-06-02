@@ -890,16 +890,11 @@ static enum drm_connector_status anx78xx_detect(struct drm_connector *connector,
 	return connector_status_connected;
 }
 
-static void anx78xx_connector_destroy(struct drm_connector *connector)
-{
-	drm_connector_cleanup(connector);
-}
-
 static const struct drm_connector_funcs anx78xx_connector_funcs = {
 	.dpms = drm_atomic_helper_connector_dpms,
 	.fill_modes = drm_helper_probe_single_connector_modes,
 	.detect = anx78xx_detect,
-	.destroy = anx78xx_connector_destroy,
+	.destroy = drm_connector_cleanup,
 	.reset = drm_atomic_helper_connector_reset,
 	.atomic_duplicate_state = drm_atomic_helper_connector_duplicate_state,
 	.atomic_destroy_state = drm_atomic_helper_connector_destroy_state,
@@ -936,17 +931,11 @@ static int anx78xx_bridge_attach(struct drm_bridge *bridge)
 				 DRM_MODE_CONNECTOR_DisplayPort);
 	if (err) {
 		DRM_ERROR("Failed to initialize connector: %d\n", err);
-		return err;
+		goto err_dp_aux_reg;
 	}
 
 	drm_connector_helper_add(&anx78xx->connector,
 				 &anx78xx_connector_helper_funcs);
-
-	err = drm_connector_register(&anx78xx->connector);
-	if (err) {
-		DRM_ERROR("Failed to register connector: %d\n", err);
-		return err;
-	}
 
 	anx78xx->connector.polled = DRM_CONNECTOR_POLL_HPD;
 
@@ -954,10 +943,16 @@ static int anx78xx_bridge_attach(struct drm_bridge *bridge)
 						bridge->encoder);
 	if (err) {
 		DRM_ERROR("Failed to link up connector to encoder: %d\n", err);
-		return err;
+		goto err_connector_attach;
 	}
 
 	return 0;
+
+err_connector_attach:
+	drm_connector_cleanup(&anx78xx->connector);
+err_dp_aux_reg:
+	drm_dp_aux_unregister(&anx78xx->aux);
+	return err;
 }
 
 static bool anx78xx_bridge_mode_fixup(struct drm_bridge *bridge,
