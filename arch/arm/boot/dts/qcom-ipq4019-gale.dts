@@ -474,6 +474,10 @@
 			};
 		};
 
+		rng@0x00022000 {
+			status = "ok";
+		};
+
 		qcom_crypto: qcrypto@8e20000 {
 			status = "ok";
 		};
