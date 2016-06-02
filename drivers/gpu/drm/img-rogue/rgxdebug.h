@@ -79,13 +79,16 @@ void RGXPanic(PVRSRV_RGXDEV_INFO	*psDevInfo);
  Does not dump debugging information for all requester types.(SysDebug, ServerSync info)
 
  @Input pfnDumpDebugPrintf  - Optional replacement print function
- @Input psDevInfo	        - RGX device info
+ @Input pvDumpDebugFile     - Optional file identifier to be passed to the
+                              'printf' function if required
+ @Input psDevInfo           - RGX device info
 
  @Return   void
 
 ******************************************************************************/
 void RGXDumpDebugInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
-					  PVRSRV_RGXDEV_INFO	*psDevInfo);
+			void *pvDumpDebugFile,
+			PVRSRV_RGXDEV_INFO *psDevInfo);
 
 /*!
 *******************************************************************************
@@ -98,16 +101,18 @@ void RGXDumpDebugInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
  verbosity
 
  @Input pfnDumpDebugPrintf  - Optional replacement print function
- @Input psDevInfo	        - RGX device info
+ @Input pvDumpDebugFile     - Optional file identifier to be passed to the
+                              'printf' function if required
+ @Input psDevInfo           - RGX device info
  @Input ui32VerbLevel       - Verbosity level
 
  @Return   void
 
 ******************************************************************************/
 void RGXDebugRequestProcess(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
-							PVRSRV_RGXDEV_INFO	*psDevInfo,
-							IMG_UINT32			ui32VerbLevel);
-
+				void *pvDumpDebugFile,
+				PVRSRV_RGXDEV_INFO *psDevInfo,
+				IMG_UINT32 ui32VerbLevel);
 
 /*!
 *******************************************************************************
@@ -119,14 +124,16 @@ void RGXDebugRequestProcess(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
  Dump useful debugging info
 
  @Input pfnDumpDebugPrintf  - Optional replacement print function
- @Input psDevInfo	        - RGX device info
+ @Input pvDumpDebugFile     - Optional file identifier to be passed to the
+                              'printf' function if required
+ @Input psDevInfo           - RGX device info
 
  @Return   void
 
 ******************************************************************************/
 void RGXDumpFirmwareTrace(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
-						  PVRSRV_RGXDEV_INFO	*psDevInfo);
-
+				void *pvDumpDebugFile,
+				PVRSRV_RGXDEV_INFO  *psDevInfo);
 
 /*!
 *******************************************************************************

@@ -83,6 +83,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 
 /* include/ */
 #include "img_types.h"
+#include "pvr_notifier.h"
 #include "pvrsrv_error.h"
 #include "servicesext.h"
 
@@ -593,10 +594,18 @@ void MMU_SetDeviceData(MMU_CONTEXT *psMMUContext, IMG_HANDLE hDevData);
 
 @Input          psDevVAddr              Address to check
 
+@Input          pfnDumpDebugPrintf      Debug print function
+
+@Input          pvDumpDebugFile         Optional file identifier to be passed
+                                        to the debug print function if required
+
 @Return         None
 */
 /*****************************************************************************/
-void MMU_CheckFaultAddress(MMU_CONTEXT *psMMUContext, IMG_DEV_VIRTADDR *psDevVAddr);
+void MMU_CheckFaultAddress(MMU_CONTEXT *psMMUContext,
+				IMG_DEV_VIRTADDR *psDevVAddr,
+				DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+				void *pvDumpDebugFile);
 
 /*************************************************************************/ /*!
 @Function       MMUI_IsVDevAddrValid

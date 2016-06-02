@@ -3553,7 +3553,8 @@ PVRSRV_ERROR PVRSRVRGXGetPartialRenderCountKM(DEVMEM_MEMDESC *psHWRTDataMemDesc,
 }
 
 void CheckForStalledRenderCtxt(PVRSRV_RGXDEV_INFO *psDevInfo,
-							   DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf)
+					DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+					void *pvDumpDebugFile)
 {
 	DLLIST_NODE *psNode, *psNext;
 	OSWRLockAcquireRead(psDevInfo->hRenderCtxListLock);
@@ -3563,9 +3564,9 @@ void CheckForStalledRenderCtxt(PVRSRV_RGXDEV_INFO *psDevInfo,
 			IMG_CONTAINER_OF(psNode, RGX_SERVER_RENDER_CONTEXT, sListNode);
 
 		DumpStalledFWCommonContext(psCurrentServerRenderCtx->sTAData.psServerCommonContext,
-								   pfnDumpDebugPrintf);
+								   pfnDumpDebugPrintf, pvDumpDebugFile);
 		DumpStalledFWCommonContext(psCurrentServerRenderCtx->s3DData.psServerCommonContext,
-								   pfnDumpDebugPrintf);
+								   pfnDumpDebugPrintf, pvDumpDebugFile);
 	}
 	OSWRLockReleaseRead(psDevInfo->hRenderCtxListLock);
 }

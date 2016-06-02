@@ -1571,8 +1571,8 @@ PVRSRV_ERROR CheckForStalledCCB(RGX_CLIENT_CCB  *psCurrentClientCCB)
 void DumpCCB(
 	PRGXFWIF_FWCOMMONCONTEXT sFWCommonContext,
 	RGX_CLIENT_CCB  *psCurrentClientCCB,
-	DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf
-)
+	DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+	void *pvDumpDebugFile)
 {
 	volatile RGXFWIF_CCCB_CTL *psClientCCBCtrl = psCurrentClientCCB->psClientCCBCtrl;
 	IMG_UINT8 *pui8ClientCCBBuff = psCurrentClientCCB->pui8ClientCCB;
@@ -1582,11 +1582,11 @@ void DumpCCB(
 	IMG_UINT32 ui32WrapMask = psClientCCBCtrl->ui32WrapMask;
 	IMG_CHAR * pszState = "Ready";
 
-	PVR_DUMPDEBUG_LOG(("FWCtx 0x%08X (%s)", sFWCommonContext.ui32Addr,
-		(IMG_PCHAR)&psCurrentClientCCB->szName));
+	PVR_DUMPDEBUG_LOG("FWCtx 0x%08X (%s)", sFWCommonContext.ui32Addr,
+		(IMG_PCHAR)&psCurrentClientCCB->szName);
 	if (ui32Offset == ui32EndOffset)
 	{
-		PVR_DUMPDEBUG_LOG(("  `--<Empty>"));
+		PVR_DUMPDEBUG_LOG("  `--<Empty>");
 	}
 
 	while (ui32Offset != ui32EndOffset)
@@ -1609,11 +1609,11 @@ void DumpCCB(
 			pszState = "Waiting";
 		}
 
-		PVR_DUMPDEBUG_LOG(("  %s--%s %s @ %u Int=%u Ext=%u",
+		PVR_DUMPDEBUG_LOG("  %s--%s %s @ %u Int=%u Ext=%u",
 			bLastCommand? "`": "|",
 			pszState, _CCBCmdTypename(psCmdHeader->eCmdType),
 			ui32Offset, psCmdHeader->ui32IntJobRef, psCmdHeader->ui32ExtJobRef
-			));
+			);
 
 		/* switch on type and write checks and updates */
 		switch (psCmdHeader->eCmdType)
@@ -1629,12 +1629,12 @@ void DumpCCB(
 #if defined(PVRSRV_ENABLE_FULL_SYNC_TRACKING)
 					SyncRecordLookup(psUFOPtr->puiAddrUFO.ui32Addr, pszSyncInfo, CCB_SYNC_INFO_LEN);
 #endif
-					PVR_DUMPDEBUG_LOG(("  %s  %s--Addr:0x%08x Val=0x%08x %s",
+					PVR_DUMPDEBUG_LOG("  %s  %s--Addr:0x%08x Val=0x%08x %s",
 						bLastCommand? " ": "|",
 						bLastUFO? "`": "|",
 						psUFOPtr->puiAddrUFO.ui32Addr, psUFOPtr->ui32Value,
 						pszSyncInfo
-						));
+						);
 				}
 				break;
 			}
@@ -1648,12 +1648,12 @@ void DumpCCB(
 #if defined(PVRSRV_ENABLE_FULL_SYNC_TRACKING)
 					SyncRecordLookup(psUFOPtr->puiAddrUFO.ui32Addr, pszSyncInfo, CCB_SYNC_INFO_LEN);
 #endif
-					PVR_DUMPDEBUG_LOG(("  %s  %s--Addr:0x%08x Val++ %s",
+					PVR_DUMPDEBUG_LOG("  %s  %s--Addr:0x%08x Val++ %s",
 						bLastCommand? " ": "|",
 						bLastUFO? "`": "|",
 						psUFOPtr->puiAddrUFO.ui32Addr,
 						pszSyncInfo
-						));
+						);
 				}
 				break;
 			}
@@ -1668,8 +1668,9 @@ void DumpCCB(
 #endif /* defined(PVRSRV_ENABLE_FULL_SYNC_TRACKING) || defined(PVRSRV_ENABLE_FULL_CCB_DUMP) */
 
 void DumpStalledCCBCommand(PRGXFWIF_FWCOMMONCONTEXT sFWCommonContext,
-						   RGX_CLIENT_CCB  *psCurrentClientCCB,
-						   DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf)
+				RGX_CLIENT_CCB *psCurrentClientCCB,
+				DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+				void *pvDumpDebugFile)
 {
 	volatile RGXFWIF_CCCB_CTL	  *psClientCCBCtrl = psCurrentClientCCB->psClientCCBCtrl;
 	IMG_UINT8					  *pui8ClientCCBBuff = psCurrentClientCCB->pui8ClientCCB;
@@ -1694,20 +1695,20 @@ void DumpStalledCCBCommand(PRGXFWIF_FWCOMMONCONTEXT sFWCommonContext,
 			IMG_UINT32 jj;
 
 			/* Display details of the fence object on which the context is pending */
-			PVR_DUMPDEBUG_LOG(("FWCtx 0x%08X @ %d (%s) pending on %s:",
+			PVR_DUMPDEBUG_LOG("FWCtx 0x%08X @ %d (%s) pending on %s:",
 							   sFWCommonContext.ui32Addr,
 							   ui32SampledRdOff,
 							   (IMG_PCHAR)&psCurrentClientCCB->szName,
-							   _CCBCmdTypename(eCommandType)));
+							   _CCBCmdTypename(eCommandType));
 			for (jj=0; jj<psCommandHeader->ui32CmdSize/sizeof(RGXFWIF_UFO); jj++)
 			{
 #if !defined(SUPPORT_EXTRA_METASP_DEBUG)
-				PVR_DUMPDEBUG_LOG(("  Addr:0x%08x  Value=0x%08x",psUFOPtr[jj].puiAddrUFO.ui32Addr, psUFOPtr[jj].ui32Value));
+				PVR_DUMPDEBUG_LOG("  Addr:0x%08x  Value=0x%08x",psUFOPtr[jj].puiAddrUFO.ui32Addr, psUFOPtr[jj].ui32Value);
 #else
-				PVR_DUMPDEBUG_LOG(("  Addr:0x%08x Value(Host)=0x%08x Value(FW)=0x%08x",
+				PVR_DUMPDEBUG_LOG("  Addr:0x%08x Value(Host)=0x%08x Value(FW)=0x%08x",
 				                   psUFOPtr[jj].puiAddrUFO.ui32Addr,
 				                   psUFOPtr[jj].ui32Value,
-				                   RGXReadWithSP(psUFOPtr[jj].puiAddrUFO.ui32Addr)));
+				                   RGXReadWithSP(psUFOPtr[jj].puiAddrUFO.ui32Addr));
 #endif
 			}
 
@@ -1716,7 +1717,7 @@ void DumpStalledCCBCommand(PRGXFWIF_FWCOMMONCONTEXT sFWCommonContext,
 			psCommandHeader = (RGXFWIF_CCB_CMD_HEADER *)pui8Ptr;
 			if( (uintptr_t)psCommandHeader != ((uintptr_t)pui8ClientCCBBuff + ui32SampledWrOff))
 			{
-				PVR_DUMPDEBUG_LOG((" FWCtx 0x%08X fenced command is of type %s",sFWCommonContext.ui32Addr, _CCBCmdTypename(psCommandHeader->eCmdType)));
+				PVR_DUMPDEBUG_LOG(" FWCtx 0x%08X fenced command is of type %s",sFWCommonContext.ui32Addr, _CCBCmdTypename(psCommandHeader->eCmdType));
 				/* Advance psCommandHeader past the TA/3D to the next command header (this will possibly be an UPDATE) */
 				pui8Ptr += sizeof(*psCommandHeader) + psCommandHeader->ui32CmdSize;
 				psCommandHeader = (RGXFWIF_CCB_CMD_HEADER *)pui8Ptr;
@@ -1728,28 +1729,28 @@ void DumpStalledCCBCommand(PRGXFWIF_FWCOMMONCONTEXT sFWCommonContext,
 					if (eCommandType == RGXFWIF_CCB_CMD_TYPE_UPDATE)
 					{
 						psUFOPtr = (RGXFWIF_UFO *)((IMG_UINT8 *)psCommandHeader + sizeof(*psCommandHeader));
-						PVR_DUMPDEBUG_LOG((" preventing %s:",_CCBCmdTypename(eCommandType)));
+						PVR_DUMPDEBUG_LOG(" preventing %s:",_CCBCmdTypename(eCommandType));
 						for (jj=0; jj<psCommandHeader->ui32CmdSize/sizeof(RGXFWIF_UFO); jj++)
 						{
 #if !defined(SUPPORT_EXTRA_METASP_DEBUG)
-							PVR_DUMPDEBUG_LOG(("  Addr:0x%08x  Value=0x%08x",psUFOPtr[jj].puiAddrUFO.ui32Addr, psUFOPtr[jj].ui32Value));
+							PVR_DUMPDEBUG_LOG("  Addr:0x%08x  Value=0x%08x",psUFOPtr[jj].puiAddrUFO.ui32Addr, psUFOPtr[jj].ui32Value);
 #else
-							PVR_DUMPDEBUG_LOG(("  Addr:0x%08x Value(Host)=0x%08x Value(FW)=0x%08x",
+							PVR_DUMPDEBUG_LOG("  Addr:0x%08x Value(Host)=0x%08x Value(FW)=0x%08x",
 							                   psUFOPtr[jj].puiAddrUFO.ui32Addr,
 							                   psUFOPtr[jj].ui32Value,
-							                   RGXReadWithSP(psUFOPtr[jj].puiAddrUFO.ui32Addr)));
+							                   RGXReadWithSP(psUFOPtr[jj].puiAddrUFO.ui32Addr));
 #endif
 						}
 					}
 				}
 				else
 				{
-					PVR_DUMPDEBUG_LOG((" FWCtx 0x%08X has no further commands",sFWCommonContext.ui32Addr));
+					PVR_DUMPDEBUG_LOG(" FWCtx 0x%08X has no further commands",sFWCommonContext.ui32Addr);
 				}
 			}
 			else
 			{
-				PVR_DUMPDEBUG_LOG((" FWCtx 0x%08X has no further commands",sFWCommonContext.ui32Addr));
+				PVR_DUMPDEBUG_LOG(" FWCtx 0x%08X has no further commands",sFWCommonContext.ui32Addr);
 			}
 		}
 	}

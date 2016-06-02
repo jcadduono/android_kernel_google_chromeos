@@ -153,7 +153,8 @@ PVRSRV_ERROR PVRSRVRGXGetLastComputeContextResetReasonKM(RGX_SERVER_COMPUTE_CONT
 
 /* Debug - check if compute context is waiting on a fence */
 void CheckForStalledComputeCtxt(PVRSRV_RGXDEV_INFO *psDevInfo,
-								DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf);
+					DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+					void *pvDumpDebugFile);
 
 /* Debug/Watchdog - check if client compute contexts are stalled */
 IMG_BOOL CheckForStalledClientComputeCtxt(PVRSRV_RGXDEV_INFO *psDevInfo);

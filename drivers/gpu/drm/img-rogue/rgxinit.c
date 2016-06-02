@@ -269,7 +269,7 @@ static void RGXCheckFWActivePowerState(void *psDevice)
 	PVRSRV_RGXDEV_INFO *psDevInfo = psDeviceNode->pvDevice;
 	RGXFWIF_TRACEBUF *psFWTraceBuf = psDevInfo->psRGXFWIfTraceBuf;
 	PVRSRV_ERROR eError = PVRSRV_OK;
-	
+
 	if (psFWTraceBuf->ePowState == RGXFWIF_POW_IDLE)
 	{
 		/* The FW is IDLE and therefore could be shut down */
@@ -281,7 +281,7 @@ static void RGXCheckFWActivePowerState(void *psDevice)
 						psDeviceNode->sDevId.ui32DeviceIndex,
 						PVRSRVGetErrorStringKM(eError)));
 			
-			PVRSRVDebugRequest(DEBUG_REQUEST_VERBOSITY_MAX, NULL);
+			PVRSRVDebugRequest(DEBUG_REQUEST_VERBOSITY_MAX, NULL, NULL);
 		}
 	}
 
@@ -764,7 +764,7 @@ PVRSRV_ERROR PVRSRVRGXInitDevPart2KM (CONNECTION_DATA       *psConnection,
 #if defined(PDUMP)
 	/* Run the deinit script to feed the last-frame deinit buffer */
 	PDUMPCOMMENTWITHFLAGS(PDUMP_FLAGS_DEINIT, "RGX deinitialisation script");
-	RGXRunScript(psDevInfo, psDevInfo->psScripts->asDeinitCommands, RGX_MAX_DEINIT_COMMANDS, PDUMP_FLAGS_DEINIT | PDUMP_FLAGS_NOHW, NULL);
+	RGXRunScript(psDevInfo, psDevInfo->psScripts->asDeinitCommands, RGX_MAX_DEINIT_COMMANDS, PDUMP_FLAGS_DEINIT | PDUMP_FLAGS_NOHW, NULL, NULL);
 #endif
 #endif /* defined(PVRSRV_GPUVIRT_GUESTDRV) */
 
@@ -1831,7 +1831,8 @@ PVRSRV_ERROR DevDeInitRGX (PVRSRV_DEVICE_NODE *psDeviceNode)
  @Description Dump the debug data for RGX
   
 ******************************************************************************/
-static void RGXDebugRequestNotify(PVRSRV_DBGREQ_HANDLE hDbgReqestHandle, IMG_UINT32 ui32VerbLevel)
+static void RGXDebugRequestNotify(PVRSRV_DBGREQ_HANDLE hDbgReqestHandle, IMG_UINT32 ui32VerbLevel,
+	DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf, void *pvDumpDebugFile)
 {
 #if defined(PVRSRV_GPUVIRT_GUESTDRV)
 	PVR_UNREFERENCED_PARAMETER(hDbgReqestHandle);
@@ -1842,7 +1843,7 @@ static void RGXDebugRequestNotify(PVRSRV_DBGREQ_HANDLE hDbgReqestHandle, IMG_UIN
 	/* Only action the request if we've fully init'ed */
 	if (g_bDevInit2Done)
 	{
-		RGXDebugRequestProcess(g_pfnDumpDebugPrintf, psDeviceNode->pvDevice, ui32VerbLevel);
+		RGXDebugRequestProcess(pfnDumpDebugPrintf, pvDumpDebugFile, psDeviceNode->pvDevice, ui32VerbLevel);
 	}
 #endif
 }

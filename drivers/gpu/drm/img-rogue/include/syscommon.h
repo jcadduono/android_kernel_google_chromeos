@@ -63,7 +63,7 @@ PVRSRV_ERROR SysCreateConfigData(PVRSRV_SYSTEM_CONFIG **ppsSysConfig, void *hDev
 void SysDestroyConfigData(PVRSRV_SYSTEM_CONFIG *psSysConfig);
 PVRSRV_ERROR SysAcquireSystemData(IMG_HANDLE hSysData);
 PVRSRV_ERROR SysReleaseSystemData(IMG_HANDLE hSysData);
-PVRSRV_ERROR SysDebugInfo(PVRSRV_SYSTEM_CONFIG *psSysConfig, DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf);
+PVRSRV_ERROR SysDebugInfo(PVRSRV_SYSTEM_CONFIG *psSysConfig, DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf, void *pvDumpDebugFile);
 
 #if defined(SUPPORT_GPUVIRT_VALIDATION)
 #include "services_km.h"

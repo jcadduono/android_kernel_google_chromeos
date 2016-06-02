@@ -862,7 +862,7 @@ ErrorExit:
 			"PVRSRVSetPowerStateKM: Transition from %d to %d FAILED (%s) at stage %d, forced: %d. Dumping debug info.",
 			psPVRSRVData->eCurrentPowerState, eNewSysPowerState, PVRSRVGetErrorStringKM(eError), uiStage, bForced));
 
-	PVRSRVDebugRequest(DEBUG_REQUEST_VERBOSITY_MAX, NULL);
+	PVRSRVDebugRequest(DEBUG_REQUEST_VERBOSITY_MAX, NULL, NULL);
 
 	return eError;
 }

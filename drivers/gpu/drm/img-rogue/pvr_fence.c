@@ -48,12 +48,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvr_fence.h"
 #include "services_kernel_client.h"
 
-#define PVR_DUMPDEBUG_LOG(pfnDumpDebugPrintf, fmt, ...)			\
-	do {								\
-		if (pfnDumpDebugPrintf)					\
-			pfnDumpDebugPrintf(fmt, ## __VA_ARGS__);	\
-		else							\
-			pr_err(fmt "\n", ## __VA_ARGS__);		\
+#define PVR_DUMPDEBUG_LOG(pfnDumpDebugPrintf, pvDumpDebugFile, fmt, ...)		\
+	do {										\
+		if (pfnDumpDebugPrintf)							\
+			pfnDumpDebugPrintf(pvDumpDebugFile, fmt, ## __VA_ARGS__);	\
+		else									\
+			pr_err(fmt "\n", ## __VA_ARGS__);				\
 	} while (0)
 
 static inline u32
@@ -83,14 +83,16 @@ pvr_fence_context_check_status(struct work_struct *data)
 }
 
 static void
-pvr_fence_context_fences_dump(struct pvr_fence_context *fctx)
+pvr_fence_context_fences_dump(struct pvr_fence_context *fctx,
+			      DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+			      void *pvDumpDebugFile)
 {
 	struct pvr_fence *pvr_fence;
 	unsigned long flags;
 
 	spin_lock_irqsave(&fctx->list_lock, flags);
 	list_for_each_entry(pvr_fence, &fctx->fence_list, fence_head) {
-		PVR_DUMPDEBUG_LOG(g_pfnDumpDebugPrintf,
+		PVR_DUMPDEBUG_LOG(pfnDumpDebugPrintf, pvDumpDebugFile,
 				  "f %u#%u: (%s%s) Refs = %u, FWAddr = %#08x, Current = %#08x, Next = %#08x, %s %s",
 				  pvr_fence->fence->context,
 				  pvr_fence->fence->seqno,
@@ -189,12 +191,14 @@ pvr_fence_context_signal_fences(struct work_struct *data)
 }
 
 static void
-pvr_fence_context_debug_request(void *data, u32 verbosity)
+pvr_fence_context_debug_request(void *data, u32 verbosity,
+				DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+				void *pvDumpDebugFile)
 {
 	struct pvr_fence_context *fctx = (struct pvr_fence_context *)data;
 
 	if (verbosity == DEBUG_REQUEST_VERBOSITY_HIGH)
-		pvr_fence_context_fences_dump(fctx);
+		pvr_fence_context_fences_dump(fctx, pfnDumpDebugPrintf, pvDumpDebugFile);
 }
 
 /**
@@ -295,7 +299,7 @@ pvr_fence_context_destroy(struct pvr_fence_context *fctx)
 	pvr_fence_context_free_deferred(fctx);
 
 	if (WARN_ON(!list_empty_careful(&fctx->fence_list)))
-		pvr_fence_context_fences_dump(fctx);
+		pvr_fence_context_fences_dump(fctx, NULL, NULL);
 
 	PVRSRVUnregisterDbgRequestNotify(fctx->dbg_request_handle);
 	PVRSRVUnregisterCmdCompleteNotify(fctx->cmd_complete_handle);

@@ -451,7 +451,8 @@ PVRSRV_ERROR PVRSRVRGXGetPartialRenderCountKM(DEVMEM_MEMDESC *psHWRTDataMemDesc,
 
 /* Debug - check if render context is waiting on a fence */
 void CheckForStalledRenderCtxt(PVRSRV_RGXDEV_INFO *psDevInfo,
-							   DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf);
+				DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+				void *pvDumpDebugFile);
 
 /* Debug/Watchdog - check if client contexts are stalled */
 IMG_BOOL CheckForStalledClientRenderCtxt(PVRSRV_RGXDEV_INFO *psDevInfo);

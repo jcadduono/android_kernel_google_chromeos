@@ -53,6 +53,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "power.h"
 #include "sysinfo.h"
 #include "physheap.h"
+#include "pvr_notifier.h"
 
 #include "connection_server.h"
 
@@ -147,9 +148,6 @@ typedef struct PVRSRV_CMDCOMP_NOTIFY_TAG
 
 #define DEBUG_REQUEST_VERBOSITY_MAX	(DEBUG_REQUEST_VERBOSITY_HIGH)
 
-typedef IMG_HANDLE PVRSRV_DBGREQ_HANDLE;
-typedef void (*PFN_DBGREQ_NOTIFY) (PVRSRV_DBGREQ_HANDLE hDebugRequestHandle, IMG_UINT32 ui32VerbLevel);
-
 typedef struct PVRSRV_DBGREQ_NOTIFY_TAG
 {
 	PVRSRV_DBGREQ_HANDLE	hDbgRequestHandle;
@@ -159,46 +157,12 @@ typedef struct PVRSRV_DBGREQ_NOTIFY_TAG
 	DLLIST_NODE					sListNode;
 } PVRSRV_DBGREQ_NOTIFY;
 
-/*!
-*******************************************************************************
-
- @Description
-
- Macro used within debug dump functions to send output either to PVR_LOG or
- a custom function.
-
-******************************************************************************/
-#define PVR_DUMPDEBUG_LOG(x)					\
-	do											\
-	{											\
-		if (pfnDumpDebugPrintf)					\
-		{										\
-			pfnDumpDebugPrintf x;				\
-		}										\
-		else									\
-		{										\
-			PVR_LOG(x);							\
-		}										\
-	} while(0)
-
 #define PVR_DUMP_DRIVER_INFO(x, y)					\
-		PVR_DUMPDEBUG_LOG(("%s info: BuildOptions: 0x%08x BuildVersion: %d.%d BuildRevision: %8d BuildType: %s", (x), \
+		PVR_DUMPDEBUG_LOG("%s info: BuildOptions: 0x%08x BuildVersion: %d.%d BuildRevision: %8d BuildType: %s", (x), \
 								(y).ui32BuildOptions, \
 								PVRVERSION_UNPACK_MAJ((y).ui32BuildVersion), PVRVERSION_UNPACK_MIN((y).ui32BuildVersion), \
 								(y).ui32BuildRevision, \
-								(BUILD_TYPE_DEBUG == (y).ui32BuildType)?"debug":"release"))
-/*!
-*******************************************************************************
-
- @Description
-
- Typedef for custom debug dump output functions.
-
-******************************************************************************/
-typedef void (DUMPDEBUG_PRINTF_FUNC)(const IMG_CHAR *pszFormat, ...);
-
-extern DUMPDEBUG_PRINTF_FUNC *g_pfnDumpDebugPrintf;
-
+								(BUILD_TYPE_DEBUG == (y).ui32BuildType)?"debug":"release")
 /*!
 ******************************************************************************
 
@@ -311,7 +275,8 @@ PVRSRV_ERROR IMG_CALLCONV PVRSRVWaitForValueKMAndHoldBridgeLockKM(volatile IMG_U
 			     be used as the default printing function.
 
 *****************************************************************************/
-PVRSRV_ERROR PVRSRVSystemDebugInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf);
+PVRSRV_ERROR PVRSRVSystemDebugInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+					void *pvDumpDebugFile);
 
 /*!
 *****************************************************************************
@@ -438,7 +403,7 @@ PVRSRV_ERROR PVRSRVUnregisterCmdCompleteNotify(IMG_HANDLE hNotify);
 			     be used as the default printing function.
 
 *****************************************************************************/
-void IMG_CALLCONV PVRSRVDebugRequest(IMG_UINT32 ui32VerbLevel, DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf);
+void IMG_CALLCONV PVRSRVDebugRequest(IMG_UINT32 ui32VerbLevel, DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf, void *pvDumpDebugFile);
 
 /*!
 *****************************************************************************

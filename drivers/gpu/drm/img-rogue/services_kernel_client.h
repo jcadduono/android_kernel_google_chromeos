@@ -93,9 +93,7 @@ struct SYNC_PRIM_CONTEXT;
 #define DEBUG_REQUEST_VERBOSITY_HIGH   2
 #define DEBUG_REQUEST_VERBOSITY_MAX    (DEBUG_REQUEST_VERBOSITY_HIGH)
 
-typedef void (DUMPDEBUG_PRINTF_FUNC)(const char *fmt, ...) __printf(1, 2);
-
-extern DUMPDEBUG_PRINTF_FUNC *g_pfnDumpDebugPrintf;
+typedef void (DUMPDEBUG_PRINTF_FUNC)(void *pvDumpDebugFile, const char *fmt, ...) __printf(2, 3);
 
 typedef void (*PFN_CMDCOMP_NOTIFY)(void *hCmdCompHandle);
 enum PVRSRV_ERROR PVRSRVRegisterCmdCompleteNotify(void **phNotify,
@@ -103,7 +101,8 @@ enum PVRSRV_ERROR PVRSRVRegisterCmdCompleteNotify(void **phNotify,
 enum PVRSRV_ERROR PVRSRVUnregisterCmdCompleteNotify(void *hNotify);
 
 typedef void (*PFN_DBGREQ_NOTIFY) (void *hDebugRequestHandle,
-	__u32 ui32VerbLevel);
+	__u32 ui32VerbLevel,
+	DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf, void *pvDumpDebugFile);
 enum PVRSRV_ERROR PVRSRVRegisterDbgRequestNotify(void **phNotify,
 	PFN_DBGREQ_NOTIFY pfnDbgRequestNotify,
 	__u32 ui32RequesterID, void *hDbgReqeustHandle);

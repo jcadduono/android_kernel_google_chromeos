@@ -498,7 +498,7 @@ PVRSRVDumpDebugInfoKM(IMG_UINT32 ui32VerbLevel)
 	}
 	PVR_LOG(("User requested PVR debug info"));
 
-	PVRSRVDebugRequest(ui32VerbLevel, NULL);
+	PVRSRVDebugRequest(ui32VerbLevel, NULL, NULL);
 									   
 	return PVRSRV_OK;
 }
@@ -539,7 +539,7 @@ PVRSRVHWOpTimeoutKM(void)
 	OSPanic();
 #endif
 	PVR_LOG(("HW operation timeout, dump server info"));
-	PVRSRVDebugRequest(DEBUG_REQUEST_VERBOSITY_MEDIUM, NULL);
+	PVRSRVDebugRequest(DEBUG_REQUEST_VERBOSITY_MEDIUM, NULL, NULL);
 	return PVRSRV_OK;
 }
 

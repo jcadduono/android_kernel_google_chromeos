@@ -1419,23 +1419,26 @@ typedef enum _DEVICEMEM_HISTORY_QUERY_INDEX_
  Print details of a single result from a DevicememHistory query
 
  @Input pfnDumpDebugPrintf       - Debug printf function
- @Input psResult                 - The DevicememHistory result to be printed
+ @Input pvDumpDebugFile          - Optional file identifier to be passed to the
+                                   'printf' function if required
  @Input psFaultProcessInfo       - The process info derived from the page fault
+ @Input psResult                 - The DevicememHistory result to be printed
  @Input ui32Index                - The index of the result
 
  @Return   void
 
 ******************************************************************************/
 static void _PrintDevicememHistoryQueryResult(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
-								RGXMEM_PROCESS_INFO *psFaultProcessInfo,
-								DEVICEMEM_HISTORY_QUERY_OUT_RESULT *psResult,
-								IMG_UINT32 ui32Index)
+						void *pvDumpDebugFile,
+						RGXMEM_PROCESS_INFO *psFaultProcessInfo,
+						DEVICEMEM_HISTORY_QUERY_OUT_RESULT *psResult,
+						IMG_UINT32 ui32Index)
 {
 	IMG_UINT32 ui32Remainder;
 
 	if(psFaultProcessInfo->uiPID != RGXMEM_SERVER_PID_FIRMWARE)
 	{
-		PVR_DUMPDEBUG_LOG(("  [%u] Name: %s Base address: " IMG_DEV_VIRTADDR_FMTSPEC
+		PVR_DUMPDEBUG_LOG("  [%u] Name: %s Base address: " IMG_DEV_VIRTADDR_FMTSPEC
 					" Size: " IMG_DEVMEM_SIZE_FMTSPEC
 					" Allocated: %c Modified %llu us ago (abs time %llu us)",
 										ui32Index,
@@ -1444,11 +1447,11 @@ static void _PrintDevicememHistoryQueryResult(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebu
 						(unsigned long long) psResult->uiSize,
 						psResult->bAllocated ? 'Y' : 'N',
 						(unsigned long long) OSDivide64r64(psResult->ui64Age, 1000, &ui32Remainder),
-						(unsigned long long) OSDivide64r64(psResult->ui64When, 1000, &ui32Remainder)));
+						(unsigned long long) OSDivide64r64(psResult->ui64When, 1000, &ui32Remainder));
 	}
 	else
 	{
-		PVR_DUMPDEBUG_LOG(("  [%u] Name: %s Base address: " IMG_DEV_VIRTADDR_FMTSPEC
+		PVR_DUMPDEBUG_LOG("  [%u] Name: %s Base address: " IMG_DEV_VIRTADDR_FMTSPEC
 					" Size: " IMG_DEVMEM_SIZE_FMTSPEC
 					" Allocated: %c Modified %llu us ago (abs time %llu us) PID: %u (%s)",
 										ui32Index,
@@ -1459,7 +1462,7 @@ static void _PrintDevicememHistoryQueryResult(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebu
 						(unsigned long long) OSDivide64r64(psResult->ui64Age, 1000, &ui32Remainder),
 						(unsigned long long) OSDivide64r64(psResult->ui64When, 1000, &ui32Remainder),
 						(unsigned int) psResult->sProcessInfo.uiPID,
-						psResult->sProcessInfo.szProcessName));
+						psResult->sProcessInfo.szProcessName);
 	}
 }
 
@@ -1473,26 +1476,30 @@ static void _PrintDevicememHistoryQueryResult(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebu
  Print details of all the results from a DevicememHistory query
 
  @Input pfnDumpDebugPrintf       - Debug printf function
- @Input psResult                 - The DevicememHistory result to be printed
+ @Input pvDumpDebugFile          - Optional file identifier to be passed to the
+                                   'printf' function if required
+ @Input psFaultProcessInfo       - The process info derived from the page fault
+ @Input psQueryOut               - Storage for the query results
 
  @Return   void
 
 ******************************************************************************/
 static void _PrintDevicememHistoryQueryOut(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
-										   RGXMEM_PROCESS_INFO *psFaultProcessInfo,
-										   DEVICEMEM_HISTORY_QUERY_OUT *psQueryOut)
+						void *pvDumpDebugFile,
+						RGXMEM_PROCESS_INFO *psFaultProcessInfo,
+						DEVICEMEM_HISTORY_QUERY_OUT *psQueryOut)
 {
 	IMG_UINT32 i;
 
 	if(psQueryOut->ui32NumResults == 0)
 	{
-		PVR_DUMPDEBUG_LOG(("  No results"));
+		PVR_DUMPDEBUG_LOG("  No results");
 	}
 	else
 	{
 		for(i = 0; i < psQueryOut->ui32NumResults; i++)
 		{
-			_PrintDevicememHistoryQueryResult(pfnDumpDebugPrintf,
+			_PrintDevicememHistoryQueryResult(pfnDumpDebugPrintf, pvDumpDebugFile,
 									psFaultProcessInfo,
 									&psQueryOut->sResults[i],
 									i);
@@ -1653,6 +1660,8 @@ static FAULT_INFO_LOG gsFaultInfoLog = { 0 };
  object (FAULT_INFO *), otherwise returns NULL.
 
  @Input pfnDumpDebugPrintf       - The debug printf function
+ @Input pvDumpDebugFile          - Optional file identifier to be passed to the
+                                   'printf' function if required
  @Input sFaultDevVAddr           - The faulting device virtual address
  @Input ui64CRTimer              - The CR timer value recorded by the FW at the time of the fault
 
@@ -1660,8 +1669,9 @@ static FAULT_INFO_LOG gsFaultInfoLog = { 0 };
 
 ******************************************************************************/
 static FAULT_INFO *_QueryFaultInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
-								IMG_DEV_VIRTADDR sFaultDevVAddr,
-								IMG_UINT64 ui64CRTimer)
+					void *pvDumpDebugFile,
+					IMG_DEV_VIRTADDR sFaultDevVAddr,
+					IMG_UINT64 ui64CRTimer)
 {
 	IMG_UINT32 i;
 
@@ -1775,6 +1785,8 @@ static void _CommitFaultInfo(PVRSRV_RGXDEV_INFO *psDevInfo,
  Print all the details of a page fault from a FAULT_INFO structure
 
  @Input pfnDumpDebugPrintf   - The debug printf function
+ @Input pvDumpDebugFile      - Optional file identifier to be passed to the
+                               'printf' function if required
  @Input psInfo               - The page fault occurrence to print
  @Input pui32Index           - (optional) index value to include in the print output
 
@@ -1782,8 +1794,9 @@ static void _CommitFaultInfo(PVRSRV_RGXDEV_INFO *psDevInfo,
 
 ******************************************************************************/
 static void _PrintFaultInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
-							FAULT_INFO *psInfo,
-							const IMG_UINT32 *pui32Index)
+					void *pvDumpDebugFile,
+					FAULT_INFO *psInfo,
+					const IMG_UINT32 *pui32Index)
 {
 	IMG_UINT32 i;
 
@@ -1793,7 +1806,7 @@ static void _PrintFaultInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 
 	if(pui32Index)
 	{
-		PVR_DUMPDEBUG_LOG(("(%u) Device memory history for page fault address 0x%010llX, CRTimer: 0x%016llX, "
+		PVR_DUMPDEBUG_LOG("(%u) Device memory history for page fault address 0x%010llX, CRTimer: 0x%016llX, "
 							"PID: %u (%s, unregistered: %u) Abs Time: %llu us",
 					*pui32Index,
 					(unsigned long long) psInfo->sFaultDevVAddr.uiAddr,
@@ -1801,16 +1814,16 @@ static void _PrintFaultInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 					(unsigned int) uiPID,
 					psInfo->sProcessInfo.szProcessName,
 					psInfo->sProcessInfo.bUnregistered,
-					(unsigned long long) psInfo->ui64When));
+					(unsigned long long) psInfo->ui64When);
 	}
 	else
 	{
-		PVR_DUMPDEBUG_LOG(("Device memory history for page fault address 0x%010llX, PID: %u (%s, unregistered: %u) Abs Time: %llu us",
+		PVR_DUMPDEBUG_LOG("Device memory history for page fault address 0x%010llX, PID: %u (%s, unregistered: %u) Abs Time: %llu us",
 					(unsigned long long) psInfo->sFaultDevVAddr.uiAddr,
 					(unsigned int) uiPID,
 					psInfo->sProcessInfo.szProcessName,
 					psInfo->sProcessInfo.bUnregistered,
-					(unsigned long long) psInfo->ui64When));
+					(unsigned long long) psInfo->ui64When);
 	}
 
 	for(i = DEVICEMEM_HISTORY_QUERY_INDEX_PRECEDING; i < DEVICEMEM_HISTORY_QUERY_INDEX_COUNT; i++)
@@ -1830,8 +1843,8 @@ static void _PrintFaultInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 				break;
 		}
 
-		PVR_DUMPDEBUG_LOG(("%s:", pszWhich));
-		_PrintDevicememHistoryQueryOut(pfnDumpDebugPrintf,
+		PVR_DUMPDEBUG_LOG("%s:", pszWhich);
+		_PrintDevicememHistoryQueryOut(pfnDumpDebugPrintf, pvDumpDebugFile,
 							&psInfo->sProcessInfo,
 							&psInfo->asQueryOut[i]);
 	}
@@ -1851,32 +1864,36 @@ static void _PrintFaultInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 
  Dump BIF Bank state in human readable form.
 
- @Input psDevInfo				- RGX device info
- @Input eBankID	 				- BIF identifier
- @Input ui64MMUStatus			- MMU Status register value
- @Input ui64ReqStatus			- BIF request Status register value
- @Input ui64PCAddress                   - Page catalogue base address of faulting access
- @Input ui64CRTimer                     - RGX CR timer value at time of page fault
- @Input bSummary				- Flag to check whether the function is called
- 	 	 	 	 	 	 	 	  as a part of the debug dump summary or
-								  as a part of a HWR log
+ @Input pfnDumpDebugPrintf   - The debug printf function
+ @Input pvDumpDebugFile      - Optional file identifier to be passed to the
+                               'printf' function if required
+ @Input psDevInfo            - RGX device info
+ @Input eBankID              - BIF identifier
+ @Input ui64MMUStatus        - MMU Status register value
+ @Input ui64ReqStatus        - BIF request Status register value
+ @Input ui64PCAddress        - Page catalogue base address of faulting access
+ @Input ui64CRTimer          - RGX CR timer value at time of page fault
+ @Input bSummary             - Flag to check whether the function is called
+                                as a part of the debug dump summary or
+                                as a part of a HWR log
  @Return   void
 
 ******************************************************************************/
 static void _RGXDumpRGXBIFBank(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
-							   PVRSRV_RGXDEV_INFO	*psDevInfo,
-							   RGXDBG_BIF_ID 		eBankID,
-							   IMG_UINT64			ui64MMUStatus,
-							   IMG_UINT64			ui64ReqStatus,
-							   IMG_UINT64			ui64PCAddress,
-							   IMG_UINT64			ui64CRTimer,
-							   IMG_BOOL				bSummary)
+					void *pvDumpDebugFile,
+					PVRSRV_RGXDEV_INFO *psDevInfo,
+					RGXDBG_BIF_ID eBankID,
+					IMG_UINT64 ui64MMUStatus,
+					IMG_UINT64 ui64ReqStatus,
+					IMG_UINT64 ui64PCAddress,
+					IMG_UINT64 ui64CRTimer,
+					IMG_BOOL bSummary)
 {
 	IMG_CHAR  *pszIndent = (bSummary ? "" : "    ");
 
 	if (ui64MMUStatus == 0x0)
 	{
-		PVR_DUMPDEBUG_LOG(("%s - OK", pszBIFNames[eBankID]));
+		PVR_DUMPDEBUG_LOG("%s - OK", pszBIFNames[eBankID]);
 	}
 	else
 	{
@@ -1889,9 +1906,9 @@ static void _RGXDumpRGXBIFBank(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 		FAULT_INFO *psInfo;
 #endif
 		/* Bank 0 & 1 share the same fields */
-		PVR_DUMPDEBUG_LOG(("%s%s - FAULT:",
+		PVR_DUMPDEBUG_LOG("%s%s - FAULT:",
 						  pszIndent,
-						  pszBIFNames[eBankID]));
+						  pszBIFNames[eBankID]);
 
 		/* MMU Status */
 		{
@@ -1914,7 +1931,7 @@ static void _RGXDumpRGXBIFBank(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 			ui32PageSizeBytes = _PageSizeHWToBytes(ui32PageSize);
 #endif
 
-			PVR_DUMPDEBUG_LOG(("%s  * MMU status (0x%016llX): PC = %d%s, Page Size = %d, MMU data type = %d%s%s.",
+			PVR_DUMPDEBUG_LOG("%s  * MMU status (0x%016llX): PC = %d%s, Page Size = %d, MMU data type = %d%s%s.",
 			                  pszIndent,
 							  ui64MMUStatus,
 			                  ui32PC,
@@ -1922,7 +1939,7 @@ static void _RGXDumpRGXBIFBank(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 			                  ui32PageSize,
 			                  ui32MMUDataType,
 			                  (bROFault)?", Read Only fault":"",
-			                  (bProtFault)?", PM/META protection fault":""));
+			                  (bProtFault)?", PM/META protection fault":"");
 		}
 
 		/* Req Status */
@@ -1951,13 +1968,13 @@ static void _RGXDumpRGXBIFBank(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 #endif
 			_RGXDecodeBIFReqTags(eBankID, ui32TagID, ui32TagSB, &pszTagID, &pszTagSB, &aszScratch[0], RGX_DEBUG_STR_SIZE);
 
-			PVR_DUMPDEBUG_LOG(("%s  * Request (0x%016llX): %s (%s), %s 0x%010llX.",
+			PVR_DUMPDEBUG_LOG("%s  * Request (0x%016llX): %s (%s), %s 0x%010llX.",
 							  pszIndent,
 							  ui64ReqStatus,
 			                  pszTagID,
 			                  pszTagSB,
 			                  (bRead)?"Reading from":"Writing to",
-			                  ui64Addr));
+			                  ui64Addr);
 		}
 
 		/* Check if the host thinks this fault is valid */
@@ -1974,7 +1991,7 @@ static void _RGXDumpRGXBIFBank(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 			if (ui32PC < 8)
 			{
 				sPCDevPAddr.uiAddr = OSReadHWReg64(psDevInfo->pvRegsBaseKM, RGX_CR_BIF_CAT_BASEN(ui32PC));
-				PVR_DUMPDEBUG_LOG(("%sAcquired live PC address: 0x%016llX", pszIndent, sPCDevPAddr.uiAddr));
+				PVR_DUMPDEBUG_LOG("%sAcquired live PC address: 0x%016llX", pszIndent, sPCDevPAddr.uiAddr);
 			}
 			else
 			{
@@ -1983,14 +2000,15 @@ static void _RGXDumpRGXBIFBank(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 		}
 		else
 		{
-			PVR_DUMPDEBUG_LOG(("%sFW logged fault using PC Address: 0x%016llX", pszIndent, ui64PCAddress));
+			PVR_DUMPDEBUG_LOG("%sFW logged fault using PC Address: 0x%016llX", pszIndent, ui64PCAddress);
 			sPCDevPAddr.uiAddr = ui64PCAddress;
 		}
 
 		if (bSummary)
 		{
-			PVR_DUMPDEBUG_LOG(("%sChecking faulting address 0x%010llX", pszIndent, sFaultDevVAddr.uiAddr));
-			RGXCheckFaultAddress(psDevInfo, &sFaultDevVAddr, &sPCDevPAddr);
+			PVR_DUMPDEBUG_LOG("%sChecking faulting address 0x%010llX", pszIndent, sFaultDevVAddr.uiAddr);
+			RGXCheckFaultAddress(psDevInfo, &sFaultDevVAddr, &sPCDevPAddr,
+								 pfnDumpDebugPrintf, pvDumpDebugFile);
 		}
 
 #if defined(SUPPORT_PAGE_FAULT_DEBUG)
@@ -1999,7 +2017,7 @@ static void _RGXDumpRGXBIFBank(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 		  * if so then use the previously acquired information.
 		  */
 		OSLockAcquire(psDevInfo->hDebugFaultInfoLock);
-		psInfo = _QueryFaultInfo(pfnDumpDebugPrintf, sFaultDevVAddr, ui64CRTimer);
+		psInfo = _QueryFaultInfo(pfnDumpDebugPrintf, pvDumpDebugFile, sFaultDevVAddr, ui64CRTimer);
 
 		if(psInfo == NULL)
 		{
@@ -2028,24 +2046,27 @@ static void _RGXDumpRGXBIFBank(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 									sFaultDevVAddr,
 									ui64CRTimer);
 					}
+					else
+					{
+						/* no hits, so no data to present */
+						PVR_DUMPDEBUG_LOG("%sNo matching Devmem History for fault address", pszIndent);
+						psInfo = NULL;
+					}
 				}
 				else
 				{
-					PVR_DUMPDEBUG_LOG(("%sCould not find PID for PC 0x%016llX", pszIndent, sPCDevPAddr.uiAddr));
+					PVR_DUMPDEBUG_LOG("%sCould not find PID for PC 0x%016llX", pszIndent, sPCDevPAddr.uiAddr);
 				}
 			}
 			else
 			{
-				PVR_DUMPDEBUG_LOG(("%sPage fault not applicable to Devmem History", pszIndent));
+				PVR_DUMPDEBUG_LOG("%sPage fault not applicable to Devmem History", pszIndent);
 			}
 		}
 
-		/* psInfo should always be non-NULL if the process was found */
-		PVR_ASSERT((psInfo != NULL) || !bFound);
-
 		if(psInfo != NULL)
 		{
-			_PrintFaultInfo(pfnDumpDebugPrintf, psInfo, NULL);
+			_PrintFaultInfo(pfnDumpDebugPrintf, pvDumpDebugFile, psInfo, NULL);
 		}
 
 		OSLockRelease(psDevInfo->hDebugFaultInfoLock);
@@ -2067,29 +2088,35 @@ static void _RGXDumpRGXBIFBank(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 
  Dump MMU Fault status in human readable form.
 
- @Input psDevInfo			- RGX device info
- @Input ui64MMUStatus		- MMU Status register value
- @Input bIsMetaMMUStatus	- Is the status from MMU_FAULT_STATUS or MMU_FAULT_STATUS_META.
- @Input bSummary			- Flag to check whether the function is called
-							  as a part of the debug dump summary or
-							  as a part of a HWR log
+ @Input pfnDumpDebugPrintf   - The debug printf function
+ @Input pvDumpDebugFile      - Optional file identifier to be passed to the
+                               'printf' function if required
+ @Input psDevInfo            - RGX device info
+ @Input ui64MMUStatus        - MMU Status register value
+ @Input ui64PCAddress        - Page catalogue base address of faulting access
+ @Input ui64CRTimer          - RGX CR timer value at time of page fault
+ @Input bIsMetaMMUStatus     - Is the status from MMU_FAULT_STATUS or MMU_FAULT_STATUS_META.
+ @Input bSummary             - Flag to check whether the function is called
+                                as a part of the debug dump summary or
+                                as a part of a HWR log
  @Return   void
 
 ******************************************************************************/
 static void _RGXDumpRGXMMUFaultStatus(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
-									  PVRSRV_RGXDEV_INFO    *psDevInfo,
-									  IMG_UINT64            ui64MMUStatus,
-									  IMG_UINT64			ui64PCAddress,
-									  IMG_UINT64			ui64CRTimer,
-									  IMG_BOOL              bIsMetaMMUStatus,
-									  IMG_BOOL              bSummary)
+					void *pvDumpDebugFile,
+					PVRSRV_RGXDEV_INFO *psDevInfo,
+					IMG_UINT64 ui64MMUStatus,
+					IMG_UINT64 ui64PCAddress,
+					IMG_UINT64 ui64CRTimer,
+					IMG_BOOL bIsMetaMMUStatus,
+					IMG_BOOL bSummary)
 {
 	IMG_CHAR  *pszMetaOrCore = (bIsMetaMMUStatus ? "Meta" : "Core");
 	IMG_CHAR  *pszIndent     = (bSummary ? "" : "    ");
 
 	if (ui64MMUStatus == 0x0)
 	{
-		PVR_DUMPDEBUG_LOG(("%sMMU (%s) - OK", pszIndent, pszMetaOrCore));
+		PVR_DUMPDEBUG_LOG("%sMMU (%s) - OK", pszIndent, pszMetaOrCore);
 	}
 	else
 	{
@@ -2123,8 +2150,8 @@ static void _RGXDumpRGXMMUFaultStatus(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 
 		_RGXDecodeMMUReqTags(ui32Requester, ui32SideBand, bRead, &pszTagID, &pszTagSB, aszScratch, RGX_DEBUG_STR_SIZE);
 
-		PVR_DUMPDEBUG_LOG(("%sMMU (%s) - FAULT:", pszIndent, pszMetaOrCore));
-		PVR_DUMPDEBUG_LOG(("%s  * MMU status (0x%016llX): PC = %d, %s 0x%010llX, %s (%s)%s%s%s%s.",
+		PVR_DUMPDEBUG_LOG("%sMMU (%s) - FAULT:", pszIndent, pszMetaOrCore);
+		PVR_DUMPDEBUG_LOG("%s  * MMU status (0x%016llX): PC = %d, %s 0x%010llX, %s (%s)%s%s%s%s.",
 						  pszIndent,
 						  ui64MMUStatus,
 						  ui32PC,
@@ -2135,7 +2162,7 @@ static void _RGXDumpRGXMMUFaultStatus(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 						  (bFault)?", Fault":"",
 						  (bROFault)?", Read Only fault":"",
 						  (bProtFault)?", PM/META protection fault":"",
-						  _RGXDecodeMMULevel(ui32MMULevel)));
+						  _RGXDecodeMMULevel(ui32MMULevel));
 		/* Check if the host thinks this fault is valid */
 
 		sFaultDevVAddr.uiAddr = ui64Addr;
@@ -2147,16 +2174,17 @@ static void _RGXDumpRGXMMUFaultStatus(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 		}
 		else
 		{
-			PVR_DUMPDEBUG_LOG(("%sFW logged fault using PC Address: 0x%016llX",
-			                  pszIndent, ui64PCAddress));
+			PVR_DUMPDEBUG_LOG("%sFW logged fault using PC Address: 0x%016llX",
+			                  pszIndent, ui64PCAddress);
 			sPCDevPAddr.uiAddr = ui64PCAddress;
 		}
 
 		if (bSummary)
 		{
-			PVR_DUMPDEBUG_LOG(("%sChecking faulting address 0x%010llX",
-			                  pszIndent, sFaultDevVAddr.uiAddr));
-			RGXCheckFaultAddress(psDevInfo, &sFaultDevVAddr, &sPCDevPAddr);
+			PVR_DUMPDEBUG_LOG("%sChecking faulting address 0x%010llX",
+			                  pszIndent, sFaultDevVAddr.uiAddr);
+			RGXCheckFaultAddress(psDevInfo, &sFaultDevVAddr, &sPCDevPAddr,
+								 pfnDumpDebugPrintf, pvDumpDebugFile);
 		}
 
 #if defined(SUPPORT_PAGE_FAULT_DEBUG)
@@ -2164,7 +2192,7 @@ static void _RGXDumpRGXMMUFaultStatus(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 		  * if so then use the previously acquired information.
 		  */
 		OSLockAcquire(psDevInfo->hDebugFaultInfoLock);
-		psInfo = _QueryFaultInfo(pfnDumpDebugPrintf, sFaultDevVAddr, ui64CRTimer);
+		psInfo = _QueryFaultInfo(pfnDumpDebugPrintf, pvDumpDebugFile, sFaultDevVAddr, ui64CRTimer);
 
 		if(psInfo == NULL)
 		{
@@ -2201,20 +2229,20 @@ static void _RGXDumpRGXMMUFaultStatus(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 				}
 				else
 				{
-					PVR_DUMPDEBUG_LOG(("%sCould not find PID for PC 0x%016llX",
-					                  pszIndent, sPCDevPAddr.uiAddr));
+					PVR_DUMPDEBUG_LOG("%sCould not find PID for PC 0x%016llX",
+					                  pszIndent, sPCDevPAddr.uiAddr);
 				}
 			}
 			else
 			{
-				PVR_DUMPDEBUG_LOG(("%sPage fault not applicable to Devmem History",
-				                  pszIndent));
+				PVR_DUMPDEBUG_LOG("%sPage fault not applicable to Devmem History",
+				                  pszIndent);
 			}
 		}
 
 		if(psInfo != NULL)
 		{
-			_PrintFaultInfo(pfnDumpDebugPrintf, psInfo, NULL);
+			_PrintFaultInfo(pfnDumpDebugPrintf, pvDumpDebugFile, psInfo, NULL);
 		}
 
 		OSLockRelease(psDevInfo->hDebugFaultInfoLock);
@@ -2384,13 +2412,17 @@ map_error_fail:
 
  Dump FW assert strings when a thread asserts.
 
- @Input psRGXFWIfTraceBufCtl	- RGX FW trace buffer
+ @Input pfnDumpDebugPrintf   - The debug printf function
+ @Input pvDumpDebugFile      - Optional file identifier to be passed to the
+                               'printf' function if required
+ @Input psRGXFWIfTraceBufCtl - RGX FW trace buffer
 
  @Return   void
 
 ******************************************************************************/
 static void _RGXDumpFWAssert(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
-							 RGXFWIF_TRACEBUF *psRGXFWIfTraceBufCtl)
+					void *pvDumpDebugFile,
+					RGXFWIF_TRACEBUF *psRGXFWIfTraceBufCtl)
 {
 	IMG_CHAR    *pszTraceAssertPath;
 	IMG_CHAR    *pszTraceAssertInfo;
@@ -2406,32 +2438,34 @@ static void _RGXDumpFWAssert(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 		/* print non null assert strings */
 		if (*pszTraceAssertInfo)
 		{
-			PVR_DUMPDEBUG_LOG(("FW-T%d Assert: %s (%s:%d)", 
-			                  i, pszTraceAssertInfo, pszTraceAssertPath, ui32TraceAssertLine));
+			PVR_DUMPDEBUG_LOG("FW-T%d Assert: %s (%s:%d)",
+			                  i, pszTraceAssertInfo, pszTraceAssertPath, ui32TraceAssertLine);
 		}
 	}
 }
 
 static void _RGXDumpFWPoll(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
-						   RGXFWIF_TRACEBUF *psRGXFWIfTraceBufCtl)
+					void *pvDumpDebugFile,
+					RGXFWIF_TRACEBUF *psRGXFWIfTraceBufCtl)
 {
 	IMG_UINT32 i;
 	for (i = 0; i < RGXFW_THREAD_NUM; i++)
 	{
 		if (psRGXFWIfTraceBufCtl->aui32CrPollAddr[i])
 		{
-			PVR_DUMPDEBUG_LOG(("T%u polling %s (reg:0x%08X mask:0x%08X)",
+			PVR_DUMPDEBUG_LOG("T%u polling %s (reg:0x%08X mask:0x%08X)",
 			                  i,
-			                  ((psRGXFWIfTraceBufCtl->aui32CrPollAddr[i] & RGXFW_POLL_TYPE_SET)?("set"):("unset")), 
-			                  psRGXFWIfTraceBufCtl->aui32CrPollAddr[i] & ~RGXFW_POLL_TYPE_SET, 
-			                  psRGXFWIfTraceBufCtl->aui32CrPollMask[i]));
+			                  ((psRGXFWIfTraceBufCtl->aui32CrPollAddr[i] & RGXFW_POLL_TYPE_SET)?("set"):("unset")),
+			                  psRGXFWIfTraceBufCtl->aui32CrPollAddr[i] & ~RGXFW_POLL_TYPE_SET,
+			                  psRGXFWIfTraceBufCtl->aui32CrPollMask[i]);
 		}
 	}
 
 }
 
 static void _RGXDumpFWHWRInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
-							  RGXFWIF_TRACEBUF *psRGXFWIfTraceBufCtl, PVRSRV_RGXDEV_INFO *psDevInfo)
+					void *pvDumpDebugFile,
+					RGXFWIF_TRACEBUF *psRGXFWIfTraceBufCtl, PVRSRV_RGXDEV_INFO *psDevInfo)
 {
 	IMG_BOOL        	bAnyLocked = IMG_FALSE;
 	IMG_UINT32      	dm, i;
@@ -2509,7 +2543,7 @@ static void _RGXDumpFWHWRInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 				psRGXFWIfTraceBufCtl->aui16HwrDmFalseDetectCount[dm]);
 	}
 
-	PVR_DUMPDEBUG_LOG((pszLine));
+	PVR_DUMPDEBUG_LOG(pszLine);
 
 	OSFreeMem(pszLine);
 
@@ -2518,11 +2552,11 @@ static void _RGXDumpFWHWRInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 	{
 		if (dm == RGXFWIF_DM_GP)
 		{
-			PVR_DUMPDEBUG_LOG(("DM %d (GP)", dm));
+			PVR_DUMPDEBUG_LOG("DM %d (GP)", dm);
 		}
 		else
 		{
-			PVR_DUMPDEBUG_LOG(("DM %d (HWRflags 0x%08x)", dm, psRGXFWIfTraceBufCtl->aui32HWRRecoveryFlags[dm]));
+			PVR_DUMPDEBUG_LOG("DM %d (HWRflags 0x%08x)", dm, psRGXFWIfTraceBufCtl->aui32HWRRecoveryFlags[dm]);
 		}
 
 		ui32ReadIndex = 0;
@@ -2545,7 +2579,7 @@ static void _RGXDumpFWHWRInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 				else if (ui32HWRRecoveryFlags & RGXFWIF_DM_STATE_GUILTY_OVERRUNING) { pszLockupType = ", Guilty Overrun"; }
 				else if (ui32HWRRecoveryFlags & RGXFWIF_DM_STATE_GUILTY_LOCKUP) { pszLockupType = ", Innocent Overrun"; }
 
-				PVR_DUMPDEBUG_LOG(("  Recovery %d: PID = %d, frame = %d, HWRTData = 0x%08X,"
+				PVR_DUMPDEBUG_LOG("  Recovery %d: PID = %d, frame = %d, HWRTData = 0x%08X,"
 				                   " EventStatus = 0x%08X, CRTimer = 0x%012llX, OSTimer = %llu.%09llu%s",
 				                   psHWRInfo->ui32HWRNumber,
 				                   psHWRInfo->ui32PID,
@@ -2555,7 +2589,7 @@ static void _RGXDumpFWHWRInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 				                   psHWRInfo->ui64CRTimer,
 				                   ui64Seconds,
 				                   ui64Nanoseconds,
-				                   pszLockupType));
+				                   pszLockupType);
 
 				switch(psHWRInfo->eHWRType)
 				{
@@ -2563,7 +2597,7 @@ static void _RGXDumpFWHWRInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 					case RGX_HWRTYPE_BIF0FAULT:
 					case RGX_HWRTYPE_BIF1FAULT:
 					{
-						_RGXDumpRGXBIFBank(pfnDumpDebugPrintf, psDevInfo, RGXFWIF_HWRTYPE_BIF_BANK_GET(psHWRInfo->eHWRType),
+						_RGXDumpRGXBIFBank(pfnDumpDebugPrintf, pvDumpDebugFile, psDevInfo, RGXFWIF_HWRTYPE_BIF_BANK_GET(psHWRInfo->eHWRType),
 										psHWRInfo->uHWRData.sBIFInfo.ui64BIFMMUStatus,
 										psHWRInfo->uHWRData.sBIFInfo.ui64BIFReqStatus,
 										psHWRInfo->uHWRData.sBIFInfo.ui64PCAddress,
@@ -2574,7 +2608,7 @@ static void _RGXDumpFWHWRInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 #if defined(RGX_FEATURE_CLUSTER_GROUPING)
 					case RGX_HWRTYPE_TEXASBIF0FAULT:
 					{
-						_RGXDumpRGXBIFBank(pfnDumpDebugPrintf, psDevInfo, RGXDBG_TEXAS_BIF,
+						_RGXDumpRGXBIFBank(pfnDumpDebugPrintf, pvDumpDebugFile, psDevInfo, RGXDBG_TEXAS_BIF,
 										psHWRInfo->uHWRData.sBIFInfo.ui64BIFMMUStatus,
 										psHWRInfo->uHWRData.sBIFInfo.ui64BIFReqStatus,
 										psHWRInfo->uHWRData.sBIFInfo.ui64PCAddress,
@@ -2586,7 +2620,7 @@ static void _RGXDumpFWHWRInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 #if defined(RGX_FEATURE_RAY_TRACING)
 					case RGX_HWRTYPE_DPXMMUFAULT:
 					{
-						_RGXDumpRGXBIFBank(pfnDumpDebugPrintf, psDevInfo, RGXDBG_DPX_BIF,
+						_RGXDumpRGXBIFBank(pfnDumpDebugPrintf, pvDumpDebugFile, psDevInfo, RGXDBG_DPX_BIF,
 										psHWRInfo->uHWRData.sBIFInfo.ui64BIFMMUStatus,
 										psHWRInfo->uHWRData.sBIFInfo.ui64BIFReqStatus,
 										psHWRInfo->uHWRData.sBIFInfo.ui64PCAddress,
@@ -2598,7 +2632,7 @@ static void _RGXDumpFWHWRInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 #else
 					case RGX_HWRTYPE_MMUFAULT:
 					{
-						_RGXDumpRGXMMUFaultStatus(pfnDumpDebugPrintf, psDevInfo,
+						_RGXDumpRGXMMUFaultStatus(pfnDumpDebugPrintf, pvDumpDebugFile, psDevInfo,
 						                          psHWRInfo->uHWRData.sMMUInfo.ui64MMUStatus,
 						                          psHWRInfo->uHWRData.sMMUInfo.ui64PCAddress,
 						                          psHWRInfo->ui64CRTimer,
@@ -2609,7 +2643,7 @@ static void _RGXDumpFWHWRInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 
 					case RGX_HWRTYPE_MMUMETAFAULT:
 					{
-						_RGXDumpRGXMMUFaultStatus(pfnDumpDebugPrintf, psDevInfo,
+						_RGXDumpRGXMMUFaultStatus(pfnDumpDebugPrintf, pvDumpDebugFile, psDevInfo,
 						                          psHWRInfo->uHWRData.sMMUInfo.ui64MMUStatus,
 						                          psHWRInfo->uHWRData.sMMUInfo.ui64PCAddress,
 						                          psHWRInfo->ui64CRTimer,
@@ -2621,11 +2655,11 @@ static void _RGXDumpFWHWRInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 
 					case RGX_HWRTYPE_POLLFAILURE:
 					{
-						PVR_DUMPDEBUG_LOG(("    T%u polling %s (reg:0x%08X mask:0x%08X)",
+						PVR_DUMPDEBUG_LOG("    T%u polling %s (reg:0x%08X mask:0x%08X)",
 										  psHWRInfo->uHWRData.sPollInfo.ui32ThreadNum,
 										  ((psHWRInfo->uHWRData.sPollInfo.ui32CrPollAddr & RGXFW_POLL_TYPE_SET)?("set"):("unset")),
 										  psHWRInfo->uHWRData.sPollInfo.ui32CrPollAddr & ~RGXFW_POLL_TYPE_SET,
-										  psHWRInfo->uHWRData.sPollInfo.ui32CrPollMask));
+										  psHWRInfo->uHWRData.sPollInfo.ui32CrPollMask);
 					}
 					break;
 
@@ -2729,13 +2763,19 @@ static void _GetPendingPageInfo(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_DEV_VIRTADDR 
 
  Dump a summary in human readable form with the RGX state
 
- @Input psDevInfo	 - RGX device info
+ @Input pfnDumpDebugPrintf   - The debug printf function
+ @Input pvDumpDebugFile      - Optional file identifier to be passed to the
+                               'printf' function if required
+ @Input psDevInfo	     - RGX device info
+ @Input bRGXPoweredON        - IMG_TRUE if RGX device is on
 
  @Return   void
 
 ******************************************************************************/
 static void _RGXDumpRGXDebugSummary(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
-									PVRSRV_RGXDEV_INFO *psDevInfo, IMG_BOOL bRGXPoweredON)
+					void *pvDumpDebugFile,
+					PVRSRV_RGXDEV_INFO *psDevInfo,
+					IMG_BOOL bRGXPoweredON)
 {
 	IMG_CHAR *pszState, *pszReason;
 	RGXFWIF_TRACEBUF *psRGXFWIfTraceBuf = psDevInfo->psRGXFWIfTraceBuf;
@@ -2749,23 +2789,23 @@ static void _RGXDumpRGXDebugSummary(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 		IMG_UINT64	ui64RegValMMUStatus;
 
 		ui64RegValMMUStatus = OSReadHWReg64(psDevInfo->pvRegsBaseKM, RGX_CR_MMU_FAULT_STATUS);
-		_RGXDumpRGXMMUFaultStatus(pfnDumpDebugPrintf, psDevInfo, ui64RegValMMUStatus, 0, 0, IMG_FALSE, IMG_TRUE);
+		_RGXDumpRGXMMUFaultStatus(pfnDumpDebugPrintf, pvDumpDebugFile, psDevInfo, ui64RegValMMUStatus, 0, 0, IMG_FALSE, IMG_TRUE);
 
 		ui64RegValMMUStatus = OSReadHWReg64(psDevInfo->pvRegsBaseKM, RGX_CR_MMU_FAULT_STATUS_META);
-		_RGXDumpRGXMMUFaultStatus(pfnDumpDebugPrintf, psDevInfo, ui64RegValMMUStatus, 0, 0, IMG_TRUE, IMG_TRUE);
+		_RGXDumpRGXMMUFaultStatus(pfnDumpDebugPrintf, pvDumpDebugFile, psDevInfo, ui64RegValMMUStatus, 0, 0, IMG_TRUE, IMG_TRUE);
 #else
 		IMG_UINT64	ui64RegValMMUStatus, ui64RegValREQStatus;
 
 		ui64RegValMMUStatus = OSReadHWReg64(psDevInfo->pvRegsBaseKM, RGX_CR_BIF_FAULT_BANK0_MMU_STATUS);
 		ui64RegValREQStatus = OSReadHWReg64(psDevInfo->pvRegsBaseKM, RGX_CR_BIF_FAULT_BANK0_REQ_STATUS);
 
-		_RGXDumpRGXBIFBank(pfnDumpDebugPrintf, psDevInfo, RGXDBG_BIF0, ui64RegValMMUStatus, ui64RegValREQStatus, 0, 0, IMG_TRUE);
+		_RGXDumpRGXBIFBank(pfnDumpDebugPrintf, pvDumpDebugFile, psDevInfo, RGXDBG_BIF0, ui64RegValMMUStatus, ui64RegValREQStatus, 0, 0, IMG_TRUE);
 
 #if !defined(RGX_FEATURE_SINGLE_BIF)
 		ui64RegValMMUStatus = OSReadHWReg64(psDevInfo->pvRegsBaseKM, RGX_CR_BIF_FAULT_BANK1_MMU_STATUS);
 		ui64RegValREQStatus = OSReadHWReg64(psDevInfo->pvRegsBaseKM, RGX_CR_BIF_FAULT_BANK1_REQ_STATUS);
 
-		_RGXDumpRGXBIFBank(pfnDumpDebugPrintf, psDevInfo, RGXDBG_BIF1, ui64RegValMMUStatus, ui64RegValREQStatus, 0, 0, IMG_TRUE);
+		_RGXDumpRGXBIFBank(pfnDumpDebugPrintf, pvDumpDebugFile, psDevInfo, RGXDBG_BIF1, ui64RegValMMUStatus, ui64RegValREQStatus, 0, 0, IMG_TRUE);
 #endif
 
 #if defined(RGX_FEATURE_CLUSTER_GROUPING)
@@ -2781,14 +2821,14 @@ static void _RGXDumpRGXDebugSummary(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 				ui64RegValMMUStatus = OSReadHWReg64(psDevInfo->pvRegsBaseKM, RGX_CR_TEXAS_BIF_FAULT_BANK0_MMU_STATUS);
 				ui64RegValREQStatus = OSReadHWReg64(psDevInfo->pvRegsBaseKM, RGX_CR_TEXAS_BIF_FAULT_BANK0_REQ_STATUS);
 
-				_RGXDumpRGXBIFBank(pfnDumpDebugPrintf, psDevInfo, RGXDBG_TEXAS_BIF, ui64RegValMMUStatus, ui64RegValREQStatus, 0, 0, IMG_TRUE);
+				_RGXDumpRGXBIFBank(pfnDumpDebugPrintf, pvDumpDebugFile, psDevInfo, RGXDBG_TEXAS_BIF, ui64RegValMMUStatus, ui64RegValREQStatus, 0, 0, IMG_TRUE);
 			}
 		}
 #else
 		ui64RegValMMUStatus = OSReadHWReg64(psDevInfo->pvRegsBaseKM, RGX_CR_TEXAS_BIF_FAULT_BANK0_MMU_STATUS);
 		ui64RegValREQStatus = OSReadHWReg64(psDevInfo->pvRegsBaseKM, RGX_CR_TEXAS_BIF_FAULT_BANK0_REQ_STATUS);
 
-		_RGXDumpRGXBIFBank(pfnDumpDebugPrintf, psDevInfo, RGXDBG_TEXAS_BIF, ui64RegValMMUStatus, ui64RegValREQStatus, 0, 0, IMG_TRUE);
+		_RGXDumpRGXBIFBank(pfnDumpDebugPrintf, pvDumpDebugFile, psDevInfo, RGXDBG_TEXAS_BIF, ui64RegValMMUStatus, ui64RegValREQStatus, 0, 0, IMG_TRUE);
 #endif
 #endif
 #endif
@@ -2797,7 +2837,7 @@ static void _RGXDumpRGXDebugSummary(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 		ui64RegValMMUStatus = OSReadHWReg64(psDevInfo->pvRegsBaseKM, DPX_CR_BIF_FAULT_BANK_MMU_STATUS);
 		ui64RegValREQStatus = OSReadHWReg64(psDevInfo->pvRegsBaseKM, DPX_CR_BIF_FAULT_BANK_REQ_STATUS);
 
-		_RGXDumpRGXBIFBank(pfnDumpDebugPrintf, psDevInfo, RGXDBG_DPX_BIF, ui64RegValMMUStatus, ui64RegValREQStatus, 0, 0, IMG_TRUE);
+		_RGXDumpRGXBIFBank(pfnDumpDebugPrintf, pvDumpDebugFile, psDevInfo, RGXDBG_DPX_BIF, ui64RegValMMUStatus, ui64RegValREQStatus, 0, 0, IMG_TRUE);
 #endif
 
 		if(_CheckForPendingPage(psDevInfo))
@@ -2806,13 +2846,13 @@ static void _RGXDumpRGXDebugSummary(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 			IMG_UINT32 ui32DataType;
 			IMG_DEV_VIRTADDR sDevVAddr;
 
-			PVR_DUMPDEBUG_LOG(("MMU Pending page: Yes"));
+			PVR_DUMPDEBUG_LOG("MMU Pending page: Yes");
 
 			_GetPendingPageInfo(psDevInfo, &sDevVAddr, &ui32CatBase, &ui32DataType);
 
 			if(ui32CatBase >= 8)
 			{
-				PVR_DUMPDEBUG_LOG(("Cannot check address on PM cat base %u", ui32CatBase));
+				PVR_DUMPDEBUG_LOG("Cannot check address on PM cat base %u", ui32CatBase);
 			}
 			else
 			{
@@ -2820,12 +2860,13 @@ static void _RGXDumpRGXDebugSummary(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 
 				sPCDevPAddr.uiAddr = OSReadHWReg64(psDevInfo->pvRegsBaseKM, RGX_CR_BIF_CAT_BASEN(ui32CatBase));
 
-				PVR_DUMPDEBUG_LOG(("Checking device virtual address " IMG_DEV_VIRTADDR_FMTSPEC
+				PVR_DUMPDEBUG_LOG("Checking device virtual address " IMG_DEV_VIRTADDR_FMTSPEC
 							" on cat base %u. PC Addr = 0x%llX",
 								(unsigned long long) sDevVAddr.uiAddr,
 								ui32CatBase,
-								(unsigned long long) sPCDevPAddr.uiAddr));
-				RGXCheckFaultAddress(psDevInfo, &sDevVAddr, &sPCDevPAddr);
+								(unsigned long long) sPCDevPAddr.uiAddr);
+				RGXCheckFaultAddress(psDevInfo, &sDevVAddr, &sPCDevPAddr,
+							pfnDumpDebugPrintf, pvDumpDebugFile);
 			}
 		}
 	}
@@ -2853,32 +2894,33 @@ static void _RGXDumpRGXDebugSummary(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 
 	if (psRGXFWIfTraceBuf == NULL)
 	{
-		PVR_DUMPDEBUG_LOG(("RGX FW State: %s%s", pszState, pszReason));
+		PVR_DUMPDEBUG_LOG("RGX FW State: %s%s", pszState, pszReason);
 
 		/* can't dump any more information */
 		return;
 	}
 	
-	PVR_DUMPDEBUG_LOG(("RGX FW State: %s%s (HWRState 0x%08x)", pszState, pszReason, psRGXFWIfTraceBuf->ui32HWRStateFlags));
-	PVR_DUMPDEBUG_LOG(("RGX FW Power State: %s (APM %s: %d ok, %d denied, %d other, %d total)", 
+	PVR_DUMPDEBUG_LOG("RGX FW State: %s%s (HWRState 0x%08x)", pszState, pszReason, psRGXFWIfTraceBuf->ui32HWRStateFlags);
+	PVR_DUMPDEBUG_LOG("RGX FW Power State: %s (APM %s: %d ok, %d denied, %d other, %d total)",
 	                  pszPowStateName[psRGXFWIfTraceBuf->ePowState],
 	                  (psDevInfo->pvAPMISRData)?"enabled":"disabled",
 	                  psDevInfo->ui32ActivePMReqOk,
 	                  psDevInfo->ui32ActivePMReqDenied,
 	                  psDevInfo->ui32ActivePMReqTotal - psDevInfo->ui32ActivePMReqOk - psDevInfo->ui32ActivePMReqDenied,
-	                  psDevInfo->ui32ActivePMReqTotal));
+	                  psDevInfo->ui32ActivePMReqTotal);
 
 
-	_RGXDumpFWAssert(pfnDumpDebugPrintf, psRGXFWIfTraceBuf);
+	_RGXDumpFWAssert(pfnDumpDebugPrintf, pvDumpDebugFile, psRGXFWIfTraceBuf);
 
-	_RGXDumpFWPoll(pfnDumpDebugPrintf, psRGXFWIfTraceBuf);
+	_RGXDumpFWPoll(pfnDumpDebugPrintf, pvDumpDebugFile, psRGXFWIfTraceBuf);
 
-	_RGXDumpFWHWRInfo(pfnDumpDebugPrintf, psRGXFWIfTraceBuf, psDevInfo);
+	_RGXDumpFWHWRInfo(pfnDumpDebugPrintf, pvDumpDebugFile, psRGXFWIfTraceBuf, psDevInfo);
 }
 
 #if defined (RGX_FEATURE_META)
 static void _RGXDumpMetaSPExtraDebugInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
-										 PVRSRV_RGXDEV_INFO *psDevInfo)
+						void *pvDumpDebugFile,
+						PVRSRV_RGXDEV_INFO *psDevInfo)
 {
 /* List of extra META Slave Port debug registers */
 #define RGX_META_SP_EXTRA_DEBUG \
@@ -2903,10 +2945,10 @@ static void _RGXDumpMetaSPExtraDebugInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrin
 	RGX_META_SP_EXTRA_DEBUG
 #undef X
 	};
-	
+
 	const IMG_UINT32 aui32Debug2RegAddr [] = {0xA28, 0x0A30, 0x0A38};
 
-	PVR_DUMPDEBUG_LOG(("META Slave Port extra debug:"));
+	PVR_DUMPDEBUG_LOG("META Slave Port extra debug:");
 
 	/* dump first set of Slave Port debug registers */
 	for (ui32Idx = 0; ui32Idx < sizeof(aui32DebugRegAddr)/sizeof(IMG_UINT32); ui32Idx++)
@@ -2915,7 +2957,7 @@ static void _RGXDumpMetaSPExtraDebugInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrin
 
 		ui32RegAddr = aui32DebugRegAddr[ui32Idx];
 		ui32RegVal = OSReadHWReg32(psDevInfo->pvRegsBaseKM, ui32RegAddr);
-		PVR_DUMPDEBUG_LOG(("  * %s: 0x%8.8X", pszRegName, ui32RegVal));
+		PVR_DUMPDEBUG_LOG("  * %s: 0x%8.8X", pszRegName, ui32RegVal);
 	}
 
 	/* dump second set of Slave Port debug registers */
@@ -2923,7 +2965,7 @@ static void _RGXDumpMetaSPExtraDebugInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrin
 	{
 		OSWriteHWReg32(psDevInfo->pvRegsBaseKM, 0xA20, ui32Idx);
 		ui32RegVal = OSReadHWReg32(psDevInfo->pvRegsBaseKM, 0xA20);
-		PVR_DUMPDEBUG_LOG(("  * 0xA20[%d]: 0x%8.8X", ui32Idx, ui32RegVal));
+		PVR_DUMPDEBUG_LOG("  * 0xA20[%d]: 0x%8.8X", ui32Idx, ui32RegVal);
 
 	}
 
@@ -2934,7 +2976,7 @@ static void _RGXDumpMetaSPExtraDebugInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrin
 		{
 			OSWriteHWReg32(psDevInfo->pvRegsBaseKM, ui32RegAddr, ui32Idx);
 			ui32RegVal = OSReadHWReg32(psDevInfo->pvRegsBaseKM, ui32RegAddr);
-			PVR_DUMPDEBUG_LOG(("  * 0x%X[%d]: 0x%8.8X", ui32RegAddr, ui32Idx, ui32RegVal));
+			PVR_DUMPDEBUG_LOG("  * 0x%X[%d]: 0x%8.8X", ui32RegAddr, ui32Idx, ui32RegVal);
 		}
 	}
 
@@ -2946,17 +2988,20 @@ static void _RGXDumpMetaSPExtraDebugInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrin
 	RGXDumpDebugInfo
 */
 void RGXDumpDebugInfo(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
-					  PVRSRV_RGXDEV_INFO	*psDevInfo)
+			void *pvDumpDebugFile,
+			PVRSRV_RGXDEV_INFO *psDevInfo)
 {
 #if defined(PVRSRV_GPUVIRT_GUESTDRV)
 	PVR_UNREFERENCED_PARAMETER(psDevInfo);
 	PVR_UNREFERENCED_PARAMETER(pfnDumpDebugPrintf);
+	PVR_UNREFERENCED_PARAMETER(pvDumpDebugFile);
 #else
 	IMG_UINT32 i;
 
 	for(i=0;i<=DEBUG_REQUEST_VERBOSITY_MAX;i++)
 	{
-		RGXDebugRequestProcess(pfnDumpDebugPrintf, psDevInfo, i);
+		RGXDebugRequestProcess(pfnDumpDebugPrintf, pvDumpDebugFile,
+					psDevInfo, i);
 	}
 #endif
 }
@@ -2981,7 +3026,8 @@ TRACEBUF_LOG aLogDefinitions[] = {
 };
 
 #define NARGS_MASK ~(0xF<<16)
-static IMG_BOOL _FirmwareTraceIntegrityCheck(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf)
+static IMG_BOOL _FirmwareTraceIntegrityCheck(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+						void *pvDumpDebugFile)
 {
 	TRACEBUF_LOG  *psLogDef    = &aLogDefinitions[0];
 	IMG_BOOL      bIntegrityOk = IMG_TRUE;
@@ -3002,7 +3048,7 @@ static IMG_BOOL _FirmwareTraceIntegrityCheck(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebug
 		 */
 		pszString = psLogDef->pszFmt;
 		ui32Count = 0;
-		
+
 		while (*pszString != '\0')
 		{
 			if (*pszString++ == '%')
@@ -3011,8 +3057,8 @@ static IMG_BOOL _FirmwareTraceIntegrityCheck(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebug
 				if (*pszString == 's')
 				{
 					bIntegrityOk = IMG_FALSE;
-					PVR_DUMPDEBUG_LOG(("Integrity Check FAIL: %s has an unsupported type not recognized (fmt: %%%c). Please fix.",
-									  psLogDef->pszName, *pszString));
+					PVR_DUMPDEBUG_LOG("Integrity Check FAIL: %s has an unsupported type not recognized (fmt: %%%c). Please fix.",
+									  psLogDef->pszName, *pszString);
 				}
 				else if (*pszString == '%')
 				{
@@ -3021,20 +3067,20 @@ static IMG_BOOL _FirmwareTraceIntegrityCheck(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebug
 				}
 			}
 		}
-		
+
 		if (ui32Count != psLogDef->ui32ArgNum)
 		{
 			bIntegrityOk = IMG_FALSE;
-			PVR_DUMPDEBUG_LOG(("Integrity Check FAIL: %s has %d arguments but only %d are specified. Please fix.",
-			                  psLogDef->pszName, ui32Count, psLogDef->ui32ArgNum));
+			PVR_DUMPDEBUG_LOG("Integrity Check FAIL: %s has %d arguments but only %d are specified. Please fix.",
+			                  psLogDef->pszName, ui32Count, psLogDef->ui32ArgNum);
 		}
 
 		/* RGXDumpFirmwareTrace() has a hardcoded limit of supporting up to 20 arguments... */
 		if (ui32Count > 20)
 		{
 			bIntegrityOk = IMG_FALSE;
-			PVR_DUMPDEBUG_LOG(("Integrity Check FAIL: %s has %d arguments but a maximum of 20 are supported. Please fix.",
-			                  psLogDef->pszName, ui32Count));
+			PVR_DUMPDEBUG_LOG("Integrity Check FAIL: %s has %d arguments but a maximum of 20 are supported. Please fix.",
+			                  psLogDef->pszName, ui32Count);
 		}
 
 		/* Check the id number is unique (don't take into account the number of arguments) */
@@ -3053,8 +3099,8 @@ static IMG_BOOL _FirmwareTraceIntegrityCheck(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebug
 		if (ui32Count != 1)
 		{
 			bIntegrityOk = IMG_FALSE;
-			PVR_DUMPDEBUG_LOG(("Integrity Check FAIL: %s id %x is not unique, there are %d more. Please fix.",
-			                  psLogDef->pszName, psLogDef->eSFId, ui32Count - 1));
+			PVR_DUMPDEBUG_LOG("Integrity Check FAIL: %s id %x is not unique, there are %d more. Please fix.",
+			                  psLogDef->pszName, psLogDef->eSFId, ui32Count - 1);
 		}
 
 		/* Move to the next log ID... */
@@ -3065,7 +3111,8 @@ static IMG_BOOL _FirmwareTraceIntegrityCheck(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebug
 }
 
 void RGXDumpFirmwareTrace(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
-						  PVRSRV_RGXDEV_INFO  *psDevInfo)
+				void *pvDumpDebugFile,
+				PVRSRV_RGXDEV_INFO  *psDevInfo)
 {
 	RGXFWIF_TRACEBUF  *psRGXFWIfTraceBufCtl = psDevInfo->psRGXFWIfTraceBuf;
 	static IMG_BOOL   bIntegrityCheckPassed = IMG_FALSE;
@@ -3073,7 +3120,7 @@ void RGXDumpFirmwareTrace(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 	/* Check that the firmware trace is correctly defined... */
 	if (!bIntegrityCheckPassed)
 	{
-		bIntegrityCheckPassed = _FirmwareTraceIntegrityCheck(pfnDumpDebugPrintf);
+		bIntegrityCheckPassed = _FirmwareTraceIntegrityCheck(pfnDumpDebugPrintf, pvDumpDebugFile);
 		if (!bIntegrityCheckPassed)
 		{
 			return;
@@ -3085,22 +3132,22 @@ void RGXDumpFirmwareTrace(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 	{
 		IMG_CHAR    szBuffer[PVR_MAX_DEBUG_MESSAGE_LEN];
 		IMG_UINT32  tid;
-		
+
 		/* Print the log type settings... */
 		if (psRGXFWIfTraceBufCtl->ui32LogType & RGXFWIF_LOG_TYPE_GROUP_MASK)
 		{
-			PVR_DUMPDEBUG_LOG(("Debug log type: %s ( " RGXFWIF_LOG_ENABLED_GROUPS_LIST_PFSPEC ")",
+			PVR_DUMPDEBUG_LOG("Debug log type: %s ( " RGXFWIF_LOG_ENABLED_GROUPS_LIST_PFSPEC ")",
 							  ((psRGXFWIfTraceBufCtl->ui32LogType & RGXFWIF_LOG_TYPE_TRACE)?("trace"):("tbi")),
 							  RGXFWIF_LOG_ENABLED_GROUPS_LIST(psRGXFWIfTraceBufCtl->ui32LogType)
-							  ));
+							  );
 		}
 		else
 		{
-			PVR_DUMPDEBUG_LOG(("Debug log type: none"));
+			PVR_DUMPDEBUG_LOG("Debug log type: none");
 		}
 
 		/* Print the decoded log for each thread... */
-		for (tid = 0;  tid < RGXFW_THREAD_NUM;  tid++) 
+		for (tid = 0;  tid < RGXFW_THREAD_NUM;  tid++)
 		{
 			IMG_UINT32  *pui32TraceBuf = psRGXFWIfTraceBufCtl->sTraceBuf[tid].pui32TraceBuffer;
 			IMG_UINT32  ui32TracePtr  = psRGXFWIfTraceBufCtl->sTraceBuf[tid].ui32TracePointer;
@@ -3111,21 +3158,21 @@ void RGXDumpFirmwareTrace(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 				/* trace buffer not yet allocated */
 				continue;
 			}
-			
+
 			while (ui32Count < RGXFW_TRACE_BUFFER_SIZE)
 			{
 				IMG_UINT32  ui32Data, ui32DataToId;
-				
+
 				/* Find the first valid log ID, skipping whitespace... */
 				do
 				{
 					ui32Data     = pui32TraceBuf[ui32TracePtr];
 					ui32DataToId = idToStringID(ui32Data);
 
-					/* If an unrecognized id is found check if it is valid, if it is tracebuf needs updating. */ 
+					/* If an unrecognized id is found check if it is valid, if it is tracebuf needs updating. */
 					if (ui32DataToId == RGXFW_SF_LAST  &&  RGXFW_LOG_VALIDID(ui32Data))
 					{
-						PVR_DUMPDEBUG_LOG(("ERROR: Unrecognized id (%x). From here on the trace might be wrong!", ui32Data));
+						PVR_DUMPDEBUG_LOG("ERROR: Unrecognized id (%x). From here on the trace might be wrong!", ui32Data);
 						return;
 					}
 
@@ -3138,14 +3185,14 @@ void RGXDumpFirmwareTrace(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 				if (ui32Count < RGXFW_TRACE_BUFFER_SIZE)
 				{
 					IMG_UINT64  ui64Timestamp;
-					
+
 					/* If we hit the ASSERT message then this is the end of the log... */
 					if (ui32Data == RGXFW_SF_MAIN_ASSERT_FAILED)
 					{
-						PVR_DUMPDEBUG_LOG(("ASSERTION %s failed at %s:%u",
+						PVR_DUMPDEBUG_LOG("ASSERTION %s failed at %s:%u",
 										  psRGXFWIfTraceBufCtl->sTraceBuf[tid].sAssertBuf.szInfo,
 										  psRGXFWIfTraceBufCtl->sTraceBuf[tid].sAssertBuf.szPath,
-										  psRGXFWIfTraceBufCtl->sTraceBuf[tid].sAssertBuf.ui32LineNum));
+										  psRGXFWIfTraceBufCtl->sTraceBuf[tid].sAssertBuf.ui32LineNum);
 						break;
 					}
 
@@ -3159,7 +3206,7 @@ void RGXDumpFirmwareTrace(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 					szBuffer[OSStringLength(szBuffer)-1] = '\0';
 					ui64Timestamp = (IMG_UINT64)(pui32TraceBuf[(ui32TracePtr +  0) % RGXFW_TRACE_BUFFER_SIZE]) << 32 |
 					               (IMG_UINT64)(pui32TraceBuf[(ui32TracePtr +  1) % RGXFW_TRACE_BUFFER_SIZE]);
-					PVR_DUMPDEBUG_LOG((szBuffer, ui64Timestamp, tid, groups[RGXFW_SF_GID(ui32Data)],
+					PVR_DUMPDEBUG_LOG(szBuffer, ui64Timestamp, tid, groups[RGXFW_SF_GID(ui32Data)],
 									  pui32TraceBuf[(ui32TracePtr +  2) % RGXFW_TRACE_BUFFER_SIZE],
 									  pui32TraceBuf[(ui32TracePtr +  3) % RGXFW_TRACE_BUFFER_SIZE],
 									  pui32TraceBuf[(ui32TracePtr +  4) % RGXFW_TRACE_BUFFER_SIZE],
@@ -3179,7 +3226,7 @@ void RGXDumpFirmwareTrace(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 									  pui32TraceBuf[(ui32TracePtr + 18) % RGXFW_TRACE_BUFFER_SIZE],
 									  pui32TraceBuf[(ui32TracePtr + 19) % RGXFW_TRACE_BUFFER_SIZE],
 									  pui32TraceBuf[(ui32TracePtr + 20) % RGXFW_TRACE_BUFFER_SIZE],
-									  pui32TraceBuf[(ui32TracePtr + 21) % RGXFW_TRACE_BUFFER_SIZE]));
+									  pui32TraceBuf[(ui32TracePtr + 21) % RGXFW_TRACE_BUFFER_SIZE]);
 
 					/* Update the trace pointer... */
 					ui32TracePtr = (ui32TracePtr + 2 + RGXFW_SF_PARAMNUM(ui32Data)) % RGXFW_TRACE_BUFFER_SIZE;
@@ -3204,8 +3251,9 @@ static IMG_CHAR* _RGXGetDebugDevPowerStateString(PVRSRV_DEV_POWER_STATE ePowerSt
 #endif
 
 void RGXDebugRequestProcess(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
-							PVRSRV_RGXDEV_INFO	*psDevInfo,
-							IMG_UINT32			ui32VerbLevel)
+				void *pvDumpDebugFile,
+				PVRSRV_RGXDEV_INFO *psDevInfo,
+				IMG_UINT32 ui32VerbLevel)
 {
 	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
 
@@ -3242,50 +3290,50 @@ void RGXDebugRequestProcess(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 			bRGXPoweredON = (ePowerState == PVRSRV_DEV_POWER_STATE_ON);
 			if(psPVRSRVData->sDriverInfo.bIsNoMatch)
 			{
-				PVR_DUMPDEBUG_LOG(("------[ Driver Info ]------"));
+				PVR_DUMPDEBUG_LOG("------[ Driver Info ]------");
 				PVR_DUMP_DRIVER_INFO("UM", psPVRSRVData->sDriverInfo.sUMBuildInfo);
 				PVR_DUMP_DRIVER_INFO("KM", psPVRSRVData->sDriverInfo.sKMBuildInfo);
 			}
 
-			PVR_DUMPDEBUG_LOG(("------[ RGX summary ]------"));
-			PVR_DUMPDEBUG_LOG(("RGX BVNC: %s", RGX_BVNC_KM));
-			PVR_DUMPDEBUG_LOG(("RGX Power State: %s", _RGXGetDebugDevPowerStateString(ePowerState)));
+			PVR_DUMPDEBUG_LOG("------[ RGX summary ]------");
+			PVR_DUMPDEBUG_LOG("RGX BVNC: %s", RGX_BVNC_KM);
+			PVR_DUMPDEBUG_LOG("RGX Power State: %s", _RGXGetDebugDevPowerStateString(ePowerState));
 
-			_RGXDumpRGXDebugSummary(pfnDumpDebugPrintf, psDevInfo, bRGXPoweredON);
+			_RGXDumpRGXDebugSummary(pfnDumpDebugPrintf, pvDumpDebugFile, psDevInfo, bRGXPoweredON);
 
 			if (bRGXPoweredON)
 			{
 
-				PVR_DUMPDEBUG_LOG(("------[ RGX registers ]------"));
-				PVR_DUMPDEBUG_LOG(("RGX Register Base Address (Linear):   0x%p", psDevInfo->pvRegsBaseKM));
-				PVR_DUMPDEBUG_LOG(("RGX Register Base Address (Physical): 0x%08lX", (unsigned long)psDevInfo->sRegsPhysBase.uiAddr));
+				PVR_DUMPDEBUG_LOG("------[ RGX registers ]------");
+				PVR_DUMPDEBUG_LOG("RGX Register Base Address (Linear):   0x%p", psDevInfo->pvRegsBaseKM);
+				PVR_DUMPDEBUG_LOG("RGX Register Base Address (Physical): 0x%08lX", (unsigned long)psDevInfo->sRegsPhysBase.uiAddr);
 
 #if defined(RGX_FEATURE_META)
 				/* Forcing bit 6 of MslvCtrl1 to 0 to avoid internal reg read going though the core */
 				OSWriteHWReg32(psDevInfo->pvRegsBaseKM, RGX_CR_META_SP_MSLVCTRL1, 0x0);
 #endif
 
-				eError = RGXRunScript(psDevInfo, psDevInfo->psScripts->asDbgCommands, RGX_MAX_DEBUG_COMMANDS, PDUMP_FLAGS_CONTINUOUS, pfnDumpDebugPrintf);
+				eError = RGXRunScript(psDevInfo, psDevInfo->psScripts->asDbgCommands, RGX_MAX_DEBUG_COMMANDS, PDUMP_FLAGS_CONTINUOUS, pfnDumpDebugPrintf, pvDumpDebugFile);
 #if defined(RGX_FEATURE_MIPS) && !defined(NO_HARDWARE)
 				{
 					RGX_MIPS_STATE sMIPSState;
 					PVRSRV_ERROR eError;
 					OSMemSet((void *)&sMIPSState, 0x00, sizeof(RGX_MIPS_STATE));
 					eError = _RGXMipsExtraDebug(psDevInfo, psDevInfo->psDeviceNode->psDevConfig, &sMIPSState);
-					PVR_DUMPDEBUG_LOG(("---- [ MIPS internal state ] ----"));
+					PVR_DUMPDEBUG_LOG("---- [ MIPS internal state ] ----");
 					if (eError != PVRSRV_OK)
 					{
-						PVR_DUMPDEBUG_LOG(("MIPS extra debug not available"));
+						PVR_DUMPDEBUG_LOG("MIPS extra debug not available");
 					}
 					else
 					{
-						PVR_DUMPDEBUG_LOG(("PC                      :0x%08X", sMIPSState.ui32ErrorEPC));
-						PVR_DUMPDEBUG_LOG(("STATUS_REGISTER         :0x%08X", sMIPSState.ui32StatusRegister));
-						PVR_DUMPDEBUG_LOG(("CAUSE_REGISTER          :0x%08X", sMIPSState.ui32CauseRegister));
-						PVR_DUMPDEBUG_LOG(("BAD_REGISTER            :0x%08X", sMIPSState.ui32BadRegister));
-						PVR_DUMPDEBUG_LOG(("EPC                     :0x%08X", sMIPSState.ui32EPC));
+						PVR_DUMPDEBUG_LOG("PC                      :0x%08X", sMIPSState.ui32ErrorEPC);
+						PVR_DUMPDEBUG_LOG("STATUS_REGISTER         :0x%08X", sMIPSState.ui32StatusRegister);
+						PVR_DUMPDEBUG_LOG("CAUSE_REGISTER          :0x%08X", sMIPSState.ui32CauseRegister);
+						PVR_DUMPDEBUG_LOG("BAD_REGISTER            :0x%08X", sMIPSState.ui32BadRegister);
+						PVR_DUMPDEBUG_LOG("EPC                     :0x%08X", sMIPSState.ui32EPC);
 					}
-					PVR_DUMPDEBUG_LOG(("--------------------------------"));
+					PVR_DUMPDEBUG_LOG("--------------------------------");
 				}
 #endif
 				if (eError != PVRSRV_OK)
@@ -3293,13 +3341,13 @@ void RGXDebugRequestProcess(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 					PVR_DPF((PVR_DBG_ERROR,"RGXDebugRequestProcess: RGXRunScript failed (%d)", eError));
 #if defined(RGX_FEATURE_META)
 					PVR_DPF((PVR_DBG_ERROR,"Dump Slave Port debug information"));
-					_RGXDumpMetaSPExtraDebugInfo(pfnDumpDebugPrintf, psDevInfo);
+					_RGXDumpMetaSPExtraDebugInfo(pfnDumpDebugPrintf, pvDumpDebugFile, psDevInfo);
 #endif
 				}
 			}
 			else
 			{
-				PVR_DUMPDEBUG_LOG((" (!) RGX power is down. No registers dumped"));
+				PVR_DUMPDEBUG_LOG(" (!) RGX power is down. No registers dumped");
 			}
 
 			/* Dump out the kernel CCB. */
@@ -3308,9 +3356,9 @@ void RGXDebugRequestProcess(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 
 				if (psKCCBCtl != NULL)
 				{
-					PVR_DUMPDEBUG_LOG(("RGX Kernel CCB WO:0x%X RO:0x%X",
+					PVR_DUMPDEBUG_LOG("RGX Kernel CCB WO:0x%X RO:0x%X",
 					                  psKCCBCtl->ui32WriteOffset,
-					                  psKCCBCtl->ui32ReadOffset));
+					                  psKCCBCtl->ui32ReadOffset);
 				}
 			}
 
@@ -3320,23 +3368,23 @@ void RGXDebugRequestProcess(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 
 				if (psFCCBCtl != NULL)
 				{
-					PVR_DUMPDEBUG_LOG(("RGX Firmware CCB WO:0x%X RO:0x%X",
+					PVR_DUMPDEBUG_LOG("RGX Firmware CCB WO:0x%X RO:0x%X",
 					                   psFCCBCtl->ui32WriteOffset,
-					                   psFCCBCtl->ui32ReadOffset));
+					                   psFCCBCtl->ui32ReadOffset);
 				}
 			}
 
 			/* Dump the KCCB commands executed */
 			{
-				PVR_DUMPDEBUG_LOG(("RGX Kernel CCB commands executed = %d",
-				                  psDevInfo->psRGXFWIfTraceBuf->ui32KCCBCmdsExecuted));
+				PVR_DUMPDEBUG_LOG("RGX Kernel CCB commands executed = %d",
+				                  psDevInfo->psRGXFWIfTraceBuf->ui32KCCBCmdsExecuted);
 			}
 
 			/* Dump the IRQ info */
 			{
-				PVR_DUMPDEBUG_LOG(("RGX FW IRQ count = %d, last sampled in LISR = %d",
+				PVR_DUMPDEBUG_LOG("RGX FW IRQ count = %d, last sampled in LISR = %d",
 				                  psDevInfo->psRGXFWIfTraceBuf->ui32InterruptCount,
-				                  g_ui32HostSampleIRQCount));
+				                  g_ui32HostSampleIRQCount);
 			}
 
 			/* Dump the FW config flags */
@@ -3353,7 +3401,7 @@ void RGXDebugRequestProcess(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 					goto Exit;
 				}
 
-				PVR_DUMPDEBUG_LOG(("RGX FW config flags = 0x%X", psRGXFWInit->ui32ConfigFlags));
+				PVR_DUMPDEBUG_LOG("RGX FW config flags = 0x%X", psRGXFWInit->ui32ConfigFlags);
 
 				DevmemReleaseCpuVirtAddr(psDevInfo->psRGXFWIfInitMemDesc);
 			}
@@ -3368,8 +3416,8 @@ void RGXDebugRequestProcess(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 			if (psDevInfo->psRGXFWIfTraceBuf != NULL)
 			{
 				RGXFWIF_TRACEBUF *psRGXFWIfTraceBufCtl = psDevInfo->psRGXFWIfTraceBuf;
-		
-				for ( tid = 0 ; tid < RGXFW_THREAD_NUM ; tid++) 
+
+				for ( tid = 0 ; tid < RGXFW_THREAD_NUM ; tid++)
 				{
 					IMG_UINT32	i;
 					IMG_BOOL	bPrevLineWasZero = IMG_FALSE;
@@ -3380,22 +3428,22 @@ void RGXDebugRequestProcess(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 
 					if (psRGXFWIfTraceBufCtl->ui32LogType & RGXFWIF_LOG_TYPE_GROUP_MASK)
 					{
-						PVR_DUMPDEBUG_LOG(("Debug log type: %s ( " RGXFWIF_LOG_ENABLED_GROUPS_LIST_PFSPEC ")",
+						PVR_DUMPDEBUG_LOG("Debug log type: %s ( " RGXFWIF_LOG_ENABLED_GROUPS_LIST_PFSPEC ")",
 						                  ((psRGXFWIfTraceBufCtl->ui32LogType & RGXFWIF_LOG_TYPE_TRACE)?("trace"):("tbi")),
 						                  RGXFWIF_LOG_ENABLED_GROUPS_LIST(psRGXFWIfTraceBufCtl->ui32LogType)
-						                  ));
+						                  );
 					}
 					else
 					{
-						PVR_DUMPDEBUG_LOG(("Debug log type: none"));
+						PVR_DUMPDEBUG_LOG("Debug log type: none");
 					}
 
 					pui32TraceBuffer = psRGXFWIfTraceBufCtl->sTraceBuf[tid].pui32TraceBuffer;
-					
+
 					/* Skip if trace buffer is not allocated */
 					if (pui32TraceBuffer == 0x0)
 					{
-						PVR_DUMPDEBUG_LOG(("RGX FW thread %d: Trace buffer not yet allocated",tid));
+						PVR_DUMPDEBUG_LOG("RGX FW thread %d: Trace buffer not yet allocated",tid);
 						continue;
 					}
 
@@ -3406,10 +3454,10 @@ void RGXDebugRequestProcess(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 						PVR_DPF((PVR_DBG_ERROR,"RGXDebugRequestProcess: Out of mem allocating line string (size: %d)", 9*RGXFW_TRACE_BUFFER_LINESIZE));
 						goto Exit;
 					}
-										
-					PVR_DUMPDEBUG_LOG(("------[ RGX FW thread %d trace START ]------", tid));
-					PVR_DUMPDEBUG_LOG(("FWT[traceptr]: %X", psRGXFWIfTraceBufCtl->sTraceBuf[tid].ui32TracePointer));
-					PVR_DUMPDEBUG_LOG(("FWT[tracebufsize]: %X", RGXFW_TRACE_BUFFER_SIZE));
+
+					PVR_DUMPDEBUG_LOG("------[ RGX FW thread %d trace START ]------", tid);
+					PVR_DUMPDEBUG_LOG("FWT[traceptr]: %X", psRGXFWIfTraceBufCtl->sTraceBuf[tid].ui32TracePointer);
+					PVR_DUMPDEBUG_LOG("FWT[tracebufsize]: %X", RGXFW_TRACE_BUFFER_SIZE);
 		
 					for (i = 0; i < RGXFW_TRACE_BUFFER_SIZE; i += RGXFW_TRACE_BUFFER_LINESIZE)
 					{
@@ -3439,27 +3487,27 @@ void RGXDebugRequestProcess(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 							{
 								bPrevLineWasZero = IMG_TRUE;
 								ui32CountLines = 1;
-								PVR_DUMPDEBUG_LOG(("FWT[%08x]: 00000000 ... 00000000", ui32LineOffset));
+								PVR_DUMPDEBUG_LOG("FWT[%08x]: 00000000 ... 00000000", ui32LineOffset);
 							}
 						}
 						else
 						{
 							if (bPrevLineWasZero  &&  ui32CountLines > 1)
 							{
-								PVR_DUMPDEBUG_LOG(("FWT[...]: %d lines were all zero", ui32CountLines));
+								PVR_DUMPDEBUG_LOG("FWT[...]: %d lines were all zero", ui32CountLines);
 							}
 							bPrevLineWasZero = IMG_FALSE;
 
-							PVR_DUMPDEBUG_LOG(("FWT[%08x]:%s", ui32LineOffset, pszLine));
+							PVR_DUMPDEBUG_LOG("FWT[%08x]:%s", ui32LineOffset, pszLine);
 						}
 		
 					}
 					if (bPrevLineWasZero)
 					{
-						PVR_DUMPDEBUG_LOG(("FWT[END]: %d lines were all zero", ui32CountLines));
+						PVR_DUMPDEBUG_LOG("FWT[END]: %d lines were all zero", ui32CountLines);
 					}
 		
-					PVR_DUMPDEBUG_LOG(("------[ RGX FW thread %d trace END ]------", tid));
+					PVR_DUMPDEBUG_LOG("------[ RGX FW thread %d trace END ]------", tid);
 		
 					OSFreeMem(pszLine);
 				}
@@ -3486,15 +3534,15 @@ void RGXDebugRequestProcess(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 						IMG_UINT32 ui32T1PCXWOff = psRGXFWIfTraceBufCtl->ui32T1PCXWOff;
 						IMG_UINT32 i = ui32T1PCXWOff;
 
-						PVR_DUMPDEBUG_LOG(("------[ FW Thread 1 PCX list (most recent first) ]------"));
+						PVR_DUMPDEBUG_LOG("------[ FW Thread 1 PCX list (most recent first) ]------");
 						do
 						{
-							PVR_DUMPDEBUG_LOG(("  0x%08x", pui32T1PCX[i]));
+							PVR_DUMPDEBUG_LOG("  0x%08x", pui32T1PCX[i]);
 							i = (i == 0) ? (RGXFWIF_MAX_PCX - 1) : (i - 1);
 
 						} while (i != ui32T1PCXWOff);
 
-						PVR_DUMPDEBUG_LOG(("------[ FW Thread 1 PCX list [END] ]------"));
+						PVR_DUMPDEBUG_LOG("------[ FW Thread 1 PCX list [END] ]------");
 					}
 
 					DevmemReleaseCpuVirtAddr(psDevInfo->psRGXFWIfInitMemDesc);
@@ -3504,17 +3552,17 @@ void RGXDebugRequestProcess(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 
 			{
 #if defined(PVRSRV_ENABLE_FULL_SYNC_TRACKING) || defined(PVRSRV_ENABLE_FULL_CCB_DUMP)
-				PVR_DUMPDEBUG_LOG(("------[ Full CCB Status ]------"));
+				PVR_DUMPDEBUG_LOG("------[ Full CCB Status ]------");
 #else
-				PVR_DUMPDEBUG_LOG(("------[ Stalled FWCtxs ]------"));
+				PVR_DUMPDEBUG_LOG("------[ Stalled FWCtxs ]------");
 #endif
-				CheckForStalledTransferCtxt(psDevInfo, pfnDumpDebugPrintf);
-				CheckForStalledRenderCtxt(psDevInfo, pfnDumpDebugPrintf);
+				CheckForStalledTransferCtxt(psDevInfo, pfnDumpDebugPrintf, pvDumpDebugFile);
+				CheckForStalledRenderCtxt(psDevInfo, pfnDumpDebugPrintf, pvDumpDebugFile);
 #if defined(RGX_FEATURE_COMPUTE)
-				CheckForStalledComputeCtxt(psDevInfo, pfnDumpDebugPrintf);
+				CheckForStalledComputeCtxt(psDevInfo, pfnDumpDebugPrintf, pvDumpDebugFile);
 #endif
 #if defined(RGX_FEATURE_RAY_TRACING)
-				CheckForStalledRayCtxt(psDevInfo, pfnDumpDebugPrintf);
+				CheckForStalledRayCtxt(psDevInfo, pfnDumpDebugPrintf, pvDumpDebugFile);
 #endif
 			}
 			break;
@@ -3537,13 +3585,13 @@ void RGXDebugRequestProcess(DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
 
 			bRGXPoweredON = (ePowerState == PVRSRV_DEV_POWER_STATE_ON);
 
-			PVR_DUMPDEBUG_LOG(("------[ Debug bus ]------"));
+			PVR_DUMPDEBUG_LOG("------[ Debug bus ]------");
 
-			_RGXDumpRGXDebugSummary(pfnDumpDebugPrintf, psDevInfo, bRGXPoweredON);
+			_RGXDumpRGXDebugSummary(pfnDumpDebugPrintf, pvDumpDebugFile, psDevInfo, bRGXPoweredON);
 
 			if (bRGXPoweredON)
 			{
-				eError = RGXRunScript(psDevInfo, psDevInfo->psScripts->asDbgBusCommands, RGX_MAX_DBGBUS_COMMANDS, PDUMP_FLAGS_CONTINUOUS, pfnDumpDebugPrintf);
+				eError = RGXRunScript(psDevInfo, psDevInfo->psScripts->asDbgBusCommands, RGX_MAX_DBGBUS_COMMANDS, PDUMP_FLAGS_CONTINUOUS, pfnDumpDebugPrintf, pvDumpDebugFile);
 				if (eError != PVRSRV_OK)
 				{
 					PVR_DPF((PVR_DBG_WARNING,"RGXDebugRequestProcess: RGXRunScript failed (%s)", PVRSRVGetErrorStringKM(eError)));
@@ -3566,7 +3614,7 @@ Exit:
 void RGXPanic(PVRSRV_RGXDEV_INFO	*psDevInfo)
 {
 	PVR_LOG(("RGX panic"));
-	PVRSRVDebugRequest(DEBUG_REQUEST_VERBOSITY_MAX, NULL);
+	PVRSRVDebugRequest(DEBUG_REQUEST_VERBOSITY_MAX, NULL, NULL);
 	OSPanic();
 }
 

@@ -143,7 +143,8 @@ PVRSRV_ERROR PVRSRVRGXSetTransferContextPriorityKM(CONNECTION_DATA *psConnection
 
 /* Debug - check if transfer context is waiting on a fence */
 void CheckForStalledTransferCtxt(PVRSRV_RGXDEV_INFO *psDevInfo,
-								 DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf);
+					DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+					void *pvDumpDebugFile);
 
 /* Debug/Watchdog - check if client transfer contexts are stalled */
 IMG_BOOL CheckForStalledClientTransferCtxt(PVRSRV_RGXDEV_INFO *psDevInfo);

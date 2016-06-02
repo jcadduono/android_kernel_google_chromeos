@@ -508,7 +508,11 @@ DEVMEM_MEMDESC *RGXGetFWMemDescFromMemoryContextHandle(IMG_HANDLE hPriv)
 	return psMMUContext->psFWMemContextMemDesc;
 }
 
-void RGXCheckFaultAddress(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_DEV_VIRTADDR *psDevVAddr, IMG_DEV_PHYADDR *psDevPAddr)
+void RGXCheckFaultAddress(PVRSRV_RGXDEV_INFO *psDevInfo,
+				IMG_DEV_VIRTADDR *psDevVAddr,
+				IMG_DEV_PHYADDR *psDevPAddr,
+				DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+				void *pvDumpDebugFile)
 {
 	IMG_DEV_PHYADDR sPCDevPAddr;
 	DLLIST_NODE *psNode, *psNext;
@@ -528,13 +532,12 @@ void RGXCheckFaultAddress(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_DEV_VIRTADDR *psDev
 
 		if (psDevPAddr->uiAddr == sPCDevPAddr.uiAddr)
 		{
-			DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf = g_pfnDumpDebugPrintf;
-
-			PVR_DUMPDEBUG_LOG(("Found memory context (PID = %d, %s)",
+			PVR_DUMPDEBUG_LOG("Found memory context (PID = %d, %s)",
 							   psServerMMUContext->uiPID,
-							   psServerMMUContext->szProcessName));
+							   psServerMMUContext->szProcessName);
 
-			MMU_CheckFaultAddress(psServerMMUContext->psMMUContext, psDevVAddr);
+			MMU_CheckFaultAddress(psServerMMUContext->psMMUContext, psDevVAddr,
+						pfnDumpDebugPrintf, pvDumpDebugFile);
 			break;
 		}
 	}
@@ -547,7 +550,8 @@ void RGXCheckFaultAddress(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_DEV_VIRTADDR *psDev
 
 	if (psDevPAddr->uiAddr == sPCDevPAddr.uiAddr)
 	{
-		MMU_CheckFaultAddress(psDevInfo->psKernelMMUCtx, psDevVAddr);
+		MMU_CheckFaultAddress(psDevInfo->psKernelMMUCtx, psDevVAddr,
+					pfnDumpDebugPrintf, pvDumpDebugFile);
 	}
 
 	OSWRLockReleaseRead(psDevInfo->hMemoryCtxListLock);

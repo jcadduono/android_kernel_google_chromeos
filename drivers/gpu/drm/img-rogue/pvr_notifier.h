@@ -1,8 +1,7 @@
-/*************************************************************************/ /*!
+/**************************************************************************/ /*!
 @File
-@Title          RGX memory context management
+@Title          PowerVR notifier interface
 @Copyright      Copyright (c) Imagination Technologies Ltd. All Rights Reserved
-@Description    Header for RGX memory context management
 @License        Dual MIT/GPLv2
 
 The contents of this file are subject to the MIT license as set out below.
@@ -39,58 +38,36 @@ PURPOSE AND NONINFRINGEMENT; AND (B) IN NO EVENT SHALL THE AUTHORS OR
 COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER LIABILITY, WHETHER
 IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
-*/ /**************************************************************************/
+*/ /***************************************************************************/
 
-#if !defined(__RGXMEM_H__)
-#define __RGXMEM_H__
+#if !defined(__PVR_NOTIFIER_H__)
+#define __PVR_NOTIFIER_H__
 
-#include "pvrsrv_error.h"
-#include "device.h"
-#include "mmu_common.h"
-#include "rgxdevice.h"
+#include "img_types.h"
+#include "pvr_debug.h"
 
-#define RGXMEM_SERVER_MMU_CONTEXT_MAX_NAME 40
+/*
+ * Macro used within debug dump functions to send output either to PVR_LOG or
+ * a custom function. The custom function should be stored as a function pointer
+ * in a local variable called 'pfnDumpDebugPrintf'. 'pvDumpDebugFile' is also
+ * required as a local variable to serve as a file identifier for the printf
+ * function if required.
+ */
+#define PVR_DUMPDEBUG_LOG(...)                                            \
+	do                                                                \
+	{                                                                 \
+		if (pfnDumpDebugPrintf)                                   \
+			pfnDumpDebugPrintf(pvDumpDebugFile, __VA_ARGS__); \
+		else                                                      \
+			PVR_LOG((__VA_ARGS__));                           \
+	} while(0)
 
-/* this PID denotes the firmware */
-#define RGXMEM_SERVER_PID_FIRMWARE 0xFFFFFFFF
+typedef IMG_HANDLE PVRSRV_DBGREQ_HANDLE;
+typedef void (DUMPDEBUG_PRINTF_FUNC)(void *pvDumpDebugFile,
+					const IMG_CHAR *pszFormat, ...);
+typedef void (*PFN_DBGREQ_NOTIFY)(PVRSRV_DBGREQ_HANDLE hDebugRequestHandle,
+					IMG_UINT32 ui32VerbLevel,
+					DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+					void *pvDumpDebugFile);
 
-typedef struct _RGXMEM_PROCESS_INFO_
-{
-	IMG_PID uiPID;
-	IMG_CHAR szProcessName[RGXMEM_SERVER_MMU_CONTEXT_MAX_NAME];
-	IMG_BOOL bUnregistered;
-} RGXMEM_PROCESS_INFO;
-
-void RGXMMUSyncPrimAlloc(PVRSRV_DEVICE_NODE *psDeviceNode);
-void RGXMMUSyncPrimFree(void);
-
-void RGXMMUCacheInvalidate(PVRSRV_DEVICE_NODE *psDeviceNode,
-						   IMG_HANDLE hDeviceData,
-						   MMU_LEVEL eMMULevel,
-						   IMG_BOOL bUnmap);
-
-PVRSRV_ERROR RGXSLCCacheInvalidateRequest(PVRSRV_DEVICE_NODE	*psDeviceNode,
-									PMR *psPmr);
-
-PVRSRV_ERROR RGXPreKickCacheCommand(PVRSRV_RGXDEV_INFO *psDevInfo, RGXFWIF_DM eDM);
-
-void RGXUnregisterMemoryContext(IMG_HANDLE hPrivData);
-PVRSRV_ERROR RGXRegisterMemoryContext(PVRSRV_DEVICE_NODE	*psDeviceNode,
-									  MMU_CONTEXT			*psMMUContext,
-									  IMG_HANDLE			*hPrivData);
-
-DEVMEM_MEMDESC *RGXGetFWMemDescFromMemoryContextHandle(IMG_HANDLE hPriv);
-
-void RGXCheckFaultAddress(PVRSRV_RGXDEV_INFO *psDevInfo,
-				IMG_DEV_VIRTADDR *psDevVAddr,
-				IMG_DEV_PHYADDR *psDevPAddr,
-				DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
-				void *pvDumpDebugFile);
-
-IMG_BOOL RGXPCAddrToProcessInfo(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_DEV_PHYADDR sPCAddress,
-								RGXMEM_PROCESS_INFO *psInfo);
-
-IMG_BOOL RGXPCPIDToProcessInfo(PVRSRV_RGXDEV_INFO *psDevInfo, IMG_PID uiPID,
-                                                                RGXMEM_PROCESS_INFO *psInfo);
-
-#endif /* __RGXMEM_H__ */
+#endif /* !defined(__PVR_NOTIFIER_H__) */

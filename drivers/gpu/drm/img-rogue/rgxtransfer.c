@@ -1054,7 +1054,8 @@ fail_2dcontext:
 }
 
 void CheckForStalledTransferCtxt(PVRSRV_RGXDEV_INFO *psDevInfo,
-								 DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf)
+					DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+					void *pvDumpDebugFile)
 {
 	DLLIST_NODE *psNode, *psNext;
 
@@ -1068,13 +1069,13 @@ void CheckForStalledTransferCtxt(PVRSRV_RGXDEV_INFO *psDevInfo,
 		if (psCurrentServerTransferCtx->ui32Flags & RGX_SERVER_TQ_CONTEXT_FLAGS_2D)
 		{
 			DumpStalledFWCommonContext(psCurrentServerTransferCtx->s2DData.psServerCommonContext,
-									   pfnDumpDebugPrintf);
+									   pfnDumpDebugPrintf, pvDumpDebugFile);
 		}
 
 		if (psCurrentServerTransferCtx->ui32Flags & RGX_SERVER_TQ_CONTEXT_FLAGS_3D)
 		{
 			DumpStalledFWCommonContext(psCurrentServerTransferCtx->s3DData.psServerCommonContext,
-									   pfnDumpDebugPrintf);
+									   pfnDumpDebugPrintf, pvDumpDebugFile);
 		}
 	}
 

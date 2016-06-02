@@ -513,7 +513,8 @@ PVRSRV_ERROR PVRSRVRGXGetLastComputeContextResetReasonKM(RGX_SERVER_COMPUTE_CONT
 }
 
 void CheckForStalledComputeCtxt(PVRSRV_RGXDEV_INFO *psDevInfo,
-								DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf)
+				DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+				void *pvDumpDebugFile)
 {
 	DLLIST_NODE *psNode, *psNext;
 	OSWRLockAcquireRead(psDevInfo->hComputeCtxListLock);
@@ -522,7 +523,7 @@ void CheckForStalledComputeCtxt(PVRSRV_RGXDEV_INFO *psDevInfo,
 		RGX_SERVER_COMPUTE_CONTEXT *psCurrentServerComputeCtx =
 			IMG_CONTAINER_OF(psNode, RGX_SERVER_COMPUTE_CONTEXT, sListNode);
 		DumpStalledFWCommonContext(psCurrentServerComputeCtx->psServerCommonContext,
-								   pfnDumpDebugPrintf);
+								   pfnDumpDebugPrintf, pvDumpDebugFile);
 	}
 	OSWRLockReleaseRead(psDevInfo->hComputeCtxListLock);
 }

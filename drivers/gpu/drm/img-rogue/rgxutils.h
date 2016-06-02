@@ -58,11 +58,12 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  @Return   PVRSRV_ERROR
 
 ******************************************************************************/
-PVRSRV_ERROR RGXRunScript(PVRSRV_RGXDEV_INFO	*psDevInfo,
-						 RGX_INIT_COMMAND	*psScript,
-						 IMG_UINT32			ui32NumCommands,
-						 IMG_UINT32				ui32PdumpFlags,
-						 DUMPDEBUG_PRINTF_FUNC  *pfnDumpDebugPrintf);
+PVRSRV_ERROR RGXRunScript(PVRSRV_RGXDEV_INFO *psDevInfo,
+				RGX_INIT_COMMAND *psScript,
+				IMG_UINT32 ui32NumCommands,
+				IMG_UINT32 ui32PdumpFlags,
+				DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+				void *pvDumpDebugFile);
 
 /******************************************************************************
  End of file (rgxutils.h)

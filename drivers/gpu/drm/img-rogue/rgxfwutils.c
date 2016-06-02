@@ -2700,7 +2700,7 @@ PVRSRV_ERROR RGXSendCommandWithPowLock(PVRSRV_RGXDEV_INFO 	*psDevInfo,
 #if defined(DEBUG)
 		/* PVRSRVDebugRequest must be called without powerlock */
 		PVRSRVPowerUnlock();
-		PVRSRVDebugRequest(DEBUG_REQUEST_VERBOSITY_MAX, NULL);
+		PVRSRVDebugRequest(DEBUG_REQUEST_VERBOSITY_MAX, NULL, NULL);
 		goto _PVRSRVPowerLock_Exit;
 #endif
 	}
@@ -3183,7 +3183,7 @@ void RGXCheckFirmwareCCB(PVRSRV_RGXDEV_INFO *psDevInfo)
 
 			case RGXFWIF_FWCCB_CMD_DEBUG_DUMP:
 			{
-				RGXDumpDebugInfo(NULL,psDevInfo);
+				RGXDumpDebugInfo(NULL,NULL,psDevInfo);
 				break;
 			}
 
@@ -3400,7 +3400,7 @@ PVRSRV_ERROR RGXWaitForFWOp(PVRSRV_RGXDEV_INFO	*psDevInfo,
 			PVR_DPF((PVR_DBG_ERROR,"RGXScheduleCommandAndWait: PVRSRVWaitForValueKMAndHoldBridgeLock timed out. Dump debug information."));
 			PVRSRVPowerUnlock();
 
-			PVRSRVDebugRequest(DEBUG_REQUEST_VERBOSITY_MAX,NULL);
+			PVRSRVDebugRequest(DEBUG_REQUEST_VERBOSITY_MAX,NULL,NULL);
 			PVR_ASSERT(eError != PVRSRV_ERROR_TIMEOUT);
 			goto _PVRSRVDebugRequest_Exit;
 		}
@@ -3508,7 +3508,7 @@ PVRSRV_ERROR RGXScheduleCleanupCommand(PVRSRV_RGXDEV_INFO 	*psDevInfo,
 
 			eError = PVRSRV_ERROR_RETRY;
 #if defined(DEBUG)
-			    PVRSRVDebugRequest(DEBUG_REQUEST_VERBOSITY_MAX,NULL);
+			PVRSRVDebugRequest(DEBUG_REQUEST_VERBOSITY_MAX,NULL,NULL);
 #endif
 			goto fail_poll;
 		}
@@ -4111,15 +4111,16 @@ PVRSRV_ERROR CheckStalledClientCommonContext(RGX_SERVER_COMMON_CONTEXT *psCurren
 }
 
 void DumpStalledFWCommonContext(RGX_SERVER_COMMON_CONTEXT *psCurrentServerCommonContext,
-								DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf)
+					DUMPDEBUG_PRINTF_FUNC *pfnDumpDebugPrintf,
+					void *pvDumpDebugFile)
 {
 	RGX_CLIENT_CCB 	*psCurrentClientCCB = psCurrentServerCommonContext->psClientCCB;
 	PRGXFWIF_FWCOMMONCONTEXT sFWCommonContext = psCurrentServerCommonContext->sFWCommonContextFWAddr;
 
 #if defined(PVRSRV_ENABLE_FULL_SYNC_TRACKING) || defined(PVRSRV_ENABLE_FULL_CCB_DUMP)
-	DumpCCB(sFWCommonContext, psCurrentClientCCB, pfnDumpDebugPrintf);
+	DumpCCB(sFWCommonContext, psCurrentClientCCB, pfnDumpDebugPrintf, pvDumpDebugFile);
 #else
-	DumpStalledCCBCommand(sFWCommonContext, psCurrentClientCCB, pfnDumpDebugPrintf);
+	DumpStalledCCBCommand(sFWCommonContext, psCurrentClientCCB, pfnDumpDebugPrintf, pvDumpDebugFile);
 #endif
 }
 
