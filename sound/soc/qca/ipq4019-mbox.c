@@ -398,8 +398,8 @@ int ipq4019_mbox_dma_prepare(int channel_id)
 }
 EXPORT_SYMBOL(ipq4019_mbox_dma_prepare);
 
-int ipq4019_mbox_form_ring(int channel_id, dma_addr_t baseaddr,
-				int period_bytes, int bufsize)
+int ipq4019_mbox_form_ring(int channel_id, dma_addr_t baseaddr, u8 *area,
+			   int period_bytes, int bufsize)
 {
 	struct ipq4019_mbox_desc *desc, *_desc_p;
 	dma_addr_t desc_p, baseaddr_const;
@@ -419,13 +419,8 @@ int ipq4019_mbox_form_ring(int channel_id, dma_addr_t baseaddr,
 	if (ndescs < MBOX_MIN_DESC_NUM)
 		ndescs *= MBOX_DESC_REPEAT_NUM;
 
-	desc = dma_alloc_coherent(mbox_cb->dev,
-				(ndescs * sizeof(struct ipq4019_mbox_desc)),
-				&desc_p, GFP_KERNEL);
-	if (!desc) {
-		pr_err("Mem alloc failed for MBOX DMA desc\n");
-		return -EINVAL;
-	}
+	desc = (struct ipq4019_mbox_desc *)(area + (ndescs * period_bytes));
+	desc_p = baseaddr + (ndescs * period_bytes);
 
 	memset(desc, 0, ndescs * sizeof(struct ipq4019_mbox_desc));
 
@@ -473,21 +468,13 @@ int ipq4019_mbox_dma_release(int channel_id)
 		ipq4019_mbox_intr_disable(mbox_rtime[chan]->mbox_reg_base,
 				(MBOX_INT_ENABLE_TX_DMA_COMPLETE |
 					MBOX_INT_ENABLE_RX_DMA_COMPLETE));
-		if (mbox_cb->dma_virt_head) {
-			/*
-			 * ALSA framework calls ipq4019_mbox_dma_stop() before
-			 * calling close API.
-			 */
-			dma_free_coherent(mbox_cb->dev,
-				(mbox_cb->ndescs *
-				sizeof(struct ipq4019_mbox_desc)),
-						mbox_cb->dma_virt_head,
-						mbox_cb->dma_phys_head);
+		/*
+		 * ALSA framework calls ipq4019_mbox_dma_stop() before
+		 * calling close API.
+		 */
+		mbox_cb->dma_virt_head = NULL;
 
-			mbox_cb->dma_virt_head = NULL;
-		}
-		clear_bit(CHN_STARTED,
-				&mbox_cb->status);
+		clear_bit(CHN_STARTED, &mbox_cb->status);
 		return 0;
 	}
 
