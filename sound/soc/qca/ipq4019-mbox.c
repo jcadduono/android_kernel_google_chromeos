@@ -446,7 +446,7 @@ int ipq4019_mbox_form_ring(int channel_id, dma_addr_t baseaddr,
 		desc->NextPtr = (unsigned long)&_desc_p[(i + 1) % ndescs];
 		desc->size = period_bytes;
 		desc->length = desc->size;
-		baseaddr += period_bytes;
+		baseaddr += ALIGN(period_bytes, L1_CACHE_BYTES);
 		if (baseaddr >= (baseaddr_const + bufsize)) {
 			if (bufsize % period_bytes)
 				desc->size = bufsize % period_bytes;
