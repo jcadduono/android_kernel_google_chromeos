@@ -81,7 +81,7 @@ void mtk_vdec_lock(struct mtk_vcodec_ctx *ctx);
 int mtk_vcodec_dec_queue_init(void *priv, struct vb2_queue *src_vq,
 			   struct vb2_queue *dst_vq);
 void mtk_vcodec_dec_set_default_params(struct mtk_vcodec_ctx *ctx);
-void mtk_vcodec_vdec_release(struct mtk_vcodec_ctx *ctx);
+void mtk_vcodec_dec_release(struct mtk_vcodec_ctx *ctx);
 int mtk_vcodec_dec_ctrls_setup(struct mtk_vcodec_ctx *ctx);
 
 

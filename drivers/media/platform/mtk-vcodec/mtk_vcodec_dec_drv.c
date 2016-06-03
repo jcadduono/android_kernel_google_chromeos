@@ -188,14 +188,20 @@ static int fops_vcodec_release(struct file *file)
 	mtk_v4l2_debug(0, "[%d] decoder", ctx->id);
 	mutex_lock(&dev->dev_mutex);
 
-	mtk_vcodec_vdec_release(ctx);
+	/*
+	 * Call v4l2_m2m_ctx_release before mtk_vcodec_dec_release. First, it
+	 * makes sure the worker thread is not running after vdec_if_deinit.
+	 * Second, the decoder will be flushed and all the buffers will be
+	 * returned in stop_streaming.
+	 */
+	v4l2_m2m_ctx_release(ctx->m2m_ctx);
+	mtk_vcodec_dec_release(ctx);
+
 	if (v4l2_fh_is_singular(&ctx->fh))
 		mtk_vcodec_dec_pw_off(&dev->pm);
-
 	v4l2_fh_del(&ctx->fh);
 	v4l2_fh_exit(&ctx->fh);
 	v4l2_ctrl_handler_free(&ctx->ctrl_hdl);
-	v4l2_m2m_ctx_release(ctx->m2m_ctx);
 
 	list_del_init(&ctx->list);
 	dev->num_instances--;

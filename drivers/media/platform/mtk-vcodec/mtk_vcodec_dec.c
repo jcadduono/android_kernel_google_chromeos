@@ -464,7 +464,7 @@ void mtk_vdec_lock(struct mtk_vcodec_ctx *ctx)
 	mutex_lock(&ctx->dev->dec_mutex);
 }
 
-void mtk_vcodec_vdec_release(struct mtk_vcodec_ctx *ctx)
+void mtk_vcodec_dec_release(struct mtk_vcodec_ctx *ctx)
 {
 	vdec_if_deinit(ctx);
 	ctx->state = MTK_STATE_FREE;
