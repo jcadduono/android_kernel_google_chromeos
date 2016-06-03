@@ -93,6 +93,8 @@ struct ipq4019_mbox_rt_dir_priv {
 	u32 channel_id;
 	u32 err_stats;
 	u32 last_played_is_null;
+	u32 write;
+	u32 read;
 };
 
 struct ipq4019_mbox_rt_priv {
@@ -120,9 +122,9 @@ int ipq4019_mbox_dma_release(int channel);
 int ipq4019_mbox_dma_init(struct device *dev, int channel_id,
 	irq_handler_t callback, void *private_data);
 void ipq4019_mbox_vuc_setup(int channel_id);
-u32 ipq4019_mbox_get_elapsed_size(u32 channel_id);
 u32 ipq4019_mbox_get_played_offset(u32 channel_id);
 int ipq4019_mbox_dma_deinit(u32 channel_id);
+void ipq4019_mbox_desc_own(u32 channel_id, int desc_no, int own);
 
 static inline u32 ipq4019_convert_id_to_channel(u32 id)
 {

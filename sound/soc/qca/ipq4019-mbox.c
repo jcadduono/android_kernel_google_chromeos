@@ -49,9 +49,48 @@ enum {
 
 static struct ipq4019_mbox_rt_priv *mbox_rtime[ADSS_MBOX_NR_CHANNELS];
 
-u32 ipq4019_mbox_get_elapsed_size(u32 channel_id)
+static struct ipq4019_mbox_desc *get_next(
+					struct ipq4019_mbox_rt_dir_priv *rtdir,
+					struct ipq4019_mbox_desc *desc)
+{
+	struct ipq4019_mbox_desc *end;
+
+	end = rtdir->dma_virt_head + rtdir->ndescs;
+
+	desc++;
+
+	if (desc >= end)
+		desc = rtdir->dma_virt_head;
+
+	return desc;
+}
+
+void ipq4019_mbox_desc_own(u32 channel_id, int desc_no, int own)
 {
 	struct ipq4019_mbox_desc *desc;
+	struct ipq4019_mbox_rt_dir_priv *rtdir;
+	u32 chan;
+	u32 dir;
+
+	chan = ipq4019_convert_id_to_channel(channel_id);
+	dir = ipq4019_convert_id_to_dir(channel_id);
+
+	rtdir = &mbox_rtime[chan]->dir_priv[dir];
+
+	desc = rtdir->dma_virt_head;
+	desc += desc_no;
+
+	rtdir->write = desc_no;
+
+	desc->OWN = own;
+	desc->ei = 1;
+}
+EXPORT_SYMBOL(ipq4019_mbox_desc_own);
+
+u32 ipq4019_mbox_get_played_offset(u32 channel_id)
+{
+	struct ipq4019_mbox_desc *desc, *write;
+	struct ipq4019_mbox_rt_dir_priv *rtdir;
 	unsigned int i, size_played = 0;
 	u32 chan;
 	u32 dir;
@@ -59,75 +98,28 @@ u32 ipq4019_mbox_get_elapsed_size(u32 channel_id)
 	chan = ipq4019_convert_id_to_channel(channel_id);
 	dir = ipq4019_convert_id_to_dir(channel_id);
 
-	desc = mbox_rtime[chan]->dir_priv[dir].dma_virt_head;
+	rtdir = &mbox_rtime[chan]->dir_priv[dir];
 
-	for (i = 0; i < mbox_rtime[chan]->dir_priv[dir].ndescs; i++) {
+	desc = rtdir->dma_virt_head;
+	write = &rtdir->dma_virt_head[rtdir->write];
+
+	desc += rtdir->read;
+
+	for (i = 0; i < rtdir->ndescs; i++) {
 		if (desc->OWN == 0) {
-			desc->OWN = 1;
-			desc->ei = 1;
-			size_played += desc->size;
+			size_played = desc->size;
+			rtdir->read = (rtdir->read + 1) % rtdir->ndescs;
+		} else {
+			break;
 		}
-		desc += 1;
+
+		if (desc != write)
+			break;
+
+		desc = get_next(rtdir, desc);
 	}
 
-	return size_played;
-}
-EXPORT_SYMBOL(ipq4019_mbox_get_elapsed_size);
-
-u32 ipq4019_mbox_get_played_offset(u32 channel_id)
-{
-	struct ipq4019_mbox_desc *desc, *prev, *last_played;
-	struct ipq4019_mbox_rt_dir_priv *mbox_cb;
-	unsigned int ndescs, i;
-	u32 chan;
-	u32 dir;
-	u32 desc_own;
-	u32 played_size;
-
-	chan = ipq4019_convert_id_to_channel(channel_id);
-	dir = ipq4019_convert_id_to_dir(channel_id);
-
-	if (!mbox_rtime[chan])
-		return 0;
-
-	mbox_cb = &mbox_rtime[chan]->dir_priv[dir];
-
-	ndescs = mbox_cb->ndescs;
-	played_size = 0;
-	last_played = NULL;
-
-	/* Point to the last desc */
-	prev = &mbox_cb->dma_virt_head[ndescs - 1];
-	desc_own = prev->OWN;
-
-	/* Point to the first desc */
-	desc = &mbox_cb->dma_virt_head[0];
-
-	for (i = 0; i < ndescs; i++) {
-		if (prev->OWN == 0) {
-			if (i == (ndescs - 1)) {
-				if (desc_own == 1)
-					last_played = desc;
-			} else if (desc->OWN == 1) {
-				last_played = desc;
-			}
-			prev->OWN = 1;
-			prev->ei = 1;
-		}
-		prev = desc;
-		desc += 1;
-	}
-
-	if (last_played) {
-		desc = &mbox_cb->dma_virt_head[0];
-		played_size = last_played->BufPtr - desc->BufPtr;
-	} else {
-		pr_debug("last played buf not found chan:%u dir:%u\n",
-				chan, dir);
-		mbox_cb->last_played_is_null++;
-	}
-
-	return played_size;
+	return size_played * rtdir->read;
 }
 EXPORT_SYMBOL(ipq4019_mbox_get_played_offset);
 
@@ -220,6 +212,7 @@ EXPORT_SYMBOL(ipq4019_mbox_dma_resume);
 int ipq4019_mbox_dma_stop(int channel_id, u32 delay_in_ms)
 {
 	void __iomem *mbox_reg;
+	struct ipq4019_mbox_rt_dir_priv *mbox_cb;
 	u32 chan, dir;
 
 	chan = ipq4019_convert_id_to_channel(channel_id);
@@ -252,6 +245,10 @@ int ipq4019_mbox_dma_stop(int channel_id, u32 delay_in_ms)
 	 *	______________________________________________________
 	 */
 	mdelay(delay_in_ms);
+
+	mbox_cb = &mbox_rtime[chan]->dir_priv[dir];
+	mbox_cb->read = 0;
+	mbox_cb->write = 0;
 
 	return 0;
 }
@@ -431,6 +428,9 @@ int ipq4019_mbox_form_ring(int channel_id, dma_addr_t baseaddr,
 	}
 
 	memset(desc, 0, ndescs * sizeof(struct ipq4019_mbox_desc));
+
+	mbox_cb->read = 0;
+	mbox_cb->write = 0;
 	mbox_cb->ndescs = ndescs;
 	mbox_cb->dma_virt_head = desc;
 	mbox_cb->dma_phys_head = desc_p;
@@ -439,8 +439,7 @@ int ipq4019_mbox_form_ring(int channel_id, dma_addr_t baseaddr,
 	baseaddr_const = baseaddr;
 
 	for (i = 0; i < ndescs; i++, desc++) {
-
-		desc->OWN = 1;
+		desc->OWN = (dir == CAPTURE);
 		desc->ei = 1;
 		desc->BufPtr = baseaddr & MBOX_DMA_MASK;
 		desc->NextPtr = (unsigned long)&_desc_p[(i + 1) % ndescs];

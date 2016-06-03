@@ -185,6 +185,7 @@ static int ipq4019_pcm_i2s_copy(struct snd_pcm_substream *substream, int chan,
 {
 	struct snd_dma_buffer *buf = &substream->dma_buffer;
 	struct snd_pcm_runtime *runtime = substream->runtime;
+	struct ipq4019_pcm_rt_priv *pcm_rtpriv = runtime->private_data;
 	char *hwbuf;
 	u32 offset, size;
 
@@ -208,6 +209,10 @@ static int ipq4019_pcm_i2s_copy(struct snd_pcm_substream *substream, int chan,
 		if (copy_to_user(ubuf, hwbuf, size))
 			return -EFAULT;
 	}
+
+	ipq4019_mbox_desc_own(pcm_rtpriv->channel, offset / size, 1);
+
+	ipq4019_mbox_dma_resume(pcm_rtpriv->channel);
 
 	return 0;
 }
@@ -241,9 +246,6 @@ static int ipq4019_pcm_i2s_prepare(struct snd_pcm_substream *substream)
 			pcm_rtpriv->channel, ret);
 		return ret;
 	}
-
-	/* Set the ownership bits */
-	ipq4019_mbox_get_elapsed_size(pcm_rtpriv->channel);
 
 	pcm_rtpriv->last_played = NULL;
 
