@@ -830,7 +830,6 @@ struct wmi_cmd_map {
 	u32 vdev_filter_neighbor_rx_packets_cmdid;
 	u32 mu_cal_start_cmdid;
 	u32 set_cca_params_cmdid;
-	u32 pdev_bss_chan_info_request_cmdid;
 	u32 pdev_enable_adaptive_cca_cmdid;
 	u32 ext_resource_cfg_cmdid;
 	u32 set_coex_param_cmdid;

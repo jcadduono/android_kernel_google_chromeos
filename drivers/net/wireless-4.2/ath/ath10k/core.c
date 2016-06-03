@@ -1805,6 +1805,9 @@ int ath10k_core_start(struct ath10k *ar, enum ath10k_firmware_mode mode)
 		if (ath10k_peer_stats_enabled(ar))
 			val = WMI_10_4_PEER_STATS;
 
+		if (test_bit(WMI_SERVICE_BSS_CHANNEL_INFO_64, ar->wmi.svc_map))
+			val |= WMI_10_4_BSS_CHANNEL_INFO_64;
+
 		/* QCA4019 device supports BT-Coex enablement knob via pdev param.
 		 * By default set COEX_GPIO config and disable coex functionality
 		 * via pdev param at driver start.

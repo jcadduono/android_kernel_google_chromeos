@@ -190,7 +190,6 @@ static struct wmi_cmd_map wmi_cmd_map = {
 	.vdev_filter_neighbor_rx_packets_cmdid = WMI_CMD_UNSUPPORTED,
 	.mu_cal_start_cmdid = WMI_CMD_UNSUPPORTED,
 	.set_cca_params_cmdid = WMI_CMD_UNSUPPORTED,
-	.pdev_bss_chan_info_request_cmdid = WMI_CMD_UNSUPPORTED,
 };
 
 /* 10.X WMI cmd track */
@@ -356,7 +355,6 @@ static struct wmi_cmd_map wmi_10x_cmd_map = {
 	.vdev_filter_neighbor_rx_packets_cmdid = WMI_CMD_UNSUPPORTED,
 	.mu_cal_start_cmdid = WMI_CMD_UNSUPPORTED,
 	.set_cca_params_cmdid = WMI_CMD_UNSUPPORTED,
-	.pdev_bss_chan_info_request_cmdid = WMI_CMD_UNSUPPORTED,
 };
 
 /* 10.2.4 WMI cmd track */
@@ -522,7 +520,6 @@ static struct wmi_cmd_map wmi_10_2_4_cmd_map = {
 	.vdev_filter_neighbor_rx_packets_cmdid = WMI_CMD_UNSUPPORTED,
 	.mu_cal_start_cmdid = WMI_CMD_UNSUPPORTED,
 	.set_cca_params_cmdid = WMI_CMD_UNSUPPORTED,
-	.pdev_bss_chan_info_request_cmdid = WMI_CMD_UNSUPPORTED,
 };
 
 /* 10.4 WMI cmd track */
@@ -704,7 +701,7 @@ static struct wmi_cmd_map wmi_10_4_cmd_map = {
 			WMI_10_4_VDEV_FILTER_NEIGHBOR_RX_PACKETS_CMDID,
 	.mu_cal_start_cmdid = WMI_10_4_MU_CAL_START_CMDID,
 	.set_cca_params_cmdid = WMI_10_4_SET_CCA_PARAMS_CMDID,
-	.pdev_bss_chan_info_request_cmdid =
+	.pdev_chan_survey_update_cmdid =
 			WMI_10_4_PDEV_BSS_CHAN_INFO_REQUEST_CMDID,
 	.ext_resource_cfg_cmdid = WMI_10_4_EXT_RESOURCE_CFG_CMDID,
 	.set_coex_param_cmdid = WMI_10_4_BTCOEX_CFG_CMDID,
@@ -5441,6 +5438,9 @@ static void ath10k_wmi_10_4_op_rx(struct ath10k *ar, struct sk_buff *skb)
 	case WMI_10_4_PDEV_TEMPERATURE_EVENTID:
 		ath10k_wmi_event_temperature(ar, skb);
 		break;
+	case WMI_10_4_PDEV_BSS_CHAN_INFO_EVENTID:
+		ath10k_wmi_event_chan_survey_update(ar, skb);
+		break;
 	default:
 		ath10k_warn(ar, "Unknown eventid: %d\n", id);
 		break;
@@ -8134,6 +8134,8 @@ static const struct wmi_ops wmi_10_4_ops = {
 	.gen_pdev_get_temperature = ath10k_wmi_10_2_op_gen_pdev_get_temperature,
 	.get_vdev_subtype = ath10k_wmi_10_4_op_get_vdev_subtype,
 	.gen_set_coex_param = ath10k_wmi_10_4_op_gen_set_coex_param,
+	.pull_chan_survey_update = ath10k_wmi_op_pull_chan_survey_update_ev,
+	.gen_chan_survey_send = ath10k_wmi_op_gen_chan_survey_send,
 };
 
 int ath10k_wmi_attach(struct ath10k *ar)
