@@ -317,6 +317,7 @@
 };
 
 &i2c3 {
+	clock-frequency = <400000>;
 	status = "okay";
 
 	touchscreen: touchscreen@10 {
