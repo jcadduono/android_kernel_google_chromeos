@@ -720,6 +720,12 @@ struct ieee80211_if_mesh {
 
 	u8 bitrate_avg_weight;
 	u8 path_switch_threshold;
+
+#if CONFIG_MAC80211_DEBUGFS
+	/* mpath debugfs structures */
+	spinlock_t path_debugfs_lock;
+	struct list_head *path_df_list;
+#endif
 };
 
 #ifdef CONFIG_MAC80211_MESH

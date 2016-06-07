@@ -1089,8 +1089,12 @@ static void ieee80211_teardown_sdata(struct ieee80211_sub_if_data *sdata)
 		__skb_queue_purge(&sdata->fragments[i].skb_list);
 	sdata->fragment_next = 0;
 
-	if (ieee80211_vif_is_mesh(&sdata->vif))
+	if (ieee80211_vif_is_mesh(&sdata->vif)) {
 		mesh_rmc_free(sdata);
+#if CONFIG_MAC80211_DEBUGFS
+		path_debugfs_free(sdata);
+#endif
+	}
 
 	idr_destroy(&sdata->ndev_sta_idr);
 }

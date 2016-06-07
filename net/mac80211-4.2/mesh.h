@@ -69,6 +69,7 @@ enum mesh_deferred_task_flags {
 	MESH_WORK_DRIFT_ADJUST,
 	MESH_WORK_MBSS_CHANGED,
 	MESH_WORK_MPATH_STATS,
+	MESH_WORK_UPDATE_PATH_DEBUGFS,
 };
 
 struct mpath_stats {
@@ -206,6 +207,13 @@ struct rmc_entry {
 struct mesh_rmc {
 	struct list_head bucket[RMC_BUCKETS];
 	u32 idx_mask;
+};
+
+struct path_debugfs_work {
+	struct list_head list;
+	bool add_entry;
+	u8 dst[ETH_ALEN];
+	struct dentry *dst_dir;
 };
 
 #define IEEE80211_MESH_HOUSEKEEPING_INTERVAL (60 * HZ)
@@ -346,6 +354,11 @@ void mesh_path_tx_pending(struct mesh_path *mpath);
 int mesh_pathtbl_init(void);
 void mesh_pathtbl_unregister(void);
 int mesh_path_del(struct ieee80211_sub_if_data *sdata, const u8 *addr);
+#if CONFIG_MAC80211_DEBUGFS
+void path_debugfs_free(struct ieee80211_sub_if_data *sdata);
+int path_debugfs_init(struct ieee80211_sub_if_data *sdata);
+void mesh_path_debugfs_work(struct ieee80211_sub_if_data *sdata);
+#endif
 void mesh_path_timer(unsigned long data);
 void mesh_path_flush_by_nexthop(struct sta_info *sta);
 void mesh_path_discard_frame(struct ieee80211_sub_if_data *sdata,

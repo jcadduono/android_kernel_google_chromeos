@@ -806,9 +806,11 @@ void mesh_path_debugfs_add(struct mesh_path *mpath)
 	MPATH_ADD(path_stats);
 }
 
-void mesh_path_debugfs_remove(struct mesh_path *mpath)
+void mesh_path_debugfs_remove(struct dentry *dst_dir)
 {
-	debugfs_remove_recursive(mpath->debugfs.dir);
-	mpath->debugfs.dir = NULL;
+	if (WARN_ON(!dst_dir))
+		return;
+
+	debugfs_remove_recursive(dst_dir);
 }
 #endif

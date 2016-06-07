@@ -1396,6 +1396,13 @@ void ieee80211_mesh_work(struct ieee80211_sub_if_data *sdata)
 
 	if (test_and_clear_bit(MESH_WORK_MBSS_CHANGED, &ifmsh->wrkq_flags))
 		mesh_bss_info_changed(sdata);
+
+#if CONFIG_MAC80211_DEBUGFS
+	if (test_and_clear_bit(MESH_WORK_UPDATE_PATH_DEBUGFS,
+			       &ifmsh->wrkq_flags))
+		mesh_path_debugfs_work(sdata);
+#endif
+
 out:
 	sdata_unlock(sdata);
 }
@@ -1448,4 +1455,48 @@ void ieee80211_mesh_init_sdata(struct ieee80211_sub_if_data *sdata)
 	RCU_INIT_POINTER(ifmsh->beacon, NULL);
 
 	sdata->vif.bss_conf.bssid = zero_addr;
+
+#if CONFIG_MAC80211_DEBUGFS
+	path_debugfs_init(sdata);
+#endif
 }
+
+#if CONFIG_MAC80211_DEBUGFS
+int path_debugfs_init(struct ieee80211_sub_if_data *sdata)
+{
+	spin_lock_init(&sdata->u.mesh.path_debugfs_lock);
+
+	sdata->u.mesh.path_df_list = kmalloc(
+			sizeof(*sdata->u.mesh.path_df_list), GFP_KERNEL);
+	if (!sdata->u.mesh.path_df_list)
+		return -ENOMEM;
+	INIT_LIST_HEAD(sdata->u.mesh.path_df_list);
+	return 0;
+}
+
+void path_debugfs_free(struct ieee80211_sub_if_data *sdata)
+{
+	struct list_head *path_df_list;
+	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
+	struct path_debugfs_work *p, *n;
+
+	spin_lock(&ifmsh->path_debugfs_lock);
+	path_df_list = ifmsh->path_df_list;
+
+	if (!path_df_list) {
+		spin_unlock(&ifmsh->path_debugfs_lock);
+		return;
+	}
+	ifmsh->path_df_list = NULL;
+	list_for_each_entry_safe(p, n, path_df_list, list) {
+		list_del_rcu(&p->list);
+		spin_unlock(&ifmsh->path_debugfs_lock);
+		synchronize_rcu();
+		kfree(p);
+		spin_lock(&ifmsh->path_debugfs_lock);
+	}
+	spin_unlock(&ifmsh->path_debugfs_lock);
+
+	kfree(path_df_list);
+}
+#endif
