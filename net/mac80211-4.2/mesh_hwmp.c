@@ -335,14 +335,20 @@ u32 airtime_link_metric_get(struct ieee80211_local *local,
 	int err;
 	u32 tx_time, estimated_retx;
 	u64 result;
-	u32 bitrate_avg = sta->mesh->bitrate_avg;
+	u32 bitrate_avg;
+	struct rate_info rinfo;
 
 	if (sta->mesh->fail_avg >= 100)
 		return MAX_METRIC;
 
-	if (WARN_ON(!sta->mesh->bitrate_avg))
-		return MAX_METRIC;
+	if (!sta->mesh->bitrate_avg) {
+		sta_set_rate_info_tx(sta, &sta->last_tx_rate, &rinfo);
+		sta->mesh->bitrate_avg = cfg80211_calculate_bitrate(&rinfo);
+		if (WARN_ON(!sta->mesh->bitrate_avg))
+			return MAX_METRIC;
+	}
 
+	bitrate_avg = sta->mesh->bitrate_avg;
 	err = (sta->mesh->fail_avg << ARITH_SHIFT) / 100;
 
 #ifdef CONFIG_MAC80211_DEBUGFS
