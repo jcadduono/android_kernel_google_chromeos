@@ -648,7 +648,7 @@ void ieee80211_rx_h_sta_stats(struct sta_info *sta, struct sk_buff *skb)
 
 	if (status->flag & RX_FLAG_HT) {
 		mcs_idx = status->rate_idx;
-		nss_idx = (mcs_idx >> 3) - 1;
+		nss_idx = mcs_idx >> 3;
 
 		if (status->rate_idx > IEEE80211_HT_MCS_NUM - 1 ||
 		    nss_idx > IEEE80211_NSS_NUM - 1)
