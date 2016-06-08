@@ -43,10 +43,10 @@ static int ec_major;
 static const struct attribute_group *cros_ec_groups[] = {
 	&cros_ec_attr_group,
 	&cros_ec_lightbar_attr_group,
-#ifdef CONFIG_MFD_CROS_EC_PD_UPDATE
+#if IS_ENABLED(CONFIG_MFD_CROS_EC_PD_UPDATE)
 	&cros_ec_pd_attr_group,
 #endif
-#ifdef CONFIG_CHARGER_CROS_USB_PD
+#if IS_ENABLED(CONFIG_CHARGER_CROS_USB_PD)
 	&cros_usb_pd_charger_attr_group,
 #endif
 	NULL,
@@ -388,7 +388,7 @@ static int cros_ec_check_features(struct cros_ec_dev *ec, int feature)
 
 static const struct mfd_cell cros_usb_pd_charger_devs[] = {
 	{
-		.name = "cros-usb-pd-charger",
+		.name = "cros_usbpd-charger",
 		.id   = -1,
 	},
 };
