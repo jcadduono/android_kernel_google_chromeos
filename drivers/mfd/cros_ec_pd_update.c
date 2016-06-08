@@ -755,6 +755,9 @@ static int cros_ec_pd_add(struct device *dev)
 	struct cros_ec_pd_update_data *drv_data;
 	int ret, i;
 
+	if (pd_ec == NULL)
+		return -EPROBE_DEFER;
+
 	drv_data =
 		devm_kzalloc(dev, sizeof(*drv_data), GFP_KERNEL);
 	if (!drv_data)
@@ -851,7 +854,8 @@ static umode_t cros_ec_pd_attrs_are_visible(struct kobject *kobj,
 				  &discovery_entry) == EC_RES_SUCCESS) {
 		/*
 		 * Save our ec pointer so we can conduct transactions.
-		 * TODO(shawnn): Find a better way to access the ec pointer.
+		 * TODO(crosbug.com/618393): Find a better way to access
+		 * the ec pointer.
 		 */
 		if (!pd_ec)
 			pd_ec = ec;
