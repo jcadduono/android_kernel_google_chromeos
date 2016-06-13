@@ -3232,14 +3232,17 @@ ath10k_mac_tx_h_get_txmode(struct ath10k *ar,
 	 * BSS connection or it can never disconnect from BSS/client (which is
 	 * the case).
 	 *
-	 * Firmware with HTT older than 3.0 delivers incorrect tx status for
+	 * Firmware with htt_op_version < 10.4 delivers incorrect tx status for
 	 * NullFunc frames to driver. However there's a HTT Mgmt Tx command
 	 * which seems to deliver correct tx reports for NullFunc frames. The
 	 * downside of using it is it ignores client powersave state so it can
 	 * end up disconnecting sleeping clients in AP mode. It should fix STA
-	 * mode though because AP don't sleep.
+	 * mode though because AP don't sleep. Though this workaround is needed
+	 * for older 10.1 we disable this workaround only for 10.4 as of now
+	 * to make sure we don't change the existing behaviour
 	 */
 	if (ar->htt.target_version_major < 3 &&
+	    ar->htt.op_version != ATH10K_FW_HTT_OP_VERSION_10_4 &&
 	    (ieee80211_is_nullfunc(fc) || ieee80211_is_qos_nullfunc(fc)) &&
 	    !test_bit(ATH10K_FW_FEATURE_HAS_WMI_MGMT_TX, ar->fw_features))
 		return ATH10K_HW_TXRX_MGMT;
