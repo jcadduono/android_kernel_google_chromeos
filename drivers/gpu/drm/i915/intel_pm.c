@@ -2988,7 +2988,8 @@ static unsigned int skl_cursor_allocation(int num_active)
 	if (num_active == 1)
 		return 32;
 
-	return 8;
+	/* higher than bspec recommendation (8) */
+	return 16;
 }
 
 static void skl_ddb_entry_init_from_hw(struct skl_ddb_entry *entry, u32 reg)
