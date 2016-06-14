@@ -489,6 +489,11 @@ static ssize_t mpath_path_stats_read(struct file *file,
 	rcu_read_lock();
 	pstats = mpath->pstats;
 
+	if (pstats.sample_size == 0) {
+		rcu_read_unlock();
+		return -EINVAL;
+	}
+
 	p += scnprintf(p, sizeof(buf)+buf-p, "avg queue depth: %d\n",
 			(u32) (pstats.aggr_qlen / pstats.sample_size));
 	p += scnprintf(p, sizeof(buf)+buf-p, "%% time non-empty queue: %d\n",
