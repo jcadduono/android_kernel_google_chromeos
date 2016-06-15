@@ -513,6 +513,10 @@
 			};
 		};
 
+		watchdog@b017000 {
+			status = "ok";
+		};
+
 		/* Enable Audio Interfaces */
 		adau7002: adau7002@0 {
 			compatible = "adi,adau7002";
