@@ -630,6 +630,12 @@ int mwifiex_ret_802_11_associate(struct mwifiex_private *priv,
 	bool enable_data = true;
 	u16 cap_info, status_code, aid;
 
+	if (!priv->attempted_bss_desc) {
+		mwifiex_dbg(priv->adapter, ERROR,
+			    "ASSOC_RESP: failed, association terminated by host\n");
+		goto done;
+	}
+
 	assoc_rsp = (struct ieee_types_assoc_rsp *) &resp->params;
 
 	cap_info = le16_to_cpu(assoc_rsp->cap_info_bitmap);
@@ -1230,6 +1236,12 @@ int mwifiex_ret_802_11_ad_hoc(struct mwifiex_private *priv,
 	struct host_cmd_ds_802_11_ad_hoc_result *adhoc_result;
 	struct mwifiex_bssdescriptor *bss_desc;
 	u16 reason_code;
+
+	if (!priv->attempted_bss_desc) {
+		mwifiex_dbg(priv->adapter, ERROR,
+			    "ADHOC_RESP: failed, association terminated by host\n");
+		goto done;
+	}
 
 	adhoc_result = &resp->params.adhoc_result;
 

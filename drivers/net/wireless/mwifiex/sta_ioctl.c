@@ -382,6 +382,10 @@ done:
 	if (bss_desc)
 		kfree(bss_desc->beacon_buf);
 	kfree(bss_desc);
+
+	if (ret < 0)
+		priv->attempted_bss_desc = NULL;
+
 	return ret;
 }
 
