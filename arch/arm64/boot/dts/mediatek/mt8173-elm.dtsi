@@ -135,6 +135,10 @@
 	/delete-node/rt5514_irq;
 };
 
+&ps8640_fixed_1v2 {
+	regulator-enable-ramp-delay = <2000>;
+};
+
 &rt5650 {
 	#sound-dai-cells = <1>;
 	realtek,dmic1-data-pin = <2>;
