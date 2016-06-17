@@ -187,8 +187,13 @@ static int ipq4019_audio_hw_params(struct snd_pcm_substream *substream,
 	bclk = rate * bit_act * channels;
 	mclk = bclk * MCLK_MULTI;
 
+	/*
+	 * Stereo config reset here will resets I2S buffers and state machine
+	 * and the configuration sequence to be in the below order.
+	 */
+	ipq4019_stereo_config_reset(stereo_id);
+	ipq4019_stereo_config_enable(DISABLE, stereo_id);
 	ipq4019_glb_clk_enable_oe(substream->stream);
-
 	ipq4019_config_master(ENABLE, stereo_id);
 
 	ret = ipq4019_cfg_bit_width(bit_width, stereo_id);
@@ -197,9 +202,6 @@ static int ipq4019_audio_hw_params(struct snd_pcm_substream *substream,
 		return ret;
 	}
 
-	ipq4019_stereo_config_enable(DISABLE, stereo_id);
-
-	ipq4019_stereo_config_reset(ENABLE, stereo_id);
 	ipq4019_stereo_config_mic_reset(ENABLE, stereo_id);
 
 	mdelay(5);
@@ -211,7 +213,6 @@ static int ipq4019_audio_hw_params(struct snd_pcm_substream *substream,
 		return ret;
 	}
 
-	ipq4019_stereo_config_reset(DISABLE, stereo_id);
 	ipq4019_stereo_config_mic_reset(DISABLE, stereo_id);
 	ipq4019_stereo_config_enable(ENABLE, stereo_id);
 
