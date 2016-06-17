@@ -18,8 +18,12 @@
  */
 
 #include <asm/unaligned.h>
+#ifdef CONFIG_ACPI
+#include <linux/acpi.h>
+#endif
 #include <linux/interrupt.h>
 #include <linux/slab.h>
+#include <linux/suspend.h>
 #include <linux/module.h>
 #include <linux/mfd/core.h>
 #include <linux/mfd/cros_ec.h>
@@ -31,6 +35,36 @@
 #include "cros_ec_dev.h"
 
 #define EC_COMMAND_RETRIES	50
+
+#ifdef CONFIG_ACPI
+#define GPE_LID_OPEN            0x70
+/*
+ * Installing a GPE handler to indicate to ACPI core
+ * that this GPE should stay enabled for lid to work in
+ * suspend to idle path
+ */
+
+static u32 cros_ec_gpe_handler(acpi_handle gpe_device,
+        u32 gpe_number, void *data)
+{
+	return ACPI_INTERRUPT_HANDLED | ACPI_REENABLE_GPE;
+}
+
+static int cros_ec_install_handler(struct device *dev)
+{
+	acpi_status status;
+
+	status = acpi_install_gpe_handler(NULL, GPE_LID_OPEN,
+				  ACPI_GPE_EDGE_TRIGGERED,
+				  &cros_ec_gpe_handler, NULL);
+	if (ACPI_FAILURE(status))
+		return -ENODEV;
+
+	dev_info(dev, "Initialized, GPE = 0x%x\n", GPE_LID_OPEN);
+
+	return 0;
+}
+#endif
 
 static int prepare_packet(struct cros_ec_device *ec_dev,
 			  struct cros_ec_command *msg)
@@ -134,6 +168,22 @@ static int send_command(struct cros_ec_device *ec_dev,
 	}
 
 	return ret;
+}
+
+static int cros_ec_sleep_event(struct cros_ec_device *ec_dev,
+	u8 sleep_event)
+{
+	struct ec_params_host_sleep_event req;
+	struct cros_ec_command msg;
+
+	memset(&msg, 0, sizeof(msg));
+	req.sleep_event = sleep_event;
+	msg.command = EC_CMD_HOST_SLEEP_EVENT;
+	msg.version = 0;
+	msg.outdata = (u8 *)&req;
+	msg.outsize = sizeof(req);
+
+	return cros_ec_cmd_xfer(ec_dev, &msg);
 }
 
 static int cros_ec_get_host_command_version_mask(struct cros_ec_device *ec_dev,
@@ -591,6 +641,9 @@ int cros_ec_register(struct cros_ec_device *ec_dev)
 
 	dev_info(dev, "Chrome EC device registered\n");
 
+#ifdef CONFIG_ACPI
+	cros_ec_install_handler(dev);
+#endif
 	return 0;
 
 fail_mfd:
@@ -612,6 +665,19 @@ EXPORT_SYMBOL(cros_ec_remove);
 int cros_ec_suspend(struct cros_ec_device *ec_dev)
 {
 	struct device *dev = ec_dev->dev;
+	int ret;
+
+	if (!pm_suspend_via_firmware()) {
+#ifdef CONFIG_ACPI
+		/* Clearing the GPE status for any pending event */
+		acpi_clear_gpe(NULL, GPE_LID_OPEN);
+#endif
+		ret = cros_ec_sleep_event(ec_dev, HOST_SLEEP_EVENT_S0IX_SUSPEND);
+		if (ret < 0) {
+			dev_err(ec_dev->dev, "error in S0ix host command to ec");
+			return ret;
+		}
+	}
 
 	if (device_may_wakeup(dev))
 		ec_dev->wake_enabled = !enable_irq_wake(ec_dev->irq);
@@ -633,8 +699,19 @@ static void cros_ec_drain_events(struct cros_ec_device *ec_dev)
 
 int cros_ec_resume(struct cros_ec_device *ec_dev)
 {
+	int ret;
+
 	ec_dev->suspended = false;
 	enable_irq(ec_dev->irq);
+
+	/* Sleep event from Host to EC */
+	if (!pm_suspend_via_firmware()) {
+		ret = cros_ec_sleep_event(ec_dev, HOST_SLEEP_EVENT_S0IX_RESUME);
+		if (ret < 0) {
+			dev_err(ec_dev->dev, "error in S0ix host command to ec");
+			return ret;
+		}
+	}
 
 	/*
 	 * In some case, we need to distinguish events that occur during

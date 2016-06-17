@@ -201,8 +201,6 @@ struct cros_ec_sensor_platform {
 	u8 sensor_num;
 };
 
-
-
 /**
  * cros_ec_suspend - Handle a suspend operation for the ChromeOS EC device
  *
