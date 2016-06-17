@@ -13531,6 +13531,7 @@ intel_check_primary_plane(struct drm_plane *plane,
 
 	return drm_plane_helper_check_update(plane, crtc, fb, &state->src,
 					     &state->dst, &state->clip,
+					     state->base.rotation,
 					     min_scale, max_scale,
 					     can_position, true,
 					     &state->visible);
@@ -13715,6 +13716,7 @@ intel_check_cursor_plane(struct drm_plane *plane,
 
 	ret = drm_plane_helper_check_update(plane, crtc, fb, &state->src,
 					    &state->dst, &state->clip,
+					    state->base.rotation,
 					    DRM_PLANE_HELPER_NO_SCALING,
 					    DRM_PLANE_HELPER_NO_SCALING,
 					    true, true, &state->visible);
