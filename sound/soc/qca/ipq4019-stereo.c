@@ -36,10 +36,11 @@ struct stereo_priv_data {
 static struct stereo_priv_data stereo_priv[MAX_STEREO_ENTRIES];
 
 /*
- *
- * Stereo buffers and I2S state reset
+ * Resets the stereo buffers and I2S state.
+ * This should be written to 1 when any of the data word sizes change or
+ * if data synchronization is lost. Hardware will automatically clear to 0
  */
-void ipq4019_stereo_config_reset(u32 reset, u32 stereo_id)
+void ipq4019_stereo_config_reset(u32 stereo_id)
 {
 	u32 cfg;
 	unsigned long flags;
@@ -47,11 +48,14 @@ void ipq4019_stereo_config_reset(u32 reset, u32 stereo_id)
 	spin_lock_irqsave(&stereo_priv[stereo_id].stereo_lock, flags);
 	cfg = readl(stereo_priv[stereo_id].stereo_base
 			+ ADSS_STEREOn_STEREO0_CONFIG_REG);
-	cfg &= ~STEREOn_CONFIG_RESET;
-	if (reset)
-		cfg |= STEREOn_CONFIG_RESET;
+	cfg |= STEREOn_CONFIG_RESET;
 	writel(cfg, stereo_priv[stereo_id].stereo_base
 			+ ADSS_STEREOn_STEREO0_CONFIG_REG);
+	/*
+	 * Wait for 1 AHB cycle for the hardware to clear the
+	 * STEREOn_CONFIG_RESET.
+	 */
+	udelay(1);
 	spin_unlock_irqrestore(&stereo_priv[stereo_id].stereo_lock, flags);
 }
 EXPORT_SYMBOL(ipq4019_stereo_config_reset);

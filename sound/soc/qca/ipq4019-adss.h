@@ -236,22 +236,20 @@ enum bit_width {
 
 /* ADSS APIs */
 extern void ipq4019_glb_audio_mode(int mode, int dir);
-extern void ipq4019_glb_tx_data_port_en(uint32_t enable);
-extern void ipq4019_glb_rx_data_port_en(uint32_t enable);
-extern void ipq4019_glb_tx_framesync_port_en(uint32_t enable);
-extern void ipq4019_glb_rx_framesync_port_en(uint32_t enable);
-extern void ipq4019_glb_clk_enable_oe(uint32_t dir);
+extern void ipq4019_glb_tx_data_port_en(u32 enable);
+extern void ipq4019_glb_rx_data_port_en(u32 enable);
+extern void ipq4019_glb_tx_framesync_port_en(u32 enable);
+extern void ipq4019_glb_rx_framesync_port_en(u32 enable);
+extern void ipq4019_glb_clk_enable_oe(u32 dir);
 /* Stereo APIs */
-extern void ipq4019_stereo_config_reset(uint32_t reset, uint32_t stereo_offset);
-extern void ipq4019_stereo_config_mic_reset(uint32_t reset,
-					uint32_t stereo_offset);
-extern void ipq4019_stereo_config_enable(uint32_t enable,
-					uint32_t stereo_offset);
-extern int ipq4019_cfg_bit_width(uint32_t bit_width, uint32_t stereo_offset);
-extern void ipq4019_config_stereo_mode(uint32_t mode, uint32_t stereo_offset);
-extern void ipq4019_config_master(uint32_t enable, uint32_t stereo_offset);
-extern void ipq4019_config_mclk_sel(uint32_t stereo_offset, uint32_t val);
-extern void ipq4019_config_sample_cnt_clear_type(uint32_t stereo_offset);
+extern void ipq4019_stereo_config_reset(u32 stereo_offset);
+extern void ipq4019_stereo_config_mic_reset(u32 reset, u32 stereo_offset);
+extern void ipq4019_stereo_config_enable(u32 enable, u32 stereo_offset);
+extern int ipq4019_cfg_bit_width(u32 bit_width, u32 stereo_offset);
+extern void ipq4019_config_stereo_mode(u32 mode, u32 stereo_offset);
+extern void ipq4019_config_master(u32 enable, u32 stereo_offset);
+extern void ipq4019_config_mclk_sel(u32 stereo_offset, u32 val);
+extern void ipq4019_config_sample_cnt_clear_type(u32 stereo_offset);
 
 /* APIs in DAI driver */
 extern int ipq4019_get_mbox_id(struct snd_pcm_substream *substream, int intf);
