@@ -41,14 +41,93 @@ static char ath10k_map_rate_code_number(u8 rate, u8 pream)
 	return i;
 }
 
+static void ath10k_fill_tx_bitrate(struct ieee80211_hw *hw,
+				   struct ieee80211_sta *sta,
+				   struct rate_info *txrate,
+				   u8 rate, u8 sgi, u8 success, u8 failed,
+				   u8 retries)
+{
+	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
+	struct ieee80211_chanctx_conf *conf = NULL;
+	struct ieee80211_tx_info info;
+
+	memset(&info, 0, sizeof(info));
+	info.status.rates[0].count = retries;
+	if (success && !failed)
+		info.flags = IEEE80211_TX_STAT_ACK;
+
+	switch (txrate->flags) {
+	case WMI_RATE_PREAMBLE_OFDM:
+		if (arsta->arvif && arsta->arvif->vif)
+			conf = rcu_dereference(arsta->arvif->vif->chanctx_conf);
+		if (conf && conf->def.chan->band == IEEE80211_BAND_5GHZ)
+			info.status.rates[0].idx = txrate->mcs - 4;
+		arsta->tx_stats.txrate.legacy = rate * 10;
+		break;
+	case WMI_RATE_PREAMBLE_CCK:
+		info.status.rates[0].idx = txrate->mcs;
+		if (rate == TX_CCK_RATE_5_5_MBPS)
+			arsta->tx_stats.txrate.legacy = rate * 10 + 50;
+		else
+			arsta->tx_stats.txrate.legacy = rate * 10;
+		if (sgi)
+			info.status.rates[0].flags |=
+				(IEEE80211_TX_RC_USE_SHORT_PREAMBLE |
+				 IEEE80211_TX_RC_SHORT_GI);
+		break;
+	case WMI_RATE_PREAMBLE_HT:
+		info.status.rates[0].idx =
+				txrate->mcs + ((txrate->nss - 1) * 8);
+		arsta->tx_stats.txrate.flags = RATE_INFO_FLAGS_MCS;
+		arsta->tx_stats.txrate.mcs = txrate->mcs;
+		if (sgi) {
+			arsta->tx_stats.txrate.flags |=
+				RATE_INFO_FLAGS_SHORT_GI;
+			info.status.rates[0].flags |= IEEE80211_TX_RC_SHORT_GI;
+		}
+		info.status.rates[0].flags |= IEEE80211_TX_RC_MCS;
+		arsta->tx_stats.txrate.nss = txrate->nss;
+		arsta->tx_stats.txrate.bw = txrate->bw + RATE_INFO_BW_20;
+		break;
+	case WMI_RATE_PREAMBLE_VHT:
+		ieee80211_rate_set_vht(&info.status.rates[0], txrate->mcs,
+				       txrate->nss);
+		arsta->tx_stats.txrate.flags = RATE_INFO_FLAGS_VHT_MCS;
+		arsta->tx_stats.txrate.mcs = txrate->mcs;
+		if (sgi) {
+			arsta->tx_stats.txrate.flags |=
+					RATE_INFO_FLAGS_SHORT_GI;
+			info.status.rates[0].flags |= IEEE80211_TX_RC_SHORT_GI;
+		}
+		info.status.rates[0].flags |= IEEE80211_TX_RC_VHT_MCS;
+		arsta->tx_stats.txrate.nss = txrate->nss;
+		arsta->tx_stats.txrate.bw = txrate->bw + RATE_INFO_BW_20;
+		break;
+	}
+
+	switch (arsta->tx_stats.txrate.bw) {
+	case RATE_INFO_BW_40:
+		info.status.rates[0].flags |= IEEE80211_TX_RC_40_MHZ_WIDTH;
+		break;
+	case RATE_INFO_BW_80:
+		info.status.rates[0].flags |= IEEE80211_TX_RC_80_MHZ_WIDTH;
+		break;
+	default:
+		break;
+	}
+	ieee80211_tx_status_noskb(hw, sta, &info);
+}
+
 void ath10k_update_peer_tx_stats(struct ath10k *ar,
-				 struct ath10k_sta *arsta,
+				 struct ieee80211_sta *sta,
 				 struct ath10k_per_peer_tx_stats *peer_stats)
 {
+	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
 	u8 pream, bw, mcs, nss, rate, pkts, gi;
 	int i, idx;
 	struct ath10k_tx_stats *tx_stats;
 	bool legacy_rate;
+	struct rate_info txrate;
 
 	spin_lock_bh(&ar->data_lock);
 	tx_stats = &arsta->tx_stats;
@@ -236,6 +315,16 @@ void ath10k_update_peer_tx_stats(struct ath10k *ar,
 				peer_stats->failed_pkts[i] +
 				peer_stats->retry_pkts[i]);
 		}
+
+		txrate.flags = pream;
+		txrate.mcs = mcs;
+		txrate.nss = nss + 1;
+		txrate.bw = bw;
+		ath10k_fill_tx_bitrate(ar->hw, sta, &txrate, rate, gi,
+				       peer_stats->success_pkts[i],
+				       peer_stats->failed_pkts[i],
+				       peer_stats->retry_pkts[i]);
+
 	}
 	tx_stats->tx_duration += __le32_to_cpu(peer_stats->tx_duration);
 	spin_unlock_bh(&ar->data_lock);

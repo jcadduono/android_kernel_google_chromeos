@@ -2272,7 +2272,6 @@ static void ath10k_process_tx_stats(struct ath10k *ar, u32 peer_id,
 {
 	struct ath10k_peer *peer;
 	struct ieee80211_sta *sta;
-	struct ath10k_sta *arsta;
 	u8 peer_mac[ETH_ALEN];
 
 	spin_lock_bh(&ar->data_lock);
@@ -2292,8 +2291,7 @@ static void ath10k_process_tx_stats(struct ath10k *ar, u32 peer_id,
 			   "Sta entry for %pM not found\n", peer_mac);
 		return;
 	}
-	arsta = (struct ath10k_sta *)sta->drv_priv;
-	ath10k_update_peer_tx_stats(ar, arsta, p_tx_stats);
+	ath10k_update_peer_tx_stats(ar, sta, p_tx_stats);
 	rcu_read_unlock();
 }
 

@@ -392,6 +392,7 @@ struct ath10k_tx_stats {
 	u64 tx_duration;
 	u64 ba_fails;
 	u64 ack_fails;
+	struct rate_info txrate;
 };
 
 struct ath10k_txq {
