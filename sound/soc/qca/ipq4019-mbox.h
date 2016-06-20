@@ -98,8 +98,9 @@ struct ipq4019_mbox_rt_dir_priv {
 };
 
 struct ipq4019_mbox_rt_priv {
-	int irq_no;
 	void __iomem *mbox_reg_base;
+	int irq_no;
+	int mbox_started;
 	struct ipq4019_mbox_rt_dir_priv dir_priv[2];
 };
 

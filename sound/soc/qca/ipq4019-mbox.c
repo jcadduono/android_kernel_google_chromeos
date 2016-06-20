@@ -163,6 +163,7 @@ int ipq4019_mbox_dma_start(int channel_id)
 		return -EINVAL;
 
 	mbox_reg = mbox_rtime[chan]->mbox_reg_base;
+	mbox_rtime[chan]->mbox_started = 1;
 
 	switch (dir) {
 	case PLAYBACK:
@@ -190,6 +191,10 @@ int ipq4019_mbox_dma_resume(int channel_id)
 
 	if (!mbox_rtime[chan])
 		return -EINVAL;
+
+	/* resume is meaningful only when dma is started. */
+	if (!mbox_rtime[chan]->mbox_started)
+		return 0;
 
 	mbox_reg = mbox_rtime[chan]->mbox_reg_base;
 
@@ -222,6 +227,7 @@ int ipq4019_mbox_dma_stop(int channel_id, u32 delay_in_ms)
 		return -EINVAL;
 
 	mbox_reg = mbox_rtime[chan]->mbox_reg_base;
+	mbox_rtime[chan]->mbox_started = 0;
 
 	switch (dir) {
 	case PLAYBACK:
