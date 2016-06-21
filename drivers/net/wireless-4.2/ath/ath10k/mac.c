@@ -7883,6 +7883,13 @@ int ath10k_mac_register(struct ath10k *ar)
 
 	ar->hw->wiphy->max_ap_assoc_sta = ar->max_num_stations;
 
+	/* Firmware pull tx model requires per-station queue to be 2048 packets
+	 * long. Otherwise firmware's scheduling algorithm doesn't reach
+	 * optimal performance.
+	 */
+	if (test_bit(ATH10K_FW_FEATURE_PEER_FLOW_CONTROL, ar->fw_features))
+		ar->hw->txq_ac_max_pending = 2048;
+
 	ret = ath10k_wow_init(ar);
 	if (ret) {
 		ath10k_warn(ar, "failed to init wow: %d\n", ret);
