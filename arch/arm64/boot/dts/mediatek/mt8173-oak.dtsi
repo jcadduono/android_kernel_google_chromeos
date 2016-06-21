@@ -324,7 +324,7 @@
 		compatible = "elan,ekth3500";
 		reg = <0x10>;
 		interrupt-parent = <&pio>;
-		interrupts = <88 IRQ_TYPE_EDGE_FALLING>;
+		interrupts = <88 IRQ_TYPE_LEVEL_LOW>;
 	};
 
 	anx7814: anx7814@72 {
