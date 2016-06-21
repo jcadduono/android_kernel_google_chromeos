@@ -108,10 +108,6 @@ static int cros_ec_pkt_xfer_lpc(struct cros_ec_device *ec,
 		ret = -EMSGSIZE;
 		goto done;
 	}
-	else if (response.result != 0) {
-		ret = -EINVAL;
-		goto done;
-	}
 
 	/* Read response and process checksum */
 	sum += cros_ec_lpc_read_bytes(
@@ -412,22 +408,19 @@ static struct dmi_system_id cros_ec_lpc_dmi_table[] __initdata = {
 };
 MODULE_DEVICE_TABLE(dmi, cros_ec_lpc_dmi_table);
 
-#ifdef CONFIG_PM_SLEEP
-static int cros_ec_lpc_suspend(struct device *dev)
+static int __maybe_unused cros_ec_lpc_suspend(struct device *dev)
 {
 	struct cros_ec_device *ec_dev = dev_get_drvdata(dev);
 
 	return cros_ec_suspend(ec_dev);
 }
 
-static int cros_ec_lpc_resume(struct device *dev)
+static int __maybe_unused cros_ec_lpc_resume(struct device *dev)
 {
 	struct cros_ec_device *ec_dev = dev_get_drvdata(dev);
 
 	return cros_ec_resume(ec_dev);
 }
-#endif
-
 const struct dev_pm_ops cros_ec_lpc_pm_ops = {
 	SET_LATE_SYSTEM_SLEEP_PM_OPS(cros_ec_lpc_suspend, cros_ec_lpc_resume)
 };
