@@ -29,11 +29,15 @@
 #include <linux/workqueue.h>
 #include <soc/mediatek/cmdq.h>
 
-#define CMDQ_MAX_TASK_IN_THREAD		2
+/*
+ * Please calculate this value for each platform.
+ * task number = vblank time / ((task cmds * cmd ticks) / GCE freq)
+ */
+#define CMDQ_MAX_TASK_IN_THREAD		70
 
 #define CMDQ_INITIAL_CMD_BLOCK_SIZE	PAGE_SIZE
-#define CMDQ_CMD_BUF_POOL_BUF_SIZE	(128 * 1024)
-#define CMDQ_CMD_BUF_POOL_BUF_NUM	4 /* (main + sub) * 2 = 4 */
+#define CMDQ_CMD_BUF_POOL_BUF_SIZE	PAGE_SIZE
+#define CMDQ_CMD_BUF_POOL_BUF_NUM	140 /* 2 * 70 = 140 */
 #define CMDQ_INST_SIZE			8 /* instruction is 64-bit */
 
 /*
@@ -127,6 +131,8 @@
 
 #define CMDQ_ENABLE_MASK		BIT(0)
 
+#define CMDQ_OP_CODE_MASK		0xff000000
+
 enum cmdq_thread_index {
 	CMDQ_THR_DISP_DSI0 = 0,		/* main: dsi0 */
 	CMDQ_THR_DISP_DPI0,		/* sub: dpi0 */
@@ -197,7 +203,7 @@ struct cmdq_task {
 
 	u64			engine_flag;
 	size_t			command_size;
-	u32			num_cmd;
+	u32			num_cmd; /* 2 * number of commands */
 	int			reorder;
 	/* HW thread ID; CMDQ_INVALID_THREAD if not running */
 	int			thread;
@@ -848,40 +854,44 @@ static void cmdq_clk_disable(struct cmdq *cqctx)
 		clk_disable_unprepare(cqctx->clock);
 }
 
-static int cmdq_core_find_free_thread(struct cmdq *cqctx, u64 flag)
+static int cmdq_core_find_free_thread(struct cmdq *cqctx, int tid)
 {
-	struct cmdq_thread *thread;
-	int tid;
+	struct cmdq_thread *thread = cqctx->thread;
 	u32 next_cookie;
-
-	thread = cqctx->thread;
-	tid = cmdq_eng_get_thread(flag);
 
 	/*
 	 * make sure the found thread has enough space for the task;
 	 * cmdq_thread->cur_task has size limitation.
 	 */
-	if (thread[tid].task_count >= CMDQ_MAX_TASK_IN_THREAD)
+	if (thread[tid].task_count >= CMDQ_MAX_TASK_IN_THREAD) {
+		dev_warn(cqctx->dev, "thread(%d) task count = %d\n",
+			 tid, thread[tid].task_count);
 		return CMDQ_INVALID_THREAD;
+	}
 
 	next_cookie = thread[tid].next_cookie % CMDQ_MAX_TASK_IN_THREAD;
-	if (thread[tid].cur_task[next_cookie])
+	if (thread[tid].cur_task[next_cookie]) {
+		dev_warn(cqctx->dev, "thread(%d) next cookie = %d\n",
+			 tid, next_cookie);
 		return CMDQ_INVALID_THREAD;
+	}
 
 	return tid;
 }
 
-static int cmdq_core_acquire_thread(struct cmdq *cqctx, u64 flag)
+static struct cmdq_thread *cmdq_core_acquire_thread(struct cmdq *cqctx,
+						    int candidate_tid)
 {
 	int tid;
 
-	tid = cmdq_core_find_free_thread(cqctx, flag);
+	tid = cmdq_core_find_free_thread(cqctx, candidate_tid);
 	if (tid != CMDQ_INVALID_THREAD) {
 		mutex_lock(&cqctx->clock_mutex);
 		cmdq_clk_enable(cqctx);
 		mutex_unlock(&cqctx->clock_mutex);
+		return &cqctx->thread[tid];
 	}
-	return tid;
+	return NULL;
 }
 
 static void cmdq_core_release_thread(struct cmdq *cqctx, int tid)
@@ -1310,6 +1320,27 @@ static int cmdq_task_insert_into_thread(struct cmdq_task *task,
 	return 0;
 }
 
+/* we assume tasks in the same display thread are waiting the same event. */
+static void cmdq_task_remove_wfe(struct cmdq_task *task)
+{
+	u32 wfe_option = CMDQ_WFE_UPDATE | CMDQ_WFE_WAIT | CMDQ_WFE_WAIT_VALUE;
+	u32 wfe_op = CMDQ_CODE_WFE << CMDQ_OP_CODE_SHIFT;
+	u32 *base = task->va_base;
+	int i;
+
+	/*
+	 * Replace all WFE commands in the task command queue and
+	 * replace them with JUMP_PASS.
+	 */
+	for (i = 0; i < task->num_cmd; i += 2) {
+		if (base[i] == wfe_option &&
+		    (base[i + 1] & CMDQ_OP_CODE_MASK) == wfe_op) {
+			base[i] = CMDQ_JUMP_PASS;
+			base[i + 1] = CMDQ_JUMP_BY_OFFSET;
+		}
+	}
+}
+
 static int cmdq_task_exec_async_impl(struct cmdq_task *task, int tid)
 {
 	struct cmdq *cqctx = task->cqctx;
@@ -1444,6 +1475,8 @@ static int cmdq_task_exec_async_impl(struct cmdq_task *task, int tid)
 					"invalid task state for reorder.\n");
 				return status;
 			}
+
+			cmdq_task_remove_wfe(task);
 
 			smp_mb(); /* modify jump before enable thread */
 
@@ -1699,6 +1732,7 @@ static void cmdq_core_consume_waiting_list(struct work_struct *work)
 	bool need_log;
 	struct cmdq *cqctx;
 	struct device *dev;
+	u32 err_bits = 0;
 
 	cqctx = container_of(work, struct cmdq,
 			     task_consume_wait_queue_item);
@@ -1713,26 +1747,34 @@ static void cmdq_core_consume_waiting_list(struct work_struct *work)
 	/* scan and remove (if executed) waiting tasks */
 	list_for_each_safe(p, n, &cqctx->task_wait_list) {
 		struct cmdq_task *task;
-		struct cmdq_thread *thread = NULL;
+		struct cmdq_thread *thread;
 		int tid;
 		int status;
 
 		task = list_entry(p, struct cmdq_task, list_entry);
+		tid = cmdq_eng_get_thread(task->engine_flag);
 
 		waiting_time_ns = ktime_to_ns(
 				ktime_sub(consume_time, task->submit));
 		need_log = waiting_time_ns >= CMDQ_PREALARM_TIMEOUT_NS;
-		/* acquire HW thread */
-		tid = cmdq_core_acquire_thread(cqctx, task->engine_flag);
-		if (tid != CMDQ_INVALID_THREAD)
-			thread = &cqctx->thread[tid];
 
-		if (tid == CMDQ_INVALID_THREAD || !thread) {
+		/*
+		 * Once waiting occur,
+		 * skip following tasks to keep order of display tasks.
+		 */
+		if (err_bits & BIT(tid))
+			continue;
+
+		/* acquire HW thread */
+		thread = cmdq_core_acquire_thread(cqctx, tid);
+		if (!thread) {
 			/* have to wait, remain in wait list */
-			dev_warn(dev, "acquire thread fail, need to wait\n");
+			dev_warn(dev, "acquire thread(%d) fail, need to wait\n",
+				 tid);
 			if (need_log) /* task wait too long */
 				dev_warn(dev, "waiting:%lldns, task:0x%p\n",
 					 waiting_time_ns, task);
+			err_bits |= BIT(tid);
 			continue;
 		}
 
