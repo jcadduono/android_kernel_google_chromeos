@@ -40,7 +40,7 @@
 
 #define CHARGER_DIR_NAME		"CROS_USB_PD_CHARGER%d"
 #define CHARGER_DIR_NAME_LENGTH		sizeof(CHARGER_DIR_NAME)
-#define DRV_NAME "cros_usbpd-charger"
+#define DRV_NAME "cros-usb-pd-charger"
 
 #define MANUFACTURER_MODEL_LENGTH	32
 

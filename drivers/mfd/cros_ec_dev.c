@@ -36,6 +36,8 @@
 
 #include "cros_ec_dev.h"
 
+#define DRV_NAME "cros-ec-dev"
+
 /* Device variables */
 #define CROS_MAX_DEV 128
 static int ec_major;
@@ -388,7 +390,7 @@ static int cros_ec_check_features(struct cros_ec_dev *ec, int feature)
 
 static const struct mfd_cell cros_usb_pd_charger_devs[] = {
 	{
-		.name = "cros_usbpd-charger",
+		.name = "cros-usb-pd-charger",
 		.id   = -1,
 	},
 };
@@ -641,23 +643,14 @@ static const struct dev_pm_ops cros_ec_dev_pm_ops = {
 #endif
 };
 
-static const struct platform_device_id cros_ec_dev_ids[] = {
-	{
-		.name = "cros-ec-dev",
-	},
-	{ /* sentinel */ }
-};
-MODULE_DEVICE_TABLE(platform, cros_ec_dev_ids);
-
 static struct platform_driver cros_ec_dev_driver = {
 	.driver = {
-		.name = "cros-ec-devs",
+		.name = DRV_NAME,
 		.owner = THIS_MODULE,
 		.pm = &cros_ec_dev_pm_ops,
 	},
 	.probe = ec_device_probe,
 	.remove = ec_device_remove,
-	.id_table = cros_ec_dev_ids,
 };
 
 static int __init cros_ec_dev_init(void)
@@ -705,6 +698,7 @@ static void __exit cros_ec_dev_exit(void)
 module_init(cros_ec_dev_init);
 module_exit(cros_ec_dev_exit);
 
+MODULE_ALIAS("platform:" DRV_NAME);
 MODULE_AUTHOR("Bill Richardson <wfrichar@chromium.org>");
 MODULE_DESCRIPTION("Userspace interface to the Chrome OS Embedded Controller");
 MODULE_VERSION("1.0");

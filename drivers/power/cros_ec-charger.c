@@ -51,7 +51,7 @@
 		       TSU6721_TYPE_APPLE_CHG | TSU6721_TYPE_U200_CHG | \
 		       TSU6721_TYPE_NON_STD_CHG | TSU6721_TYPE_JIG_UART_ON)
 
-#define DRV_NAME "cros_ec-charger"
+#define DRV_NAME "cros-ec-charger"
 
 struct charger_data {
 	struct device *dev;
