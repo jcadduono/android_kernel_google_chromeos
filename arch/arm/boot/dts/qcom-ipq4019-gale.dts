@@ -462,7 +462,7 @@
 				compatible = "atmel,captouch";
 				reg = <0x51>;
 				interrupt-parent = <&tlmm>;
-				interrupts = <67 IRQ_TYPE_EDGE_FALLING>;
+				interrupts = <67 IRQ_TYPE_LEVEL_LOW>;
 				linux,keycodes = <BTN_0>, <BTN_1>,
 					<BTN_2>, <BTN_3>,
 					<BTN_4>, <BTN_5>,
