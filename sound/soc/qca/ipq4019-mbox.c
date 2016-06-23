@@ -113,7 +113,7 @@ u32 ipq4019_mbox_get_played_offset(u32 channel_id)
 			break;
 		}
 
-		if (desc != write)
+		if (desc == write)
 			break;
 
 		desc = get_next(rtdir, desc);
