@@ -443,6 +443,7 @@ static int ipq4019_pcm_i2s_open(struct snd_pcm_substream *substream)
 	pcm_rtpriv->last_played = NULL;
 	pcm_rtpriv->dev = substream->pcm->card->dev;
 	pcm_rtpriv->channel = ipq4019_get_mbox_id(substream, intf);
+	pcm_rtpriv->curr_pos = 0;
 	substream->runtime->private_data = pcm_rtpriv;
 
 	switch (substream->stream) {
