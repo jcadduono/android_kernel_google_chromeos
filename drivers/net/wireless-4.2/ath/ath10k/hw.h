@@ -206,7 +206,8 @@ enum ath10k_hw_rev {
 	ATH10K_HW_QCA6174,
 	ATH10K_HW_QCA99X0,
 	ATH10K_HW_QCA9377,
-	ATH10K_HW_QCA4019,
+	/*TODO: fix me when upgrading the wireless stack */
+	ATH10K_HW_QCA4019 = 6,
 };
 
 struct ath10k_hw_regs {
