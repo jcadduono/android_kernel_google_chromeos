@@ -522,8 +522,11 @@ static void msm_handle_rx_dm(struct uart_port *port, unsigned int misr)
 {
 	struct tty_port *tport = &port->state->port;
 	unsigned int sr;
+	int sysrq, r_count, i;
 	int count = 0;
 	struct msm_port *msm_port = UART_TO_MSM(port);
+	unsigned int reg_buf;
+	unsigned char *buf = (unsigned char *)&reg_buf;
 
 	if ((msm_read(port, UART_SR) & UART_SR_OVERRUN)) {
 		port->icount.overrun++;
@@ -545,9 +548,6 @@ static void msm_handle_rx_dm(struct uart_port *port, unsigned int misr)
 	port->icount.rx += count;
 
 	while (count > 0) {
-		unsigned char buf[4];
-		int sysrq, r_count, i;
-
 		sr = msm_read(port, UART_SR);
 		if ((sr & UART_SR_RX_READY) == 0) {
 			msm_port->old_snap_state -= count;
@@ -555,7 +555,7 @@ static void msm_handle_rx_dm(struct uart_port *port, unsigned int misr)
 		}
 
 		ioread32_rep(port->membase + UARTDM_RF, buf, 1);
-		r_count = min_t(int, count, sizeof(buf));
+		r_count = min_t(int, count, sizeof(reg_buf));
 
 		for (i = 0; i < r_count; i++) {
 			char flag = TTY_NORMAL;
@@ -653,6 +653,9 @@ static void msm_handle_tx_pio(struct uart_port *port, unsigned int tx_count)
 	unsigned int num_chars;
 	unsigned int tf_pointer = 0;
 	void __iomem *tf;
+	int i;
+	unsigned int reg_buf;
+	unsigned char *buf = (unsigned char *)&reg_buf;
 
 	if (msm_port->is_uartdm)
 		tf = port->membase + UARTDM_TF;
@@ -663,15 +666,14 @@ static void msm_handle_tx_pio(struct uart_port *port, unsigned int tx_count)
 		msm_reset_dm_count(port, tx_count);
 
 	while (tf_pointer < tx_count) {
-		int i;
-		char buf[4] = { 0 };
+		reg_buf = 0;
 
 		if (!(msm_read(port, UART_SR) & UART_SR_TX_READY))
 			break;
 
 		if (msm_port->is_uartdm)
 			num_chars = min(tx_count - tf_pointer,
-					(unsigned int)sizeof(buf));
+					(unsigned int)sizeof(reg_buf));
 		else
 			num_chars = 1;
 
@@ -700,6 +702,7 @@ static void msm_handle_tx(struct uart_port *port)
 	struct msm_dma *dma = &msm_port->tx_dma;
 	unsigned int pio_count, dma_count, dma_min;
 	void __iomem *tf;
+	unsigned int reg_buf;
 	int err = 0;
 
 	if (port->x_char) {
@@ -711,7 +714,8 @@ static void msm_handle_tx(struct uart_port *port)
 		if (msm_port->is_uartdm)
 			msm_reset_dm_count(port, 1);
 
-		iowrite8_rep(tf, &port->x_char, 1);
+		reg_buf = port->x_char;
+		iowrite32_rep(tf, &reg_buf, 1);
 		port->icount.tx++;
 		port->x_char = 0;
 		return;
@@ -1398,12 +1402,15 @@ static inline struct uart_port *msm_get_port_from_line(unsigned int line)
 static void __msm_console_write(struct uart_port *port, const char *s,
 				unsigned int count, bool is_uartdm)
 {
-	int i;
+	int i, j;
 	int num_newlines = 0;
 	bool replaced = false;
 	void __iomem *tf;
 	struct msm_port *msm_port = UART_TO_MSM(port);
 	struct msm_dma *dma = &msm_port->tx_dma;
+	unsigned int num_chars;
+	unsigned int reg_buf;
+	unsigned char *buf = (unsigned char *)&reg_buf;
 
 	if (is_uartdm)
 		tf = port->membase + UARTDM_TF;
@@ -1432,12 +1439,11 @@ static void __msm_console_write(struct uart_port *port, const char *s,
 
 	i = 0;
 	while (i < count) {
-		int j;
-		unsigned int num_chars;
-		char buf[4] = { 0 };
+		reg_buf = 0;
 
 		if (is_uartdm)
-			num_chars = min(count - i, (unsigned int)sizeof(buf));
+			num_chars = min(count - i,
+						(unsigned int)sizeof(reg_buf));
 		else
 			num_chars = 1;
 
