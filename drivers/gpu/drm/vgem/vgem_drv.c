@@ -333,7 +333,6 @@ static struct drm_driver vgem_driver = {
 	.gem_prime_export		= drm_gem_prime_export,
 	.gem_prime_import		= drm_gem_prime_import,
 	.gem_prime_pin			= vgem_gem_prime_pin,
-	.gem_prime_unpin		= vgem_gem_prime_unpin,
 	.gem_prime_get_sg_table		= vgem_gem_prime_get_sg_table,
 	.gem_prime_import_sg_table	= vgem_gem_prime_import_sg_table,
 	.gem_prime_vmap			= vgem_gem_prime_vmap,

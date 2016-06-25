@@ -43,12 +43,6 @@ int vgem_gem_prime_pin(struct drm_gem_object *gobj)
 	return vgem_gem_get_pages(obj);
 }
 
-void vgem_gem_prime_unpin(struct drm_gem_object *gobj)
-{
-	struct drm_vgem_gem_object *obj = to_vgem_bo(gobj);
-	vgem_gem_put_pages(obj);
-}
-
 void *vgem_gem_prime_vmap(struct drm_gem_object *gobj)
 {
 	struct drm_vgem_gem_object *obj = to_vgem_bo(gobj);
