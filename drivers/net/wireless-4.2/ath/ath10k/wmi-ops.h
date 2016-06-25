@@ -198,6 +198,14 @@ struct wmi_ops {
 				enum wmi_vdev_subtype subtype);
 	struct sk_buff *(*gen_set_coex_param)(struct ath10k *ar,
 					      u32 wlan_traffic_priority);
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+	struct sk_buff *(*gen_pdev_enable_smart_ant)(struct ath10k *ar,
+						     u32 mode, u32 tx_ant,
+						     u32 rx_ant);
+	struct sk_buff *(*gen_pdev_disable_smart_ant)(struct ath10k *ar,
+						      u32 mode, u32 tx_ant,
+						      u32 rx_ant);
+#endif
 };
 
 int ath10k_wmi_cmd_send(struct ath10k *ar, struct sk_buff *skb, u32 cmd_id);
@@ -1413,5 +1421,41 @@ ath10k_wmi_set_coex_param(struct ath10k *ar, u32 wlan_traffic_priority)
 	return ath10k_wmi_cmd_send(ar, skb,
 				   ar->wmi.cmd->set_coex_param_cmdid);
 }
+
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+static inline int
+ath10k_wmi_pdev_enable_smart_ant(struct ath10k *ar, u32 mode,
+				 u32 tx_ant, u32 rx_ant)
+{
+	struct sk_buff *skb;
+
+	if (!ar->wmi.ops->gen_pdev_enable_smart_ant)
+		return -EOPNOTSUPP;
+
+	skb = ar->wmi.ops->gen_pdev_enable_smart_ant(ar, mode, tx_ant, rx_ant);
+	if (IS_ERR(skb))
+		return PTR_ERR(skb);
+
+	return ath10k_wmi_cmd_send(ar, skb,
+				   ar->wmi.cmd->pdev_set_smart_ant_cmdid);
+}
+
+static inline int
+ath10k_wmi_pdev_disable_smart_ant(struct ath10k *ar, u32 mode,
+				  u32 tx_ant, u32 rx_ant)
+{
+	struct sk_buff *skb;
+
+	if (!ar->wmi.ops->gen_pdev_disable_smart_ant)
+		return -EOPNOTSUPP;
+
+	skb = ar->wmi.ops->gen_pdev_disable_smart_ant(ar, mode, tx_ant, rx_ant);
+	if (IS_ERR(skb))
+		return PTR_ERR(skb);
+
+	return ath10k_wmi_cmd_send(ar, skb,
+				   ar->wmi.cmd->pdev_set_smart_ant_cmdid);
+}
+#endif
 
 #endif

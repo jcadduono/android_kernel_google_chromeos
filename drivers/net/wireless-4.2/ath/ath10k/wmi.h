@@ -833,6 +833,8 @@ struct wmi_cmd_map {
 	u32 pdev_enable_adaptive_cca_cmdid;
 	u32 ext_resource_cfg_cmdid;
 	u32 set_coex_param_cmdid;
+	u32 pdev_bss_chan_info_request_cmdid;
+	u32 pdev_set_smart_ant_cmdid;
 };
 
 /*
@@ -6578,6 +6580,31 @@ enum wmi_chan_survey_req_param {
 struct wmi_chan_survey_req_cmd {
 	__le32 param;
 	__le32 reserved;
+} __packed;
+
+#define WMI_SMART_ANT_GPIO_MAX		4
+#define WMI_SMART_ANT_MODE_SERIAL	0
+#define WMI_SMART_ANT_DISABLE		0
+#define WMI_SMART_ANT_ENABLE		1
+
+struct wmi_pdev_set_smart_ant_cmd {
+	/* 1 - enable, 0 - disable */
+	__le32 enable;
+
+	/* 1 - GPIO parallel mode, 0 - GPIO serial mode */
+	__le32 mode;
+
+	/* Rx antenna */
+	__le32 rx_antenna;
+
+	/* Default antenna used for Tx */
+	__le32 tx_default_antenna;
+
+	/* For serial 0 - strobe, 1 - data. Per stream GPIO in parallel */
+	__le32 gpio_pin[WMI_SMART_ANT_GPIO_MAX];
+
+	/* GPIO functions */
+	__le32 gpio_func[WMI_SMART_ANT_GPIO_MAX];
 } __packed;
 
 struct ath10k;
