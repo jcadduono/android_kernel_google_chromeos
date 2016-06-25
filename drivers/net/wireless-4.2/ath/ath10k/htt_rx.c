@@ -22,6 +22,9 @@
 #include "debug.h"
 #include "trace.h"
 #include "mac.h"
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+#include "smart_ant.h"
+#endif
 
 #include <linux/log2.h>
 
@@ -400,6 +403,9 @@ static int ath10k_htt_rx_amsdu_pop(struct ath10k_htt *htt,
 
 		trace_ath10k_htt_rx_desc(ar, &rx_desc->attention,
 					 sizeof(*rx_desc) - sizeof(u32));
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+		ath10k_smart_ant_proc_rx_feedback(ar, rx_desc);
+#endif
 
 		if (last_msdu)
 			break;
@@ -2636,6 +2642,9 @@ void ath10k_htt_t2h_msg_handler(struct ath10k *ar, struct sk_buff *skb)
 				     skb->len - sizeof(resp->pktlog_msg));
 		if (ath10k_peer_stats_enabled(ar))
 			ath10k_fetch_10_2_tx_stats(ar, resp->pktlog_msg.payload);
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+		ath10k_smart_ant_proc_tx_feedback(ar, resp->pktlog_msg.payload);
+#endif
 		break;
 	}
 	case HTT_T2H_MSG_TYPE_RX_FLUSH: {

@@ -31,6 +31,9 @@
 #include "wmi-tlv.h"
 #include "wmi-ops.h"
 #include "wow.h"
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+#include "smart_ant.h"
+#endif
 
 /*********/
 /* Rates */
@@ -4980,6 +4983,23 @@ static int ath10k_add_interface(struct ieee80211_hw *hw,
 		goto err_peer_delete;
 	}
 
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+	ret = ath10k_smart_ant_enable(ar, arvif);
+	if (ret) {
+		ath10k_warn(ar, "failed to enable smart antenna algorithm %d\n",
+			    ret);
+		goto err_peer_delete;
+	}
+
+	ret = ath10k_smart_ant_set_default(ar, arvif);
+	if (ret) {
+		ath10k_warn(ar, "failed to set default smart antenna configuration %d\n",
+			    ret);
+		ath10k_smart_ant_disable(ar, arvif);
+		goto err_peer_delete;
+	}
+#endif
+
 	if (vif->type == NL80211_IFTYPE_MONITOR) {
 		ar->monitor_arvif = arvif;
 		ret = ath10k_monitor_recalc(ar);
@@ -5053,6 +5073,10 @@ static void ath10k_remove_interface(struct ieee80211_hw *hw,
 	cancel_delayed_work_sync(&arvif->connection_loss_work);
 
 	mutex_lock(&ar->conf_mutex);
+
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+	ath10k_smart_ant_disable(ar, arvif);
+#endif
 
 	spin_lock_bh(&ar->data_lock);
 	ath10k_mac_vif_beacon_cleanup(arvif);
@@ -6011,10 +6035,45 @@ static int ath10k_sta_state(struct ieee80211_hw *hw,
 		ath10k_dbg(ar, ATH10K_DBG_MAC, "mac sta %pM associated\n",
 			   sta->addr);
 
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+		reinit_completion(&ar->ratecode_evt);
+#endif
+
 		ret = ath10k_station_assoc(ar, vif, sta, false);
-		if (ret)
+		if (ret) {
 			ath10k_warn(ar, "failed to associate station %pM for vdev %i: %i\n",
 				    sta->addr, arvif->vdev_id, ret);
+			goto exit;
+		}
+
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+		/* wait for completion to get rate code list event from fw
+		 * after assoc_complete wmi command. This ratecode list info
+		 * can be used with smart antenna logic. As of now do this
+		 * only for AP mode because this is the only mode tested with
+		 * smart antenna APIs.
+		 */
+		if (vif->type == NL80211_IFTYPE_AP &&
+		    ath10k_smart_ant_enabled(ar)) {
+			int timeout;
+
+			timeout = wait_for_completion_timeout(
+			&ar->ratecode_evt,
+			msecs_to_jiffies(ATH10K_RATECODE_LIST_TIMEOUT));
+			if (timeout == 0) {
+				ath10k_warn(ar, "timeout on rate code list event %pM\n",
+					    sta->addr);
+				ret = -ETIMEDOUT;
+				goto exit;
+			}
+
+			if (ath10k_smart_ant_sta_connect(ar, arvif, sta)) {
+				ath10k_warn(ar,
+					    "Smart antenna station connect failed, disabling smart antenna for %pM\n",
+					    sta->addr);
+			}
+		}
+#endif
 	} else if (old_state == IEEE80211_STA_ASSOC &&
 		   new_state == IEEE80211_STA_AUTHORIZED &&
 		   sta->tdls) {
@@ -6046,6 +6105,10 @@ static int ath10k_sta_state(struct ieee80211_hw *hw,
 		 */
 		ath10k_dbg(ar, ATH10K_DBG_MAC, "mac sta %pM disassociated\n",
 			   sta->addr);
+
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+		ath10k_smart_ant_sta_disconnect(ar, sta);
+#endif
 
 		ret = ath10k_station_disassoc(ar, vif, sta);
 		if (ret)

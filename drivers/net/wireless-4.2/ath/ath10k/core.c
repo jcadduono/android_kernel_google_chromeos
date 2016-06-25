@@ -36,6 +36,9 @@ static bool uart_print;
 static bool skip_otp;
 static bool rawmode;
 static bool hw_csum = true;
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+bool ath10k_enable_smart_antenna;
+#endif
 
 module_param_named(debug_mask, ath10k_debug_mask, uint, 0644);
 module_param_named(cryptmode, ath10k_cryptmode_param, uint, 0644);
@@ -43,6 +46,10 @@ module_param(uart_print, bool, 0644);
 module_param(skip_otp, bool, 0644);
 module_param(rawmode, bool, 0644);
 module_param(hw_csum, bool, 0644);
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+module_param_named(enable_smart_antenna, ath10k_enable_smart_antenna,
+		   bool, 0644);
+#endif
 
 MODULE_PARM_DESC(debug_mask, "Debugging mask");
 MODULE_PARM_DESC(uart_print, "Uart target debugging");
@@ -50,6 +57,9 @@ MODULE_PARM_DESC(skip_otp, "Skip otp failure for calibration in testmode");
 MODULE_PARM_DESC(cryptmode, "Crypto mode: 0-hardware, 1-software");
 MODULE_PARM_DESC(rawmode, "Use raw 802.11 frame datapath");
 MODULE_PARM_DESC(hw_csum, "Enable HW checksum offload (default: on)");
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+MODULE_PARM_DESC(enable_smart_antenna, "Enable smart antenna supprot in fw");
+#endif
 
 static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 	{
@@ -1605,12 +1615,29 @@ static int ath10k_core_init_firmware_features(struct ath10k *ar)
 	case ATH10K_FW_WMI_OP_VERSION_10_2:
 	case ATH10K_FW_WMI_OP_VERSION_10_2_4:
 		if (ath10k_peer_stats_enabled(ar)) {
-			ar->max_num_peers = TARGET_10X_TX_STATS_NUM_PEERS;
-			ar->max_num_stations = TARGET_10X_TX_STATS_NUM_STATIONS;
+			ar->max_num_peers =
+					  TARGET_10X_TX_STATS_NUM_PEERS;
+			ar->max_num_stations =
+				       TARGET_10X_TX_STATS_NUM_STATIONS;
 		} else {
 			ar->max_num_peers = TARGET_10X_NUM_PEERS;
 			ar->max_num_stations = TARGET_10X_NUM_STATIONS;
 		}
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+		if (ath10k_enable_smart_antenna) {
+			if (ath10k_peer_stats_enabled(ar)) {
+				ar->max_num_peers =
+				       TARGET_10_2_SMART_ANT_TX_STATS_NUM_PEERS;
+				ar->max_num_stations =
+				    TARGET_10_2_SMART_ANT_TX_STATS_NUM_STATIONS;
+			} else {
+				ar->max_num_peers =
+						TARGET_10_2_SMART_ANT_NUM_PEERS;
+				ar->max_num_stations =
+					     TARGET_10_2_SMART_ANT_NUM_STATIONS;
+			}
+		}
+#endif
 		ar->max_num_vdevs = TARGET_10X_NUM_VDEVS;
 		ar->htt.max_num_pending_tx = TARGET_10X_NUM_MSDU_DESC;
 		ar->fw_stats_req_mask = WMI_STAT_PEER;
@@ -2175,6 +2202,9 @@ struct ath10k *ath10k_core_create(size_t priv_size, struct device *dev,
 	init_completion(&ar->vdev_setup_done);
 	init_completion(&ar->thermal.wmi_sync);
 	init_completion(&ar->chan_survey_completed);
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+	init_completion(&ar->ratecode_evt);
+#endif
 
 	INIT_DELAYED_WORK(&ar->scan.timeout, ath10k_scan_timeout_work);
 
