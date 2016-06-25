@@ -1069,8 +1069,10 @@ static void hdac_hdmi_present_sense(struct hdac_hdmi_pin *pin, int repoll)
 				snd_jack_report(pcm->jack, SND_JACK_AVOUT);
 			}
 
-			print_hex_dump_bytes("ELD: ", DUMP_PREFIX_OFFSET,
-					pin->eld.eld_buffer, pin->eld.eld_size);
+			print_hex_dump_debug("ELD: ",
+					DUMP_PREFIX_OFFSET, 16, 1,
+					pin->eld.eld_buffer, pin->eld.eld_size,
+					true);
 		} else {
 			pin->eld.monitor_present = false;
 			pin->eld.eld_valid = false;
