@@ -112,7 +112,7 @@
 
 #define CMDQ_JUMP_BY_OFFSET		0x10000000
 #define CMDQ_JUMP_BY_PA			0x10000001
-#define CMDQ_JUMP_TO_BEGIN		0x8
+#define CMDQ_JUMP_PASS			CMDQ_INST_SIZE
 
 #define CMDQ_WFE_UPDATE			BIT(31)
 #define CMDQ_WFE_WAIT			BIT(15)
@@ -739,7 +739,7 @@ static void cmdq_thread_reorder_task_array(struct cmdq_thread *thread,
 
 		task = thread->cur_task[next_id];
 		if ((task->va_base[task->num_cmd - 1] == CMDQ_JUMP_BY_OFFSET) &&
-		    (task->va_base[task->num_cmd - 2] == CMDQ_JUMP_TO_BEGIN)) {
+		    (task->va_base[task->num_cmd - 2] == CMDQ_JUMP_PASS)) {
 			/* We reached the last task */
 			break;
 		}
@@ -1189,7 +1189,7 @@ static int cmdq_thread_force_remove_task(struct cmdq_task *task, int tid)
 			if ((exec_task->va_base[exec_task->num_cmd - 1] ==
 			     CMDQ_JUMP_BY_OFFSET) &&
 			    (exec_task->va_base[exec_task->num_cmd - 2] ==
-			     CMDQ_JUMP_TO_BEGIN)) {
+			     CMDQ_JUMP_PASS)) {
 				/* reached the last task */
 				break;
 			}
