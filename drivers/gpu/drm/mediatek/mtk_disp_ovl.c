@@ -120,7 +120,7 @@ static void mtk_ovl_stop(struct mtk_ddp_comp *comp, struct cmdq_rec *handle)
 
 static void mtk_ovl_config(struct mtk_ddp_comp *comp, unsigned int w,
 			   unsigned int h, unsigned int vrefresh,
-			   struct cmdq_rec *handle)
+			   unsigned int bpc, struct cmdq_rec *handle)
 {
 	cmdq_write(handle, h << 16 | w, comp->regs + DISP_REG_OVL_ROI_SIZE);
 	cmdq_write(handle, 0x0, comp->regs + DISP_REG_OVL_ROI_BGCLR);

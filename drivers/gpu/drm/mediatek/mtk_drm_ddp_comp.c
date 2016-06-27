@@ -43,7 +43,26 @@ static phys_addr_t addr_va2pa(void __iomem *va)
 #define DISP_OD_INTEN				0x0008
 #define DISP_OD_INTSTA				0x000c
 #define DISP_OD_CFG				0x0020
+#define OD_RELAYMODE				BIT(0)
+#define OD_DITHERING				BIT(2)
 #define DISP_OD_SIZE				0x0030
+#define DISP_OD_DITHER_5			0x0114
+#define DISP_OD_DITHER_7			0x011c
+#define DISP_OD_DITHER_15			0x013c
+#define DITHER_LSB_ERR_SHIFT_R(x)		(((x) & 0x7) << 28)
+#define DITHER_OVFLW_BIT_R(x)			(((x) & 0x7) << 24)
+#define DITHER_ADD_LSHIFT_R(x)			(((x) & 0x7) << 20)
+#define DITHER_ADD_RSHIFT_R(x)			(((x) & 0x7) << 16)
+#define DITHER_NEW_BIT_MODE			BIT(0)
+#define DISP_OD_DITHER_16			0x140
+#define DITHER_LSB_ERR_SHIFT_B(x)		(((x) & 0x7) << 28)
+#define DITHER_OVFLW_BIT_B(x)			(((x) & 0x7) << 24)
+#define DITHER_ADD_LSHIFT_B(x)			(((x) & 0x7) << 20)
+#define DITHER_ADD_RSHIFT_B(x)			(((x) & 0x7) << 16)
+#define DITHER_LSB_ERR_SHIFT_G(x)		(((x) & 0x7) << 12)
+#define DITHER_OVFLW_BIT_G(x)			(((x) & 0x7) << 8)
+#define DITHER_ADD_LSHIFT_G(x)			(((x) & 0x7) << 4)
+#define DITHER_ADD_RSHIFT_G(x)			(((x) & 0x7) << 0)
 
 #define DISP_REG_UFO_START			0x0000
 
@@ -52,8 +71,6 @@ static phys_addr_t addr_va2pa(void __iomem *va)
 #define DISP_COLOR_WIDTH			0x0c50
 #define DISP_COLOR_HEIGHT			0x0c54
 
-#define	OD_RELAY_MODE		BIT(0)
-
 #define	UFO_BYPASS		BIT(2)
 
 #define	COLOR_BYPASS_ALL	BIT(7)
@@ -61,7 +78,7 @@ static phys_addr_t addr_va2pa(void __iomem *va)
 
 static void mtk_color_config(struct mtk_ddp_comp *comp, unsigned int w,
 			     unsigned int h, unsigned int vrefresh,
-			     struct cmdq_rec *handle)
+			     unsigned int bpc, struct cmdq_rec *handle)
 {
 	cmdq_write(handle, w, comp->regs + DISP_COLOR_WIDTH);
 	cmdq_write(handle, h, comp->regs + DISP_COLOR_HEIGHT);
@@ -76,14 +93,31 @@ static void mtk_color_start(struct mtk_ddp_comp *comp, struct cmdq_rec *handle)
 
 static void mtk_od_config(struct mtk_ddp_comp *comp, unsigned int w,
 			  unsigned int h, unsigned int vrefresh,
-			  struct cmdq_rec *handle)
+			  unsigned int bpc, struct cmdq_rec *handle)
 {
 	cmdq_write(handle, w << 16 | h, comp->regs + DISP_OD_SIZE);
+	if (bpc >= 3 && bpc < 10) {
+		cmdq_write(handle, 0, comp->regs + DISP_OD_DITHER_5);
+		cmdq_write(handle, 0, comp->regs + DISP_OD_DITHER_7);
+		cmdq_write(handle, DITHER_LSB_ERR_SHIFT_R(10 - bpc) |
+			   DITHER_ADD_LSHIFT_R(10 - bpc) |
+			   DITHER_NEW_BIT_MODE,
+			   comp->regs + DISP_OD_DITHER_15);
+		cmdq_write(handle, DITHER_LSB_ERR_SHIFT_B(10 - bpc) |
+			   DITHER_ADD_LSHIFT_B(10 - bpc) |
+			   DITHER_LSB_ERR_SHIFT_G(10 - bpc) |
+			   DITHER_ADD_LSHIFT_G(10 - bpc),
+			   comp->regs + DISP_OD_DITHER_16);
+		cmdq_write(handle, OD_DITHERING,
+			   comp->regs + DISP_OD_CFG);
+	} else {
+		cmdq_write(handle, OD_RELAYMODE,
+			   comp->regs + DISP_OD_CFG);
+	}
 }
 
 static void mtk_od_start(struct mtk_ddp_comp *comp, struct cmdq_rec *handle)
 {
-	cmdq_write(handle, OD_RELAY_MODE, comp->regs + DISP_OD_CFG);
 	cmdq_write(handle, 1, comp->regs + DISP_OD_EN);
 }
 

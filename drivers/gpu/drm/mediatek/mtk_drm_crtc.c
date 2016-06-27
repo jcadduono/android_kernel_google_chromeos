@@ -255,7 +255,9 @@ static int mtk_crtc_ddp_hw_init(struct mtk_drm_crtc *mtk_crtc)
 	struct mtk_drm_private *priv = mtk_crtc->base.dev->dev_private;
 	struct device *gce_dev = &priv->gce_pdev->dev;
 	struct cmdq_rec *cmdq_handle;
-	unsigned int width, height, vrefresh;
+	struct drm_connector *connector;
+	struct drm_encoder *encoder;
+	unsigned int width, height, vrefresh, bpc = 0;
 	int ret;
 	int i;
 
@@ -266,6 +268,19 @@ static int mtk_crtc_ddp_hw_init(struct mtk_drm_crtc *mtk_crtc)
 	width = crtc->state->adjusted_mode.hdisplay;
 	height = crtc->state->adjusted_mode.vdisplay;
 	vrefresh = crtc->state->adjusted_mode.vrefresh;
+
+	drm_for_each_encoder(encoder, crtc->dev) {
+		if (encoder->crtc != crtc)
+			continue;
+
+		drm_for_each_connector(connector, crtc->dev) {
+			if (connector->encoder != encoder)
+				continue;
+			if (connector->display_info.bpc >= 3 &&
+			    (bpc == 0 || bpc > connector->display_info.bpc))
+				bpc = connector->display_info.bpc;
+		}
+	}
 
 	ret = pm_runtime_get_sync(crtc->dev->dev);
 	if (ret < 0) {
@@ -303,7 +318,8 @@ static int mtk_crtc_ddp_hw_init(struct mtk_drm_crtc *mtk_crtc)
 	for (i = 0; i < mtk_crtc->ddp_comp_nr; i++) {
 		struct mtk_ddp_comp *comp = mtk_crtc->ddp_comp[i];
 
-		mtk_ddp_comp_config(comp, width, height, vrefresh, cmdq_handle);
+		mtk_ddp_comp_config(comp, width, height, vrefresh, bpc,
+				    cmdq_handle);
 		mtk_ddp_comp_start(comp, cmdq_handle);
 	}
 
@@ -537,7 +553,8 @@ static void mtk_drm_crtc_commit_cmdq(struct drm_crtc *crtc)
 	if (state->cmdq_pending_config) {
 		mtk_ddp_comp_config(ovl, state->cmdq_pending_width,
 				    state->cmdq_pending_height,
-				    state->cmdq_pending_vrefresh, cmdq_handle);
+				    state->cmdq_pending_vrefresh,
+				    0, cmdq_handle);
 		state->cmdq_pending_config = false;
 	}
 

@@ -66,7 +66,7 @@ struct cmdq_rec;
 struct mtk_ddp_comp_funcs {
 	void (*config)(struct mtk_ddp_comp *comp, unsigned int w,
 		       unsigned int h, unsigned int vrefresh,
-		       struct cmdq_rec *handle);
+		       unsigned int bpc, struct cmdq_rec *handle);
 	void (*start)(struct mtk_ddp_comp *comp, struct cmdq_rec *handle);
 	void (*stop)(struct mtk_ddp_comp *comp, struct cmdq_rec *handle);
 	void (*enable_vblank)(struct mtk_ddp_comp *comp, struct drm_crtc *crtc,
@@ -94,11 +94,11 @@ struct mtk_ddp_comp {
 
 static inline void mtk_ddp_comp_config(struct mtk_ddp_comp *comp,
 				       unsigned int w, unsigned int h,
-				       unsigned int vrefresh,
+				       unsigned int vrefresh, unsigned int bpc,
 				       struct cmdq_rec *handle)
 {
 	if (comp->funcs && comp->funcs->config)
-		comp->funcs->config(comp, w, h, vrefresh, handle);
+		comp->funcs->config(comp, w, h, vrefresh, bpc, handle);
 }
 
 static inline void mtk_ddp_comp_start(struct mtk_ddp_comp *comp,
