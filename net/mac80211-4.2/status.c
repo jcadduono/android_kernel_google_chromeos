@@ -659,6 +659,10 @@ void ieee80211_tx_status_noskb(struct ieee80211_hw *hw,
 		}
 
 		rate_control_tx_status_noskb(local, sband, sta, info);
+
+		if (ieee80211_hw_check(&local->hw, HAS_RATE_CONTROL) &&
+		    (rates_idx != -1))
+			sta->last_tx_rate = info->status.rates[rates_idx];
 	}
 
 	if (acked || noack_success) {
