@@ -874,12 +874,12 @@ static int cmdq_core_acquire_thread(struct cmdq *cqctx, u64 flag)
 {
 	int tid;
 
-	mutex_lock(&cqctx->clock_mutex);
 	tid = cmdq_core_find_free_thread(cqctx, flag);
-	if (tid != CMDQ_INVALID_THREAD)
+	if (tid != CMDQ_INVALID_THREAD) {
+		mutex_lock(&cqctx->clock_mutex);
 		cmdq_clk_enable(cqctx);
-	mutex_unlock(&cqctx->clock_mutex);
-
+		mutex_unlock(&cqctx->clock_mutex);
+	}
 	return tid;
 }
 
