@@ -35,6 +35,10 @@
 #include "wme.h"
 #include "rate.h"
 
+#ifdef CONFIG_MAC80211_PACKET_TRACE
+#include "packet_trace.h"
+#endif
+
 /* misc utils */
 
 static inline void ieee80211_tx_stats(struct net_device *dev, u32 len)
@@ -1299,12 +1303,18 @@ static void ieee80211_drv_tx(struct ieee80211_local *local,
 
 	__skb_queue_tail(&txqi->queue, skb);
 	spin_unlock_bh(&txqi->queue.lock);
+#ifdef CONFIG_MAC80211_PACKET_TRACE
+	PACKET_TRACE_TX_SDATA_DBG(sdata, skb, TX_QUEUED, " %s", __func__);
+#endif
 
 	drv_wake_tx_queue(local, txqi);
 
 	return;
 
 tx_normal:
+#ifdef CONFIG_MAC80211_PACKET_TRACE
+	PACKET_TRACE_TX_SDATA_DBG(sdata, skb, TX_CONTINUE, " %s", __func__);
+#endif
 	drv_tx(local, &control, skb);
 }
 
@@ -1515,13 +1525,25 @@ static int invoke_tx_handlers(struct ieee80211_tx_data *tx)
 	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(tx->skb);
 	ieee80211_tx_result res = TX_DROP;
 
+#ifdef CONFIG_MAC80211_PACKET_TRACE
+	struct ieee80211_sub_if_data *sdata = tx->sdata;
+	struct sk_buff *skb = tx->skb;
+
+#define CALL_TXH(txh) \
+	do {				\
+		res = txh(tx);		\
+		PACKET_TRACE_TX_SDATA_DBG(sdata, skb, res, " %s", #txh); \
+		if (res != TX_CONTINUE)	\
+			goto txh_done;	\
+	} while (0)
+#else
 #define CALL_TXH(txh) \
 	do {				\
 		res = txh(tx);		\
 		if (res != TX_CONTINUE)	\
 			goto txh_done;	\
 	} while (0)
-
+#endif
 	CALL_TXH(ieee80211_tx_h_dynamic_ps);
 	CALL_TXH(ieee80211_tx_h_check_assoc);
 	CALL_TXH(ieee80211_tx_h_ps_buf);
@@ -1570,8 +1592,13 @@ bool ieee80211_tx_prepare_skb(struct ieee80211_hw *hw,
 	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
 	struct ieee80211_tx_data tx;
 	struct sk_buff *skb2;
+	ieee80211_tx_result r;
 
-	if (ieee80211_tx_prepare(sdata, &tx, NULL, skb) == TX_DROP)
+	r = ieee80211_tx_prepare(sdata, &tx, NULL, skb);
+#ifdef CONFIG_MAC80211_PACKET_TRACE
+	PACKET_TRACE_TX_SDATA_DBG(sdata, skb, r, " ieee80211_tx_prepare");
+#endif
+	if (r == TX_DROP)
 		return false;
 
 	info->band = band;
@@ -1713,6 +1740,9 @@ void ieee80211_xmit(struct ieee80211_sub_if_data *sdata,
 	}
 
 	ieee80211_set_qos_hdr(sdata, skb);
+#ifdef CONFIG_MAC80211_PACKET_TRACE
+	PACKET_TRACE_SET_TX_INFO(local, sta, skb);
+#endif
 	ieee80211_tx(sdata, sta, skb, false);
 }
 
@@ -2858,6 +2888,10 @@ static bool ieee80211_xmit_fast(struct ieee80211_sub_if_data *sdata,
 		sdata->sequence_number += 0x10;
 	}
 
+#ifdef CONFIG_MAC80211_PACKET_TRACE
+	PACKET_TRACE_SET_TX_INFO(local, sta, skb);
+#endif
+
 	sta->tx_msdu[tid]++;
 
 	info->hw_queue = sdata->vif.hw_queue[skb_get_queue_mapping(skb)];
@@ -2876,9 +2910,11 @@ static bool ieee80211_xmit_fast(struct ieee80211_sub_if_data *sdata,
 	if (!ieee80211_hw_check(&local->hw, HAS_RATE_CONTROL)) {
 		tx.skb = skb;
 		r = ieee80211_tx_h_rate_ctrl(&tx);
+#ifdef CONFIG_MAC80211_PACKET_TRACE
+		PACKET_TRACE_TX_DBG(&tx, r, " %s, %d", __func__, __LINE__);
+#endif
 		skb = tx.skb;
 		tx.skb = NULL;
-
 		if (r != TX_CONTINUE) {
 			if (r != TX_QUEUED)
 				kfree_skb(skb);

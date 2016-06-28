@@ -319,3 +319,14 @@ config MAC80211_STA_HASH_MAX_SIZE
 	  connect more stations than the number selected here.)
 
 	  If unsure, leave the default of 0.
+
+config MAC80211_PACKET_TRACE
+	bool "Enable mac80211 packet trace debug support"
+	depends on MAC80211_DEBUGFS
+	default n
+	---help---
+	 This options enables packet trace along driver data path to
+	 match 802.11 frame with configured packet patterns for specified
+	 stations.
+
+	 If unsure, leave default of n.

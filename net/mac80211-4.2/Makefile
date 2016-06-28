@@ -60,4 +60,6 @@ rc80211_minstrel_ht-$(CONFIG_MAC80211_DEBUGFS) += rc80211_minstrel_ht_debugfs.o
 mac80211-$(CONFIG_MAC80211_RC_MINSTREL) += $(rc80211_minstrel-y)
 mac80211-$(CONFIG_MAC80211_RC_MINSTREL_HT) += $(rc80211_minstrel_ht-y)
 
+mac80211-$(CONFIG_MAC80211_PACKET_TRACE) += packet_trace.o
+
 ccflags-y += -D__CHECK_ENDIAN__ -DDEBUG
