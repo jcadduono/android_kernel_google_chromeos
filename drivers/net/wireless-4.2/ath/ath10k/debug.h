@@ -38,6 +38,9 @@ enum ath10k_debug_mask {
 	ATH10K_DBG_WMI_PRINT	= 0x00002000,
 	ATH10K_DBG_PCI_PS	= 0x00004000,
 	ATH10K_DBG_AHB		= 0x00008000,
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+	ATH10K_DBG_SMART_ANT	= 0x00010000,
+#endif
 	ATH10K_DBG_ANY		= 0xffffffff,
 };
 
@@ -106,6 +109,7 @@ int ath10k_debug_get_et_sset_count(struct ieee80211_hw *hw,
 void ath10k_debug_get_et_stats(struct ieee80211_hw *hw,
 			       struct ieee80211_vif *vif,
 			       struct ethtool_stats *stats, u64 *data);
+void ath10k_smart_ant_debugfs_init(struct ath10k *ar);
 #else
 static inline int ath10k_debug_start(struct ath10k *ar)
 {
@@ -161,6 +165,7 @@ ath10k_debug_get_new_fw_crash_data(struct ath10k *ar)
 #define ath10k_debug_get_et_strings NULL
 #define ath10k_debug_get_et_sset_count NULL
 #define ath10k_debug_get_et_stats NULL
+#define ath10k_smart_ant_debugfs_init NULL
 
 #endif /* CONFIG_ATH10K_DEBUGFS */
 #ifdef CONFIG_MAC80211_DEBUGFS

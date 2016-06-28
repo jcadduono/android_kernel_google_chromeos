@@ -1931,7 +1931,12 @@ void ath10k_debug_stop(struct ath10k *ar)
 	if (ar->debug.htt_stats_mask != 0)
 		cancel_delayed_work(&ar->debug.htt_stats_dwork);
 
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+	if (!ar->smart_ant_info.enabled)
+		ath10k_wmi_pdev_pktlog_disable(ar);
+#else
 	ath10k_wmi_pdev_pktlog_disable(ar);
+#endif
 }
 
 static ssize_t ath10k_write_simulate_radar(struct file *file,
@@ -2027,6 +2032,10 @@ static ssize_t ath10k_write_pktlog_filter(struct file *file,
 
 	mutex_lock(&ar->conf_mutex);
 
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+	if (ar->smart_ant_info.enabled)
+		filter |= ATH10K_PKTLOG_SMART_ANT;
+#endif
 	if (ar->state != ATH10K_STATE_ON) {
 		ar->debug.pktlog_filter = filter;
 		ret = count;
@@ -2046,11 +2055,28 @@ static ssize_t ath10k_write_pktlog_filter(struct file *file,
 			goto out;
 		}
 	} else {
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+		if (ar->smart_ant_info.enabled) {
+			ret = ath10k_wmi_pdev_pktlog_enable(
+					ar,
+					ATH10K_PKTLOG_SMART_ANT);
+			if (ret)
+				goto out;
+		} else {
+			ret = ath10k_wmi_pdev_pktlog_disable(ar);
+			if (ret) {
+				ath10k_warn(ar, "failed to disable pktlog: %d\n",
+					    ret);
+				goto out;
+			}
+		}
+#else
 		ret = ath10k_wmi_pdev_pktlog_disable(ar);
 		if (ret) {
 			ath10k_warn(ar, "failed to disable pktlog: %d\n", ret);
 			goto out;
 		}
+#endif
 	}
 
 	ar->debug.pktlog_filter = filter;
@@ -2620,6 +2646,10 @@ int ath10k_debug_register(struct ath10k *ar)
 	debugfs_create_file("adjacent_wlan_interfrc", S_IRUGO | S_IWUSR,
 			    ar->debug.debugfs_phy, ar,
 			    &fops_adjacent_wlan_interfrc);
+
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+	ath10k_smart_ant_debugfs_init(ar);
+#endif
 
 	return 0;
 }
