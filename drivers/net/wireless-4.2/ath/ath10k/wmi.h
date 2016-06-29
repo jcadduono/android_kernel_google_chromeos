@@ -6593,7 +6593,7 @@ struct wmi_chan_survey_req_cmd {
 #define WMI_SMART_ANT_DISABLED_ANT_SEL	2
 #define WMI_SMART_ANT_DISABLED_MODE_PARALLEL	1
 #define WMI_SMART_ANT_GPIO_MAX		4
-#define ATH10K_DEFAULT_ANTENNA_2G 2
+#define ATH10K_DEFAULT_ANTENNA_2G 0
 #define ATH10K_DEFAULT_ANTENNA_5G 6
 
 struct wmi_pdev_set_smart_ant_cmd {
