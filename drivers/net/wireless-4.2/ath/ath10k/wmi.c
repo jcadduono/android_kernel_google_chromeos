@@ -192,8 +192,8 @@ static struct wmi_cmd_map wmi_cmd_map = {
 	.mu_cal_start_cmdid = WMI_CMD_UNSUPPORTED,
 	.set_cca_params_cmdid = WMI_CMD_UNSUPPORTED,
 	.pdev_bss_chan_info_request_cmdid = WMI_CMD_UNSUPPORTED,
-#ifdef CONFIG_ATH10K_SMART_ANTENNA
 	.pdev_set_smart_ant_cmdid = WMI_CMD_UNSUPPORTED,
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
 	.pdev_set_rx_ant_cmdid = WMI_CMD_UNSUPPORTED,
 	.peer_set_smart_tx_ant_cmdid = WMI_CMD_UNSUPPORTED,
 	.peer_smart_ant_fb_config_cmdid = WMI_CMD_UNSUPPORTED,
@@ -365,8 +365,8 @@ static struct wmi_cmd_map wmi_10x_cmd_map = {
 	.mu_cal_start_cmdid = WMI_CMD_UNSUPPORTED,
 	.set_cca_params_cmdid = WMI_CMD_UNSUPPORTED,
 	.pdev_bss_chan_info_request_cmdid = WMI_CMD_UNSUPPORTED,
-#ifdef CONFIG_ATH10K_SMART_ANTENNA
 	.pdev_set_smart_ant_cmdid = WMI_CMD_UNSUPPORTED,
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
 	.pdev_set_rx_ant_cmdid = WMI_CMD_UNSUPPORTED,
 	.peer_set_smart_tx_ant_cmdid = WMI_CMD_UNSUPPORTED,
 	.peer_smart_ant_fb_config_cmdid = WMI_CMD_UNSUPPORTED,
@@ -538,8 +538,8 @@ static struct wmi_cmd_map wmi_10_2_4_cmd_map = {
 	.mu_cal_start_cmdid = WMI_CMD_UNSUPPORTED,
 	.set_cca_params_cmdid = WMI_CMD_UNSUPPORTED,
 	.pdev_bss_chan_info_request_cmdid = WMI_CMD_UNSUPPORTED,
-#ifdef CONFIG_ATH10K_SMART_ANTENNA
 	.pdev_set_smart_ant_cmdid = WMI_10_2_PDEV_SMART_ANT_ENABLE_CMDID,
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
 	.pdev_set_rx_ant_cmdid = WMI_10_2_PDEV_SMART_ANT_SET_RX_ANTENNA_CMDID,
 	.peer_set_smart_tx_ant_cmdid =
 				WMI_10_2_PEER_SMART_ANT_SET_TX_ANTENNA_CMDID,
@@ -1478,8 +1478,8 @@ static struct wmi_cmd_map wmi_10_2_cmd_map = {
 	.pdev_get_ani_cck_config_cmdid = WMI_CMD_UNSUPPORTED,
 	.pdev_get_ani_ofdm_config_cmdid = WMI_CMD_UNSUPPORTED,
 	.pdev_reserve_ast_entry_cmdid = WMI_CMD_UNSUPPORTED,
-#ifdef CONFIG_ATH10K_SMART_ANTENNA
 	.pdev_set_smart_ant_cmdid = WMI_10_2_PDEV_SMART_ANT_ENABLE_CMDID,
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
 	.pdev_set_rx_ant_cmdid = WMI_10_2_PDEV_SMART_ANT_SET_RX_ANTENNA_CMDID,
 	.peer_set_smart_tx_ant_cmdid =
 				WMI_10_2_PEER_SMART_ANT_SET_TX_ANTENNA_CMDID,
@@ -7019,7 +7019,18 @@ ath10k_wmi_op_gen_beacon_dma(struct ath10k *ar, u32 vdev_id, const void *bcn,
 	cmd->msdu_id = 0;
 	cmd->frame_control = __cpu_to_le32(fc);
 	cmd->flags = 0;
-	cmd->antenna_mask = __cpu_to_le32(WMI_BCN_TX_REF_DEF_ANTENNA);
+	if (test_bit(WMI_SERVICE_SMART_ANTENNA_HW_SUPPORT, ar->wmi.svc_map)) {
+		cmd->antenna_mask = __cpu_to_le32(ATH10K_DEFAULT_ANTENNA_5G);
+		/* use different smart antenna defaults for 2G and 5G radio.
+		 * use 2G confiuration for dual band radio.
+		 */
+		if (ar->phy_capability & WHAL_WLAN_11G_CAPABILITY) {
+			cmd->antenna_mask =
+				__cpu_to_le32(ATH10K_DEFAULT_ANTENNA_2G);
+		}
+	} else {
+		cmd->antenna_mask = __cpu_to_le32(WMI_BCN_TX_REF_DEF_ANTENNA);
+	}
 
 	if (dtim_zero)
 		cmd->flags |= __cpu_to_le32(WMI_BCN_TX_REF_FLAG_DTIM_ZERO);
@@ -7969,6 +7980,29 @@ ath10k_wmi_fill_set_smart_ant(struct ath10k *ar,
 	return ret;
 }
 
+static struct sk_buff *
+ath10k_wmi_op_gen_pdev_sa_disabled_ant_sel(struct ath10k *ar, u32 mode,
+					   u32 tx_ant, u32 rx_ant)
+{
+	struct wmi_pdev_set_smart_ant_cmd *cmd;
+	struct sk_buff *skb;
+
+	skb = ath10k_wmi_alloc_skb(ar, sizeof(*cmd));
+	if (!skb)
+		return ERR_PTR(-ENOMEM);
+
+	cmd = (struct wmi_pdev_set_smart_ant_cmd *)skb->data;
+	cmd->enable = __cpu_to_le32(WMI_SMART_ANT_DISABLED_ANT_SEL);
+	ath10k_wmi_fill_set_smart_ant(ar, cmd, mode, tx_ant, rx_ant);
+	ath10k_dbg(
+		ar, ATH10K_DBG_WMI,
+		"wmi pdev sa_disable antenna sel, mode %d rx_ant %d def_tx_ant %d\n",
+		mode, rx_ant, tx_ant);
+	return skb;
+}
+#endif
+
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
 /* Sends initial smart antenna configuration. The configuration includes
  * enabling smart antenna functionality in fw, mode used for smart antenna
  * {mode: parallel or serial GPIOs}, initial tx/rx antenna.
@@ -8219,6 +8253,7 @@ static const struct wmi_ops wmi_ops = {
 	/* .gen_pdev_set_rx_ant not implemented */
 	/* .gen_peer_cfg_smart_ant_fb not implemented */
 	/* .gen_peer_set_smart_ant_train_info not implemented */
+	/* .gen_pdev_sa_disabled_ant_sel not implemented */
 };
 
 static const struct wmi_ops wmi_10_1_ops = {
@@ -8293,6 +8328,7 @@ static const struct wmi_ops wmi_10_1_ops = {
 	/* .gen_pdev_set_rx_ant not implemented */
 	/* .gen_peer_cfg_smart_ant_fb not implemented */
 	/* .gen_peer_set_smart_ant_train_info not implemented */
+	/* .gen_pdev_sa_disabled_ant_sel not implemented */
 };
 
 static const struct wmi_ops wmi_10_2_ops = {
@@ -8367,6 +8403,8 @@ static const struct wmi_ops wmi_10_2_ops = {
 	.gen_peer_set_smart_ant_train_info =
 				ath10k_wmi_op_gen_set_smart_ant_train_info,
 #endif
+	.gen_pdev_sa_disabled_ant_sel =
+				ath10k_wmi_op_gen_pdev_sa_disabled_ant_sel,
 };
 
 static const struct wmi_ops wmi_10_2_4_ops = {
@@ -8448,6 +8486,8 @@ static const struct wmi_ops wmi_10_2_4_ops = {
 	.gen_peer_set_smart_ant_train_info =
 				ath10k_wmi_op_gen_set_smart_ant_train_info,
 #endif
+	.gen_pdev_sa_disabled_ant_sel =
+				ath10k_wmi_op_gen_pdev_sa_disabled_ant_sel,
 };
 
 static const struct wmi_ops wmi_10_4_ops = {
