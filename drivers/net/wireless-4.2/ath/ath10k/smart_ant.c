@@ -1532,7 +1532,7 @@ void ath10k_smart_ant_proc_rx_feedback(struct ath10k *ar,
 		RX_ATTENTION_FLAGS_LAST_MPDU))
 		return;
 
-	sa_info->rx_antenna = __le32_to_cpu(rx_desc->ppdu_end.common.info0) &
+	sa_info->rx_antenna = __le32_to_cpu(rx_desc->ppdu_end.qca988x.info0) &
 				ATH10K_RX_ANT_MASK;
 }
 

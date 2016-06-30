@@ -482,10 +482,6 @@ struct ath10k_smart_ant_info {
 	u8 debug_level;
 };
 
-void smart_ant_dbg_ratelist(struct ath10k *ar,
-			    struct ath10k_peer_ratecode_list *rtcode,
-			    enum ath10k_smart_ant_rtcount mode);
-
 #ifdef CONFIG_ATH10K_SMART_ANT_ALG
 /* This API is to process rx feedback such as rssi, PER and antennas.
  * Based on the stats a better antenna combination can be found for rx.
