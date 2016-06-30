@@ -168,10 +168,6 @@
 	};
 };
 
-&mmc0 {
-	hs400-ds-delay = <0x19000>;
-};
-
 &mmc1 {
 	/delete-property/wp-gpios;
 };
