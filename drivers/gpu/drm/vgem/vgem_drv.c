@@ -45,16 +45,7 @@
 
 void vgem_gem_put_pages(struct drm_vgem_gem_object *obj)
 {
-	int num_pages = obj->base.size / PAGE_SIZE;
-	int i;
-
-	for (i = 0; i < num_pages; i++) {
-		if (obj->pages[i] == NULL)
-			break;
-		page_cache_release(obj->pages[i]);
-	}
-
-	drm_free_large(obj->pages);
+	drm_gem_put_pages(&obj->base, obj->pages, true, true);
 	obj->pages = NULL;
 }
 
@@ -81,37 +72,19 @@ static void vgem_gem_free_object(struct drm_gem_object *obj)
 
 int vgem_gem_get_pages(struct drm_vgem_gem_object *obj)
 {
-	struct address_space *mapping;
-	gfp_t gfpmask = GFP_KERNEL;
-	int num_pages, i, ret = 0;
+	int ret = 0;
 
 	if (obj->pages || obj->base.import_attach)
 		return 0;
 
-	num_pages = obj->base.size / PAGE_SIZE;
-	obj->pages = drm_malloc_ab(num_pages, sizeof(struct page *));
-	if (obj->pages == NULL)
-		return -ENOMEM;
-
-	mapping = obj->base.filp->f_path.dentry->d_inode->i_mapping;
-	gfpmask |= mapping_gfp_mask(mapping);
-
-	for (i = 0; i < num_pages; i++) {
-		struct page *page;
-		obj->pages[i] = NULL;
-		page = shmem_read_mapping_page_gfp(mapping, i, gfpmask);
-		if (IS_ERR(page)) {
-			ret = PTR_ERR(page);
-			goto err_out;
-		}
-		obj->pages[i] = page;
+	obj->pages = drm_gem_get_pages(&obj->base);
+	if (IS_ERR(obj->pages)) {
+		ret = PTR_ERR(obj->pages);
+		obj->pages = NULL;
+		return ret;
 	}
 
-	return ret;
-
-err_out:
-	vgem_gem_put_pages(obj);
-	return ret;
+	return 0;
 }
 
 static int vgem_gem_fault(struct vm_area_struct *vma, struct vm_fault *vmf)
