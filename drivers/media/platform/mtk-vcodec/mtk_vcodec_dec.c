@@ -993,18 +993,20 @@ static void vb2ops_vdec_buf_queue(struct vb2_buffer *vb)
 					src_mem.size);
 
 			ret = vdec_if_decode(ctx, &src_mem, NULL, &res_chg);
-			if (ret) {
-				/* fb == NULL menas to parse SPS/PPS header or
-				 * resolution info in src_mem. Decode can fail
-				 * if there is no SPS header or picture info
-				 * in bs
+			if (ret || !res_chg) {
+				/*
+				 * If decode succeeds and |res_chg| == 0, it
+				 * means the first NALU does not have SPS
+				 * header. Do not print the error in that case.
 				 */
+				int log_level = ret ? 0 : 1;
 				src_buf = v4l2_m2m_src_buf_remove(ctx->m2m_ctx);
 				v4l2_m2m_buf_done(to_vb2_v4l2_buffer(src_buf),
 						VB2_BUF_STATE_DONE);
-				mtk_v4l2_debug(0, "[%d] vdec_if_decode() src_buf=%d, size=%zu, fail=%d",
+				mtk_v4l2_debug(log_level,
+						"[%d] vdec_if_decode() src_buf=%d, size=%zu, fail=%d, res_chg=%d",
 						ctx->id, src_buf->index,
-						src_mem.size, ret);
+						src_mem.size, ret, res_chg);
 				return;
 			}
 
