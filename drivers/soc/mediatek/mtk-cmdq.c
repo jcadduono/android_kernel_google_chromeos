@@ -104,6 +104,7 @@
 #define CMDQ_THR_IRQ_EN			0x13 /* done + error */
 #define CMDQ_THR_IRQ_MASK		0x13
 #define CMDQ_THR_EXECUTING		BIT(31)
+#define CMDQ_THR_IS_WAITING		BIT(31)
 
 #define CMDQ_ARG_A_MASK			0xffffff
 #define CMDQ_ARG_A_WRITE_MASK		0xffff
@@ -1320,11 +1321,17 @@ static int cmdq_task_insert_into_thread(struct cmdq_task *task,
 	return 0;
 }
 
-/* we assume tasks in the same display thread are waiting the same event. */
-static void cmdq_task_remove_wfe(struct cmdq_task *task)
+static bool cmdq_command_is_wfe(u32 *cmd)
 {
 	u32 wfe_option = CMDQ_WFE_UPDATE | CMDQ_WFE_WAIT | CMDQ_WFE_WAIT_VALUE;
 	u32 wfe_op = CMDQ_CODE_WFE << CMDQ_OP_CODE_SHIFT;
+
+	return (cmd[0] == wfe_option && (cmd[1] & CMDQ_OP_CODE_MASK) == wfe_op);
+}
+
+/* we assume tasks in the same display thread are waiting the same event. */
+static void cmdq_task_remove_wfe(struct cmdq_task *task)
+{
 	u32 *base = task->va_base;
 	int i;
 
@@ -1333,11 +1340,30 @@ static void cmdq_task_remove_wfe(struct cmdq_task *task)
 	 * replace them with JUMP_PASS.
 	 */
 	for (i = 0; i < task->num_cmd; i += 2) {
-		if (base[i] == wfe_option &&
-		    (base[i + 1] & CMDQ_OP_CODE_MASK) == wfe_op) {
+		if (cmdq_command_is_wfe(&base[i])) {
 			base[i] = CMDQ_JUMP_PASS;
 			base[i + 1] = CMDQ_JUMP_BY_OFFSET;
 		}
+	}
+}
+
+static bool cmdq_thread_is_in_wfe(struct cmdq *cqctx, int tid)
+{
+	return readl(cqctx->base + CMDQ_THR_WAIT_TOKEN_OFFSET +
+		     CMDQ_THR_SHIFT * tid) & CMDQ_THR_IS_WAITING;
+}
+
+static void cmdq_thread_wait_end(struct cmdq *cqctx, int tid,
+				 unsigned long end_pa)
+{
+	void __iomem *gce_base = cqctx->base;
+	unsigned long curr_pa;
+
+	if (readl_poll_timeout_atomic(
+			gce_base + CMDQ_THR_CURR_ADDR_OFFSET +
+			CMDQ_THR_SHIFT * tid,
+			curr_pa, curr_pa == end_pa, 1, 20)) {
+		dev_err(cqctx->dev, "GCE thread(%d) cannot run to end.\n", tid);
 	}
 }
 
@@ -1363,6 +1389,7 @@ static int cmdq_task_exec_async_impl(struct cmdq_task *task, int tid)
 	task->irq_flag = 0;
 	task->task_state = TASK_STATE_BUSY;
 
+	/* case 1. first task for this thread */
 	if (thread->task_count <= 0) {
 		if (cmdq_thread_reset(cqctx, tid) < 0) {
 			spin_unlock_irqrestore(&cqctx->exec_lock, flags);
@@ -1410,22 +1437,26 @@ static int cmdq_task_exec_async_impl(struct cmdq_task *task, int tid)
 
 		cookie = thread->next_cookie;
 
-		/*
-		 * Boundary case tested: EOC have been executed,
-		 *                       but JUMP is not executed
-		 * Thread PC: 0x9edc0dd8, End: 0x9edc0de0,
-		 * Curr Cookie: 1, Next Cookie: 2
-		 * PC = END - 8, EOC is executed
-		 * PC = END - 0, All CMDs are executed
-		 */
-
 		curr_pa = (unsigned long)readl(gce_base +
 					       CMDQ_THR_CURR_ADDR_OFFSET +
 					       CMDQ_THR_SHIFT * tid);
 		end_pa = (unsigned long)readl(gce_base +
 					      CMDQ_THR_END_ADDR_OFFSET +
 					      CMDQ_THR_SHIFT * tid);
-		if ((curr_pa == end_pa - 8) || (curr_pa == end_pa - 0)) {
+
+		/*
+		 * case 2. If already exited WFE, wait for current task to end
+		 * and then jump directly to new task.
+		 */
+		if (!cmdq_thread_is_in_wfe(cqctx, tid)) {
+			cmdq_thread_resume(cqctx, tid);
+			cmdq_thread_wait_end(cqctx, tid, end_pa);
+			status = cmdq_thread_suspend(cqctx, tid);
+			if (status < 0) {
+				spin_unlock_irqrestore(&cqctx->exec_lock,
+						       flags);
+				return status;
+			}
 			/* set to task directly */
 			writel(task->mva_base,
 			       gce_base + CMDQ_THR_CURR_ADDR_OFFSET +
@@ -1435,6 +1466,11 @@ static int cmdq_task_exec_async_impl(struct cmdq_task *task, int tid)
 			       CMDQ_THR_SHIFT * tid);
 			thread->cur_task[cookie % CMDQ_MAX_TASK_IN_THREAD] = task;
 			thread->task_count++;
+
+		/*
+		 * case 3. If thread is still in WFE from previous task, clear
+		 * WFE in new task and append to thread.
+		 */
 		} else {
 			/* Current task that shuld be processed */
 			minimum = cmdq_thread_get_cookie(cqctx, tid) + 1;
