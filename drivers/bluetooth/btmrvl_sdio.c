@@ -700,8 +700,11 @@ static int btmrvl_sdio_card_to_host(struct btmrvl_private *priv)
 	ret = btmrvl_sdio_read_rx_len(card, &buf_len);
 	if (ret < 0) {
 		BT_ERR("read rx_len failed");
-		ret = -EIO;
-		goto exit;
+		ret = btmrvl_sdio_read_rx_len(card, &buf_len);
+		if (ret < 0) {
+			BT_ERR("read rx_len 2nd attempt also failed: %d", ret);
+			buf_len = 16;
+		}
 	}
 
 	blksz = SDIO_BLOCK_SIZE;
@@ -735,8 +738,13 @@ static int btmrvl_sdio_card_to_host(struct btmrvl_private *priv)
 			  num_blocks * blksz);
 	if (ret < 0) {
 		BT_ERR("readsb failed: %d", ret);
-		ret = -EIO;
-		goto exit;
+		ret = sdio_readsb(card->func, payload, card->ioport,
+				  num_blocks * blksz);
+		if (ret < 0) {
+			BT_ERR("readsb 2nd attempt also failed: %d", ret);
+			ret = -EIO;
+			goto exit;
+		}
 	}
 
 	/* This is SDIO specific header length: byte[2][1][0], type: byte[3]
@@ -839,7 +847,13 @@ static int btmrvl_sdio_read_to_clear(struct btmrvl_sdio_card *card, u8 *ireg)
 	ret = sdio_readsb(card->func, adapter->hw_regs, 0, SDIO_BLOCK_SIZE);
 	if (ret) {
 		BT_ERR("sdio_readsb: read int hw_regs failed: %d", ret);
-		return ret;
+		ret = sdio_readsb(card->func, adapter->hw_regs, 0,
+				  SDIO_BLOCK_SIZE);
+		if (ret) {
+			BT_ERR("read int hw_regs 2nd attempt also failed: %d",
+			       ret);
+			return ret;
+		}
 	}
 
 	*ireg = adapter->hw_regs[card->reg->host_intstatus];
