@@ -29,7 +29,6 @@
 #include <linux/workqueue.h>
 #include <soc/mediatek/cmdq.h>
 
-#define CMDQ_MAX_THREAD_COUNT		3
 #define CMDQ_MAX_TASK_IN_THREAD		2
 
 #define CMDQ_INITIAL_CMD_BLOCK_SIZE	PAGE_SIZE
@@ -127,6 +126,12 @@
 #define CMDQ_EOC_IRQ_EN			BIT(0)
 
 #define CMDQ_ENABLE_MASK		BIT(0)
+
+enum cmdq_thread_index {
+	CMDQ_THR_DISP_DSI0 = 0,		/* main: dsi0 */
+	CMDQ_THR_DISP_DPI0,		/* sub: dpi0 */
+	CMDQ_MAX_THREAD_COUNT,		/* max */
+};
 
 struct cmdq_command {
 	struct cmdq		*cqctx;
@@ -377,13 +382,9 @@ static const char *cmdq_subsys_base_addr_to_name(u32 base_addr)
 static int cmdq_eng_get_thread(u64 flag)
 {
 	if (flag & BIT_ULL(CMDQ_ENG_DISP_DSI0))
-		return 0;
-	else if (flag & BIT_ULL(CMDQ_ENG_DISP_DPI0))
-		return 1;
-	else if (flag)
-		return 2;
-	else
-		return 3;
+		return CMDQ_THR_DISP_DSI0;
+	else /* CMDQ_ENG_DISP_DPI0 */
+		return CMDQ_THR_DISP_DPI0;
 }
 
 static const char *cmdq_event_get_module(enum cmdq_event event)
