@@ -17,6 +17,6 @@
 
 / {
 	model = "Mediatek Elm board";
-	compatible = "google,elm-rev2", "google,elm-rev1",
+	compatible = "google,elm-rev3", "google,elm-rev2", "google,elm-rev1",
 		     "google,elm", "mediatek,mt8173";
 };
