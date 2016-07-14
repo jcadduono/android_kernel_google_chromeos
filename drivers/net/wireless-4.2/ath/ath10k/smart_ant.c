@@ -1818,6 +1818,7 @@ int ath10k_smart_ant_sta_connect(struct ath10k *ar,
 			ATH10K_SMART_ANT_TRAIN_TRIGGER_RX;
 	smart_ant_sta->train_info.train_state =
 			ATH10K_SMART_ANT_STATE_PRETRAIN;
+	info->rx_ant = info->default_ant;
 
 	if (sta->vht_cap.vht_supported)
 		smart_ant_sta->wmode = ATH10K_WIRELESS_MODE_VHT;
