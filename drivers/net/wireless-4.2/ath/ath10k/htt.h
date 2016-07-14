@@ -963,6 +963,31 @@ struct htt_pktlog_msg {
 	u8 payload[0];
 } __packed;
 
+/**
+  * target -> host enhanced stats message
+  *
+  * The following field definitions describe the format of the enhanced stats
+  * message sent from the target to the host.
+  * The message consists of a 4-octet header,followed by a variable number
+  * of 32-bit character values.
+  *
+  * |31          24|23          16|15           8|7            0|
+  * |-----------------------------------------------------------|
+  * |              |              |              |   msg type   |
+  * |-----------------------------------------------------------|
+  * |                        payload                            |
+  * |-----------------------------------------------------------|
+  *   - MSG_TYPE
+  *     Bits 7:0
+  *     Purpose: identifies this as a enhanced stats message
+  *     Value: HTT_T2H_MSG_TYPE_EN_STATS
+  */
+
+struct htt_en_stats_msg {
+	u8 pad[3];
+	u8 payload[0];
+} __packed;
+
 struct htt_dbg_stats_rx_reorder_stats {
 	/* Non QoS MPDUs received */
 	__le32 deliver_non_qos;
@@ -1530,6 +1555,7 @@ struct htt_resp {
 		struct htt_rc_update rc_update;
 		struct htt_rx_test rx_test;
 		struct htt_pktlog_msg pktlog_msg;
+		struct htt_en_stats_msg en_stats_msg;
 		struct htt_stats_conf stats_conf;
 		struct htt_rx_pn_ind rx_pn_ind;
 		struct htt_rx_offload_ind rx_offload_ind;

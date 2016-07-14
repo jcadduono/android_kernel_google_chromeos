@@ -39,6 +39,67 @@
 #include "wmi-ops.h"
 #include "smart_ant.h"
 
+static u32 *ath10k_htt_10_4_fetch_stats_base(
+				struct ath10k *ar,
+				u32 *stats_base, u32 msg_len, u8 type)
+{
+	int len = msg_len;
+	u8 stat_type, status;
+	u16 stat_len;
+	u32 *msg_word;
+	int found = 0;
+
+	msg_word = stats_base;
+
+#define EN_ST_ROUND_UP_TO_4(val) (((val) + 3) & ~0x3)
+
+	/*Convert it to DWORD */
+	len = len >> 2;
+	stat_type = __le32_to_cpu(
+			HTT_T2H_EN_STATS_CONF_TLV_TYPE_GET(*msg_word));
+	status    = __le32_to_cpu(
+			HTT_T2H_EN_STATS_CONF_TLV_STATUS_GET(*msg_word));
+	stat_len  = __le32_to_cpu(
+			HTT_T2H_EN_STATS_CONF_TLV_LENGTH_GET(*msg_word));
+
+	while (status != ATH10K_SMART_ANT_HTT_T2H_EN_STATS_STATUS_SERIES_DONE) {
+		if (type == stat_type) {
+			found = 1;
+			break;
+		}
+
+		len  = EN_ST_ROUND_UP_TO_4(stat_len);
+		len = len >> 2;
+		msg_word = (msg_word + 1 + len);
+
+		stat_type = __le32_to_cpu(
+			    HTT_T2H_EN_STATS_CONF_TLV_TYPE_GET(*msg_word));
+		status    = __le32_to_cpu(
+			    HTT_T2H_EN_STATS_CONF_TLV_STATUS_GET(*msg_word));
+		stat_len  = __le32_to_cpu(
+			    HTT_T2H_EN_STATS_CONF_TLV_LENGTH_GET(*msg_word));
+	}
+
+	if (found) {
+		return (msg_word + 1);
+	} else {
+		return NULL;
+	}
+}
+
+static int smart_ant_get_rf_chains(struct ath10k *ar)
+{
+	switch (ar->hw_rev) {
+	case ATH10K_HW_QCA988X:
+		return 3;
+	case ATH10K_HW_QCA4019:
+		return 2;
+	default:
+		ath10k_warn(ar, "SA is not supported for this chip yet!\n");
+		return 0;
+	}
+}
+
 static char *rate_code_map[] = {"Legacy CCK/OFDM",
 				"VHT/HT 20",
 				"VHT/HT 40",
@@ -88,7 +149,7 @@ smart_ant_dbg_ratelist(struct ath10k *ar,
 static void smart_ant_dbg_feedback(struct ath10k *ar,
 				   struct ath10k_smart_ant_tx_fb *fb)
 {
-	int i;
+	int i, max_chains = 0;
 
 	if (fb->num_comb_fb) {
 		for (i = 0; i < fb->num_comb_fb; i++) {
@@ -128,9 +189,97 @@ static void smart_ant_dbg_feedback(struct ath10k *ar,
 
 	if (ar->smart_ant_info.debug_level >=
 	    ATH10K_SMART_ANT_DBG_LVL_TRAIN_STATS) {
-		for (i = 0; i < ATH10K_SMART_ANT_MAX_CHAINS; i++) {
+		max_chains = smart_ant_get_rf_chains(ar);
+		for (i = 0; i < max_chains; i++) {
 			ath10k_dbg(ar, ATH10K_DBG_SMART_ANT, "rssi[%d] %d\n",
 				   i, (u8)fb->rssi[i]);
+		}
+	}
+}
+
+static inline bool smart_ant_is_valid_ratecode(
+					struct ieee80211_sta *sta,
+					u8 bw, u8 nss, u8 mcs)
+{
+	if (!(sta->ht_cap.cap & IEEE80211_HT_CAP_LDPC_CODING) ||
+	    !(sta->vht_cap.cap & IEEE80211_VHT_CAP_RXLDPC)) {
+		if (bw == 0 && nss < 2 && mcs > 8)
+			return false;
+		else if (bw == 2 && nss == 2 && mcs == 6)
+			return false;
+	}
+
+	return true;
+}
+
+static void ath10k_smart_ant_peer_ratecode_fill(
+					struct ath10k *ar,
+					struct ath10k_smart_ant_sta *sa_sta,
+					struct ieee80211_sta *sta)
+{
+	int i, nss, max_rates, caps;
+	u8 bw, *rates[3], rate_idx;
+
+	memset(&sa_sta->rate_cap, 0, sizeof(sa_sta->rate_cap));
+	ether_addr_copy(sa_sta->rate_cap.mac_addr, sta->addr);
+
+	caps = (sta->vht_cap.vht_supported) ?
+			WMI_RATE_PREAMBLE_VHT :
+			((sta->ht_cap.ht_supported) ?
+				WMI_RATE_PREAMBLE_HT :
+				WMI_RATE_PREAMBLE_OFDM);
+	max_rates = (caps == WMI_RATE_PREAMBLE_VHT) ?
+			ATH10K_VHT_MCS_MAX :
+			((caps == WMI_RATE_PREAMBLE_HT) ?
+				ATH10K_HT_MCS_MAX :
+				ATH10K_OFDM_RATES_MAX);
+
+	if (caps > WMI_RATE_PREAMBLE_OFDM) {
+		rates[0] = sa_sta->rate_cap.rtcode_20;
+		rates[1] = sa_sta->rate_cap.rtcode_40;
+		rates[2] = sa_sta->rate_cap.rtcode_80;
+
+		ath10k_dbg(ar, ATH10K_DBG_SMART_ANT,
+			   "rate code list for %s, bw %d\n",
+			   ((caps == WMI_RATE_PREAMBLE_VHT) ? "VHT" : "HT"),
+			   sta->bandwidth);
+		if (sta->bandwidth > 2) {
+			ath10k_warn(ar, "bandwidth %d is not supported, limiting to bw 2\n",
+				    sta->bandwidth);
+			sta->bandwidth = 2;
+		}
+		for (bw = 0; bw <= sta->bandwidth; bw++) {
+			rate_idx = 0;
+			for (nss = 0; nss < sta->rx_nss; nss++) {
+				for (i = 0; i < max_rates; i++) {
+					if (smart_ant_is_valid_ratecode(
+							sta, bw, nss, i))
+						rates[bw][rate_idx++] =
+							ATH10K_HW_RATECODE(
+								i, nss, caps);
+				}
+			}
+			sa_sta->rate_cap.rt_count[bw + 1] = rate_idx;
+		}
+	} else {
+		ath10k_dbg(ar, ATH10K_DBG_SMART_ANT,
+			   "rate code list for legacy mode %x\n",
+			   sta->supp_rates[0]);
+		rates[0] = sa_sta->rate_cap.rtcode_legacy;
+		for (i = 0; i < ATH10K_CCK_RATES_MAX; i++) {
+			rates[0][i] = ATH10K_HW_RATECODE(
+					i, nss,
+					WMI_RATE_PREAMBLE_CCK);
+		}
+		sa_sta->rate_cap.rt_count[0] = ATH10K_CCK_RATES_MAX;
+		if (sta->supp_rates[0] > 0xff) {
+			for (i = 0; i < ATH10K_OFDM_RATES_MAX; i++) {
+				rates[0][i + ATH10K_CCK_RATES_MAX] =
+					ATH10K_HW_RATECODE(
+						i, nss,
+						WMI_RATE_PREAMBLE_OFDM);
+			}
+			sa_sta->rate_cap.rt_count[0] += ATH10K_OFDM_RATES_MAX;
 		}
 	}
 }
@@ -665,22 +814,26 @@ static s32 smart_ant_move_rate(struct ath10k_smart_ant_sta *sa_sta,
 	return -1;
 }
 
-static bool smart_ant_sec_metric(struct ath10k_smart_ant_sta *sa_sta)
+static bool smart_ant_sec_metric(struct ath10k *ar,
+				 struct ath10k_smart_ant_sta *sa_sta)
 {
 	struct ath10k_smart_ant_train_data *tdata = &sa_sta->train_data;
 	struct ath10k_smart_ant_train_stats *tstats =
 					&sa_sta->train_info.train_stats;
 	u8 cmin_rssi, cmax_rssi, tmin_rssi, tmax_rssi;
+
 	u32 cgoodant_cnt = 0;
 	u32 tgood_ant_cnt = 0;
-	int i, j;
+	int i, j, max_chains = 0;
+
+	max_chains = smart_ant_get_rf_chains(ar);
 
 	for (i = 0; i < ATH10K_SMART_ANT_RSSI_SAMPLE; i++) {
 		cmin_rssi = tdata->rssi[0][i];
 		cmax_rssi = tdata->rssi[0][i];
 		tmin_rssi = tstats->rssi[0][i];
 		tmax_rssi = tstats->rssi[0][i];
-		for (j = 0; j < ATH10K_SMART_ANT_MAX_CHAINS; j++) {
+		for (j = 0; j < max_chains; j++) {
 			cmin_rssi = (tdata->rssi[j][i] >= 0 &&
 				     cmin_rssi > tdata->rssi[j][i]) ?
 					tdata->rssi[j][i] : cmin_rssi;
@@ -830,7 +983,7 @@ static u8 smart_ant_proc_train_stats(struct ath10k *ar,
 				(tstats->per - per) : (per - tstats->per);
 			if (tstats->rate == tstats->last_rate &&
 			    per_diff <= sparams->per_diff_threshold) {
-				switch_ant = smart_ant_sec_metric(sa_sta);
+				switch_ant = smart_ant_sec_metric(ar, sa_sta);
 
 				if (ar->smart_ant_info.debug_level >=
 				    ATH10K_SMART_ANT_DBG_LVL_TRAIN_STATS &&
@@ -1121,7 +1274,9 @@ static void smart_ant_update_training(struct ath10k *ar,
 	u8 nfb, npkts, nbad, rate, bw;
 	u8 rate_cfg;
 	bool chk_bw_change = false;
-	int i, j;
+	int i, j, max_chains = 0;
+
+	max_chains = smart_ant_get_rf_chains(ar);
 
 	if (!fb->train_pkt) {
 		if (fb->npkts > fb->nbad)
@@ -1134,8 +1289,7 @@ static void smart_ant_update_training(struct ath10k *ar,
 		nfb = comb_fb ? ATH10K_NFB_COMB_FB(comb_fb->bw) : 1;
 		bw = comb_fb ? ATH10K_COMB_FB_BW(comb_fb->bw) :
 				ATH10K_FB_BW(fb->ridx);
-		rate = comb_fb ? comb_fb->rate :
-				ATH10K_FB_RATE(fb->rate_mcs[0], bw);
+		rate = comb_fb ? comb_fb->rate : fb->rate_mcs[0];
 		npkts = comb_fb ? comb_fb->npkts : fb->npkts;
 		nbad = comb_fb ? comb_fb->nbad : fb->nbad;
 
@@ -1162,7 +1316,7 @@ static void smart_ant_update_training(struct ath10k *ar,
 		tdata->nframes += npkts;
 
 		if (!i) {
-			for (j = 0; j < ATH10K_SMART_ANT_MAX_CHAINS;  j++) {
+			for (j = 0; j < max_chains;  j++) {
 				tdata->rssi[j][tdata->samples] =
 				     (u8)fb->rssi[j];
 			}
@@ -1424,7 +1578,9 @@ static void smart_ant_tx_fb_fill(struct ath10k *ar,
 	u32 tot_tries;
 	u32 try_status;
 	u8 sbw_idx_suc;
-	int i;
+	int i, max_chains = 0;
+
+	max_chains = smart_ant_get_rf_chains(ar);
 
 	fb->npkts = TXCS_MS(tx_status_desc, ATH10K_SMART_ANT_NPKTS);
 	fb->nbad = TXCS_MS(tx_status_desc, ATH10K_SMART_ANT_NBAD);
@@ -1445,9 +1601,10 @@ static void smart_ant_tx_fb_fill(struct ath10k *ar,
 			TXCS_MS(tx_ctrl_desc, ATH10K_TXC_S1_RATE_BW80) |
 			TXCS_MS(tx_ctrl_desc, ATH10K_TXC_S1_RATE_BW160);
 
-	for (i = 0; i < ATH10K_SMART_ANT_MAX_CHAINS; i++)
+	for (i = 0; i < max_chains; i++) {
 		fb->rssi[i] = __le32_to_cpu(
 				tx_status_desc[ATH10K_TXS_ACK_RSSI + i]);
+	}
 
 	try_status = __le32_to_cpu(tx_status_desc[tot_tries - 1]);
 	sbw_idx_suc = (try_status & ATH10K_TXS_TRY_SERIES_MASK) ?
@@ -1472,10 +1629,11 @@ static void smart_ant_tx_fb_fill(struct ath10k *ar,
 static int smart_ant_get_streams(struct ath10k *ar)
 {
 	u32 num_chains = 0, supp_tx_chainmask;
-	int i;
+	int i, max_chains = 0;
 
 	supp_tx_chainmask = (1 << ar->num_rf_chains) - 1;
-	for (i = 0; i < ATH10K_SMART_ANT_MAX_CHAINS; i++) {
+	max_chains = smart_ant_get_rf_chains(ar);
+	for (i = 0; i < max_chains; i++) {
 		if (supp_tx_chainmask & (1 << i))
 			num_chains++;
 	}
@@ -1548,6 +1706,131 @@ void ath10k_smart_ant_proc_rx_feedback(struct ath10k *ar,
 
 	sa_info->rx_antenna = __le32_to_cpu(rx_desc->ppdu_end.qca988x.info0) &
 				ATH10K_RX_ANT_MASK;
+}
+
+void ath10k_smart_ant_10_4_proc_tx_feedback(struct ath10k *ar,
+					    struct sk_buff *skb)
+{
+	struct htt_en_stats_msg *en_stats;
+	struct ath10k_smart_ant_ppdu_stats *ppdu_stats;
+	struct ath10k_smart_ant_ppdu_sa_stats *sa_stats;
+	struct ieee80211_sta *sta;
+	struct ath10k_peer *peer;
+	struct ath10k_smart_ant_tx_fb feed_back;
+	struct ath10k_sta *arsta;
+	u32 peer_id;
+	u32 *stats_base;
+	u16 action = 0;
+	u8 peer_mac[ETH_ALEN];
+	int ret = 0, i, max_chains = 0;
+
+	/* pull away the htt response header */
+	skb_pull(skb, sizeof(struct htt_resp_hdr));
+
+	en_stats = (struct htt_en_stats_msg *)skb->data;
+
+	if (!skb_pull(skb, sizeof(*en_stats)))
+		return;
+
+	stats_base = (u32 *)skb->data;
+
+	ppdu_stats = (struct ath10k_smart_ant_ppdu_stats *)
+		      ath10k_htt_10_4_fetch_stats_base(
+			ar,
+			stats_base,
+			skb->len,
+			ATH10K_SMART_ANT_HTT_T2H_EN_STATS_TYPE_COMMON);
+
+	sa_stats = (struct ath10k_smart_ant_ppdu_sa_stats *)
+		    ath10k_htt_10_4_fetch_stats_base(
+			ar,
+			stats_base,
+			skb->len,
+			ATH10K_SMART_ANT_HTT_T2H_EN_STATS_TYPE_SANT);
+
+	if (ppdu_stats == NULL || sa_stats == NULL)
+		return;
+
+	if (ppdu_stats->pkt_type != ATH10K_FTYPE_DATA ||
+	    ppdu_stats->is_mcast ||
+	    ppdu_stats->tx_status)
+		return;
+
+	max_chains = smart_ant_get_rf_chains(ar);
+
+	peer_id = __le32_to_cpu(ppdu_stats->peer_id);
+
+	spin_lock_bh(&ar->data_lock);
+	peer = ath10k_peer_find_by_id(ar, peer_id);
+	if (!peer) {
+		spin_unlock_bh(&ar->data_lock);
+		return;
+	}
+	ether_addr_copy(peer_mac, peer->addr);
+	spin_unlock_bh(&ar->data_lock);
+
+	rcu_read_lock();
+	sta = ieee80211_find_sta_by_ifaddr(ar->hw, peer_mac, NULL);
+	if (!sta) {
+		rcu_read_unlock();
+		ath10k_dbg(ar, ATH10K_DBG_SMART_ANT,
+			   "Sta entry for %pM not found\n", peer_mac);
+		return;
+	}
+
+	arsta = (struct ath10k_sta *)sta->drv_priv;
+
+	if (!arsta->smart_ant_sta)
+		goto exit;
+
+	memset(&feed_back, 0, sizeof(feed_back));
+
+	ath10k_dbg(ar, ATH10K_DBG_SMART_ANT,
+		   "Tx feedback from sta: %pM\n", peer_mac);
+
+	feed_back.npkts = __le32_to_cpu(ppdu_stats->mpdus_queued);
+	feed_back.nbad = __le32_to_cpu(ppdu_stats->mpdus_failed);
+	feed_back.num_comb_fb = 0;
+
+	feed_back.rate_mcs[0] = __le32_to_cpu(ppdu_stats->rate);
+
+	for (i = 0; i < max_chains; i++)
+		feed_back.rssi[i] = __le32_to_cpu(ppdu_stats->rssi[i]) >>
+				    ATH10K_RSSI_0;
+
+	feed_back.tx_antenna[0] = __le32_to_cpu(sa_stats->tx_antenna);
+	feed_back.ridx = ppdu_stats->bw_idx;
+	feed_back.train_pkt = __le32_to_cpu(sa_stats->is_train) ? true : false;
+	feed_back.rate_maxphy = __le32_to_cpu(sa_stats->sa_max_rates);
+	feed_back.gput = __le32_to_cpu(sa_stats->sa_gput);
+
+	smart_ant_dbg_feedback(ar, &feed_back);
+	smart_ant_tx_stats_update(ar, arsta->smart_ant_sta,
+				  &feed_back, &action);
+	if (action & ATH10K_SMART_ANT_ACT_TX_CFG) {
+		ret = smart_ant_config_tx(
+				ar, arsta->smart_ant_sta,
+				peer_mac,
+				arsta->arvif->vdev_id);
+		if (ret)
+			goto exit;
+	}
+
+	if (action & ATH10K_SMART_ANT_ACT_RX_CFG) {
+		ret = smart_ant_config_rx(ar, arsta->smart_ant_sta);
+		if (ret)
+			goto exit;
+	}
+
+	if (action & ATH10K_SMART_ANT_ACT_TRAIN) {
+		smart_ant_config_train_info(
+				ar,
+				arsta->smart_ant_sta,
+				peer_mac,
+				arsta->arvif->vdev_id);
+	}
+exit:
+		rcu_read_unlock();
 }
 
 void ath10k_smart_ant_proc_tx_feedback(struct ath10k *ar, u8 *data)
@@ -1753,6 +2036,8 @@ int ath10k_smart_ant_sta_connect(struct ath10k *ar,
 	memcpy(&smart_ant_sta->rate_cap, &ar->ratecode_list,
 	       sizeof(smart_ant_sta->rate_cap));
 
+	ath10k_smart_ant_peer_ratecode_fill(ar, smart_ant_sta, sta);
+
 	if (ar->smart_ant_info.debug_level >=
 	    ATH10K_SMART_ANT_DBG_LVL_TOP_DECISION) {
 		ath10k_dbg(ar, ATH10K_DBG_SMART_ANT,
@@ -1761,7 +2046,7 @@ int ath10k_smart_ant_sta_connect(struct ath10k *ar,
 	}
 
 	for (i = 0; i < ATH10K_SMART_ANT_RTCNT_MAX; i++)
-		smart_ant_dbg_ratelist(ar, &ar->ratecode_list, i);
+		smart_ant_dbg_ratelist(ar, &smart_ant_sta->rate_cap, i);
 
 	/* Configure to get feedback for every N PPDUs.
 	 * ATH10K_TX_FEEDBACK_CONFIG_DEFAULT - b2:b0 Number of PPDUs
@@ -1898,6 +2183,7 @@ void ath10k_smart_ant_disable(struct ath10k *ar, struct ath10k_vif *arvif)
 	struct ath10k_smart_ant_info *info = &ar->smart_ant_info;
 	u32 default_antenna_config = ath10k_default_antenna_5g;
 	int ret;
+	u32 param;
 
 	lockdep_assert_held(&ar->conf_mutex);
 
@@ -1929,13 +2215,23 @@ void ath10k_smart_ant_disable(struct ath10k *ar, struct ath10k_vif *arvif)
 	}
 
 	info->enabled = false;
-	ath10k_wmi_pdev_pktlog_disable(ar);
+
+	if (ar->hw_rev == ATH10K_HW_QCA4019) {
+		param = ar->wmi.pdev_param->en_stats;
+		ret = ath10k_wmi_pdev_set_param(ar, param, 0);
+
+		if (ret)
+			ath10k_err(ar, "Disabling EN_STATS failed\n");
+	} else{
+		ath10k_wmi_pdev_pktlog_disable(ar);
+	}
 }
 
 int ath10k_smart_ant_enable(struct ath10k *ar, struct ath10k_vif *arvif)
 {
 	struct ath10k_smart_ant_info *info = &ar->smart_ant_info;
 	int ret;
+	u32 param;
 
 	lockdep_assert_held(&ar->conf_mutex);
 
@@ -1979,5 +2275,18 @@ int ath10k_smart_ant_enable(struct ath10k *ar, struct ath10k_vif *arvif)
 	info->enabled = true;
 
 	/* Enable tx feedback through packetlog */
-	return ath10k_wmi_pdev_pktlog_enable(ar, ATH10K_PKTLOG_SMART_ANT);
+	if (ar->hw_rev == ATH10K_HW_QCA4019) {
+		/* enable enhanced stats through which we get tx feedbacks */
+		param = ar->wmi.pdev_param->en_stats;
+		ret = ath10k_wmi_pdev_set_param(ar, param, 1);
+
+		if (ret)
+			ath10k_err(ar, "Enabling EN_STATS failed\n");
+	} else {
+		/* Enable tx feedback through packetlog */
+		ret = ath10k_wmi_pdev_pktlog_enable(
+			ar,
+			(ar->debug.pktlog_filter | ATH10K_PKTLOG_SMART_ANT));
+	}
+	return ret;
 }

@@ -694,14 +694,14 @@ static struct wmi_cmd_map wmi_10_4_cmd_map = {
 	.nan_cmdid = WMI_10_4_NAN_CMDID,
 	.vdev_ratemask_cmdid = WMI_10_4_VDEV_RATEMASK_CMDID,
 	.qboost_cfg_cmdid = WMI_10_4_QBOOST_CFG_CMDID,
-	.pdev_smart_ant_enable_cmdid = WMI_10_4_PDEV_SMART_ANT_ENABLE_CMDID,
-	.pdev_smart_ant_set_rx_antenna_cmdid =
+	.pdev_set_smart_ant_cmdid = WMI_10_4_PDEV_SMART_ANT_ENABLE_CMDID,
+	.pdev_set_rx_ant_cmdid =
 			WMI_10_4_PDEV_SMART_ANT_SET_RX_ANTENNA_CMDID,
-	.peer_smart_ant_set_tx_antenna_cmdid =
+	.peer_set_smart_tx_ant_cmdid =
 			WMI_10_4_PEER_SMART_ANT_SET_TX_ANTENNA_CMDID,
-	.peer_smart_ant_set_train_info_cmdid =
+	.peer_set_smart_ant_train_info_cmdid =
 			WMI_10_4_PEER_SMART_ANT_SET_TRAIN_INFO_CMDID,
-	.peer_smart_ant_set_node_config_ops_cmdid =
+	.peer_smart_ant_fb_config_cmdid =
 			WMI_10_4_PEER_SMART_ANT_SET_NODE_CONFIG_OPS_CMDID,
 	.pdev_set_antenna_switch_table_cmdid =
 			WMI_10_4_PDEV_SET_ANTENNA_SWITCH_TABLE_CMDID,
@@ -5530,7 +5530,6 @@ static void ath10k_wmi_10_4_op_rx(struct ath10k *ar, struct sk_buff *skb)
 		ath10k_wmi_event_vdev_stopped(ar, skb);
 		break;
 	case WMI_10_4_WOW_WAKEUP_HOST_EVENTID:
-	case WMI_10_4_PEER_RATECODE_LIST_EVENTID:
 		ath10k_dbg(ar, ATH10K_DBG_WMI,
 			   "received event id %d not implemented\n", id);
 		break;
@@ -5542,6 +5541,11 @@ static void ath10k_wmi_10_4_op_rx(struct ath10k *ar, struct sk_buff *skb)
 		break;
 	case WMI_10_4_PDEV_BSS_CHAN_INFO_EVENTID:
 		ath10k_wmi_event_chan_survey_update(ar, skb);
+		break;
+	case WMI_10_4_PEER_RATECODE_LIST_EVENTID:
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+		ath10k_wmi_event_ratecode_list(ar, skb);
+#endif
 		break;
 	default:
 		ath10k_warn(ar, "Unknown eventid: %d\n", id);
@@ -6032,7 +6036,6 @@ static struct sk_buff *ath10k_wmi_10_4_op_gen_init(struct ath10k *ar)
 	config.max_frag_entries = __cpu_to_le32(TARGET_10_4_11AC_TX_MAX_FRAGS);
 	config.max_peer_ext_stats =
 			__cpu_to_le32(TARGET_10_4_MAX_PEER_EXT_STATS);
-	config.smart_ant_cap = __cpu_to_le32(TARGET_10_4_SMART_ANT_CAP);
 
 	config.bk_minfree = __cpu_to_le32(TARGET_10_4_BK_MIN_FREE);
 	config.be_minfree = __cpu_to_le32(TARGET_10_4_BE_MIN_FREE);
@@ -6055,6 +6058,12 @@ static struct sk_buff *ath10k_wmi_10_4_op_gen_init(struct ath10k *ar)
 
 	cmd = (struct wmi_init_cmd_10_4 *)buf->data;
 	memcpy(&cmd->resource_config, &config, sizeof(config));
+
+	if (ath10k_smart_ant_enabled(ar)) {
+		cmd->resource_config.smart_ant_cap =
+			__cpu_to_le32(TARGET_10_4_SMART_ANT_CAP);
+	}
+
 	ath10k_wmi_put_host_mem_chunks(ar, &cmd->mem_chunks);
 
 	ath10k_dbg(ar, ATH10K_DBG_WMI, "wmi init 10.4\n");
@@ -7973,13 +7982,22 @@ ath10k_wmi_fill_set_smart_ant(struct ath10k *ar,
 			      u32 mode, u32 tx_ant, u32 rx_ant)
 {
 	int ret;
+	/*void __iomem *sa_gpio_mem;
+	 *u32 reg_value;
+	 */
 
 	cmd->mode = __cpu_to_le32(mode);
 	cmd->rx_antenna = __cpu_to_le32(rx_ant);
 	cmd->tx_default_antenna = __cpu_to_le32(tx_ant);
 
-	ret = ath10k_wmi_get_smart_ant_gpio_dt(ar, cmd->gpio_pin,
-					       cmd->gpio_func);
+	if (ar->hw_rev != ATH10K_HW_QCA4019) {
+		ret = ath10k_wmi_get_smart_ant_gpio_dt(ar, cmd->gpio_pin,
+						       cmd->gpio_func);
+	} else {
+		pr_err("%s, yet to implement GPIO configuration for SA on Gale\n",
+		       __func__);
+	}
+
 	if (ret)
 		ath10k_dbg(ar, ATH10K_DBG_SMART_ANT,
 			   "DT entry is not found for SA gpio, failed to enable Smart Antenna\n");
@@ -8528,6 +8546,16 @@ static const struct wmi_ops wmi_10_4_ops = {
 	.ext_resource_config = ath10k_wmi_10_4_ext_resource_config,
 
 	/* shared with 10.2 */
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+	.gen_pdev_enable_smart_ant  = ath10k_wmi_op_gen_pdev_enable_smart_ant,
+	.gen_peer_set_smart_tx_ant = ath10k_wmi_op_gen_peer_set_smart_tx_ant,
+	.gen_pdev_set_rx_ant = ath10k_wmi_op_gen_pdev_set_rx_ant,
+	.gen_peer_cfg_smart_ant_fb = ath10k_wmi_op_gen_peer_cfg_smart_ant,
+	.gen_peer_set_smart_ant_train_info =
+				ath10k_wmi_op_gen_set_smart_ant_train_info,
+#endif
+	.gen_pdev_sa_disabled_ant_sel =
+				ath10k_wmi_op_gen_pdev_sa_disabled_ant_sel,
 	.gen_request_stats = ath10k_wmi_op_gen_request_stats,
 	.gen_pdev_get_temperature = ath10k_wmi_10_2_op_gen_pdev_get_temperature,
 	.get_vdev_subtype = ath10k_wmi_10_4_op_get_vdev_subtype,

@@ -2684,6 +2684,8 @@ void ath10k_htt_t2h_msg_handler(struct ath10k *ar, struct sk_buff *skb)
 		ath10k_htt_rx_tx_mode_switch_ind(ar, skb);
 		break;
 	case HTT_T2H_MSG_TYPE_EN_STATS:
+		ath10k_smart_ant_10_4_proc_tx_feedback(ar, skb);
+		break;
 	default:
 		ath10k_warn(ar, "htt event (%d) not handled\n",
 			    resp->hdr.msg_type);

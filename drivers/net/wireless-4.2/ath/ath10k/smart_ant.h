@@ -113,6 +113,7 @@ extern u32 ath10k_default_antenna_5g;
 #define ATH10K_TXS_LRETRY		21
 #define ATH10K_TXS_SRETRY		22
 #define ATH10K_TXS_ACK_RSSI             23
+#define ATH10K_RSSI_0			24
 
 #define ATH10K_TXS_TOT_TRIES		27
 #define ATH10K_TXS_TOT_TRIES_M		0x1f000000
@@ -218,8 +219,11 @@ extern u32 ath10k_default_antenna_5g;
 #define ATH10K_RATE_80(rate) \
 	((rate >> ATH10K_RATE_80_SHIFT) & ATH10K_SMART_ANT_RATE_MASK)
 
-#define ATH10K_VHT_MCS_MAX      10
-#define ATH10K_HT_MCS_MAX       8
+#define ATH10K_VHT_MCS_MAX	10
+#define ATH10K_HT_MCS_MAX	8
+#define ATH10K_CCK_RATES_MAX	4
+#define ATH10K_OFDM_RATES_MAX	8
+
 
 #define ATH10K_NFB_COMB_FB(bw) \
 	(bw & ATH10K_NFB_COMB_FB_MASK)
@@ -241,6 +245,50 @@ extern u32 ath10k_default_antenna_5g;
 #define ATH10K_RATE_IDX_11N(rate) \
 	((ATH10K_NSS_FROM_RATE(rate) * ATH10K_HT_MCS_MAX) + \
 	 ATH10K_MCS_FROM_RATE(rate))
+
+/* Dakota specific macros */
+#define HTT_T2H_EN_STATS_CONF_TLV_TYPE_M     0x0000001f
+#define HTT_T2H_EN_STATS_CONF_TLV_TYPE_S     0
+#define HTT_T2H_EN_STATS_CONF_TLV_STATUS_M   0x000000e0
+#define HTT_T2H_EN_STATS_CONF_TLV_STATUS_S   5
+#define HTT_T2H_EN_STATS_CONF_TLV_LENGTH_M   0xffff0000
+#define HTT_T2H_EN_STATS_CONF_TLV_LENGTH_S   16
+
+#define HTT_T2H_EN_STATS_CONF_TLV_TYPE_GET(info) \
+	(((info) & HTT_T2H_EN_STATS_CONF_TLV_TYPE_M) >> \
+	HTT_T2H_EN_STATS_CONF_TLV_TYPE_S)
+
+#define HTT_T2H_EN_STATS_CONF_TLV_STATUS_GET(info) \
+	(((info) & HTT_T2H_EN_STATS_CONF_TLV_STATUS_M) >> \
+	HTT_T2H_EN_STATS_CONF_TLV_STATUS_S)
+
+#define HTT_T2H_EN_STATS_CONF_TLV_LENGTH_GET(info) \
+	(((info) & HTT_T2H_EN_STATS_CONF_TLV_LENGTH_M) >> \
+	HTT_T2H_EN_STATS_CONF_TLV_LENGTH_S)
+
+enum ath10k_smart_ant_htt_t2h_en_stats_type {
+	ATH10K_SMART_ANT_HTT_T2H_EN_STATS_TYPE_START     = 0,
+	/* ppdu_common_stats is the payload */
+	ATH10K_SMART_ANT_HTT_T2H_EN_STATS_TYPE_COMMON    = 1,
+	/* ppdu_sant_stats is the payload */
+	ATH10K_SMART_ANT_HTT_T2H_EN_STATS_TYPE_SANT      = 2,
+	/* ppdu_common_stats_v2 is the payload */
+	ATH10K_SMART_ANT_HTT_T2H_EN_STATS_TYPE_COMMON_V2 = 3,
+
+	/* Keep this last */
+	ATH10K_SMART_ANT_HTT_T2H_EN_STATS_TYPE_END       = 0x1f,
+};
+
+enum ath10k_smart_ant_htt_t2h_en_stats_status {
+	/* Keep this first always */
+	ATH10K_SMART_ANT_HTT_T2H_EN_STATS_STATUS_PARTIAL     = 0,
+	ATH10K_SMART_ANT_HTT_T2H_EN_STATS_STATUS_PRESENT     = 1,
+	ATH10K_SMART_ANT_HTT_T2H_EN_STATS_STATUS_ERROR       = 2,
+	ATH10K_SMART_ANT_HTT_T2H_EN_STATS_STATUS_INVALID     = 3,
+
+	/* keep this always last */
+	ATH10K_SMART_ANT_HTT_T2H_EN_STATS_STATUS_SERIES_DONE         = 7,
+};
 
 enum ath10k_smart_ant_bw {
 	ATH10K_SMART_ANT_BW_20,
@@ -306,6 +354,79 @@ enum ath10k_smart_ant_debug_level {
 	ATH10K_SMART_ANT_DBG_LVL_TRAIN_STATS,
 	ATH10K_SMART_ANT_DBG_LVL_ALL,
 };
+
+struct ath10k_smart_ant_ppdu_sa_stats {
+	u32 is_train:8,  /* first 8 bits says if the pkt is training or not. */
+	    rsvd1:24;	 /* rest 24 bits is reserved */
+	u32 tx_antenna;     /* antenna in which packet is transmitted */
+	u32 sa_pkt_stats;
+	u32 sa_max_rates;
+	u32 sa_gput;
+} __packed;
+
+struct ath10k_smart_ant_ppdu_stats {
+	u32 peer_id;
+	u32 pkt_type:8,
+	    mpdus_queued:8,
+	    mpdus_failed:8,
+	    rsvd1:8;
+
+	u32 mpdus_tried:8,
+	    tx_status:8,
+	    starting_seq_num:16;
+
+	u32 rssi[4];
+	u32 rate;
+
+	u32 long_retries:8,
+	    short_retries:8,
+	    is_aggregate:1,
+	    is_mcast:1,
+	    start_msdu_id:14;
+
+	u32 msdu_success:16,
+	    bw_idx:8,
+	    flags:8;
+
+	u32 success_bytes;
+
+	u32 ppdu_duration;
+} __packed;
+
+struct ath10k_smart_ant_ppdu_stats_v2 {
+	u32 peer_id:12,
+	    atf_tokens:16,
+	    user_pos:4;
+
+	u32 pkt_type:3,
+	    tid_num:5,
+	    mpdus_queued:8,
+	    mpdus_failed:8,
+	    vap_id:4,
+	    rsvd1:4;
+
+	u32 mpdus_tried:8,
+	    tx_status:8,
+	    starting_seq_num:16;
+
+	u32 rssi[4];
+	u32 rate:8,
+	    rsvd2:24;
+
+	u32 long_retries:8,
+	    short_retries:8,
+	    is_aggregate:1,
+	    is_mcast:1,
+	    start_msdu_id:14;
+
+	u32 msdu_success:16,
+	    bw_idx:8,
+	    flags:8;
+
+	u32 success_bytes;
+	u32 ppdu_duration;
+	u32 rsvd3;
+} __packed;
 
 struct ath10k_smart_ant_wmi_cfg_param {
 	struct list_head list;
@@ -505,6 +626,8 @@ void ath10k_smart_ant_proc_rx_feedback(struct ath10k *ar,
  * ath10k_wmi_peer_set_smart_ant_train_info().
  */
 void ath10k_smart_ant_proc_tx_feedback(struct ath10k *ar, u8 *data);
+void ath10k_smart_ant_10_4_proc_tx_feedback(struct ath10k *ar,
+					    struct sk_buff *skb);
 
 /* In AP mode, this API notifies of disassociation of a station.
  * Station specific information related to smart antenna should
@@ -548,6 +671,11 @@ void ath10k_smart_ant_proc_rx_feedback(struct ath10k *ar,
 
 static inline
 void ath10k_smart_ant_proc_tx_feedback(struct ath10k *ar, u8 *data)
+{
+}
+
+static inline void
+ath10k_smart_ant_10_4_proc_tx_feedback(struct ath10k *ar, struct sk_buff *skb)
 {
 }
 
