@@ -218,6 +218,13 @@ config MDIO_BCM_UNIMAC
 	  controllers as well as some Broadcom Ethernet switches such as the
 	  Starfighter 2 switches.
 
+config AR40XX_PHY
+	tristate "Driver for Qualcomm Atheros IPQ40XX switches"
+	depends on HAS_IOMEM && OF
+	select SWCONFIG
+	---help---
+	  This is the driver for Qualcomm Atheros IPQ40XX ESS switches.
+
 endif # PHYLIB
 
 config MICREL_KS8995MA
