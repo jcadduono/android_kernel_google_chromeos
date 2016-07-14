@@ -4745,6 +4745,13 @@ static void ath10k_wmi_event_service_ready_work(struct work_struct *work)
 		return;
 	}
 
+#ifdef CONFIG_ATH10K_SMART_ANTENNA
+	if (!ath10k_smart_ant_enabled(ar)) {
+		ar->max_num_peers = TARGET_10X_NUM_PEERS;
+		ar->max_num_stations = TARGET_10X_NUM_STATIONS;
+	}
+#endif
+
 	if (test_bit(WMI_SERVICE_PEER_CACHING, ar->wmi.svc_map)) {
 		if (test_bit(ATH10K_FW_FEATURE_PEER_FLOW_CONTROL,
 			     ar->fw_features))
