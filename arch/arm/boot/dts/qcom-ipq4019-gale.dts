@@ -264,6 +264,14 @@
 					output-high;
 				};
 			};
+
+			wifi1_1_pins: wifi2_pinmux {
+				mux {
+					pins = "gpio58";
+					function = "smart1";
+					bias-disable;
+				};
+			};
 		};
 
 		blsp_dma: dma@7884000 {
@@ -510,6 +518,12 @@
 			pinctrl-names = "default";
 			vqmmc-supply = <&vccq_sd0>;
 			non-removable;
+		};
+
+		wifi1: wifi@a800000 {
+			status = "ok";
+			pinctrl-0 = <&wifi1_1_pins>;
+			pinctrl-names = "default";
 		};
 
 		gpio_keys {
