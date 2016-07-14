@@ -154,7 +154,7 @@ static ssize_t ath10k_write_sa_tx_ant_ops(struct file *file,
 	if (kstrtou32(sptr, 0, &txant))
 		return -EINVAL;
 
-	if (txant > ar->supp_tx_chainmask) {
+	if (txant > ((1 << ar->num_rf_chains) - 1)) {
 		ath10k_err(ar, "Invalid tx antenna config\n");
 		return -EINVAL;
 	}
@@ -225,7 +225,7 @@ static ssize_t ath10k_write_sa_rx_ant_ops(struct file *file,
 	if (kstrtou8_from_user(user_buf, count, 0, &rxant))
 		return -EINVAL;
 
-	if (rxant > ar->supp_rx_chainmask) {
+	if (rxant > ((1 << ar->num_rf_chains) - 1)) {
 		ath10k_err(ar, "Invalid Rx antenna config\n");
 		return -EINVAL;
 	}
@@ -449,7 +449,7 @@ static ssize_t ath10k_write_sa_train_info_ops(struct file *file,
 		arg.antennas[i] = arg.antennas[0];
 	}
 
-	if (arg.antennas[0] > ar->supp_tx_chainmask) {
+	if (arg.antennas[0] > ((1 << ar->num_rf_chains) - 1)) {
 		ath10k_err(ar, "Invalid tx ant for trianing\n");
 		return -EINVAL;
 	}

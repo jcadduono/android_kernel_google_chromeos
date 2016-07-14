@@ -1471,11 +1471,12 @@ static void smart_ant_tx_fb_fill(struct ath10k *ar,
 
 static int smart_ant_get_streams(struct ath10k *ar)
 {
-	u32 num_chains = 0;
+	u32 num_chains = 0, supp_tx_chainmask;
 	int i;
 
+	supp_tx_chainmask = (1 << ar->num_rf_chains) - 1;
 	for (i = 0; i < ATH10K_SMART_ANT_MAX_CHAINS; i++) {
-		if (ar->supp_tx_chainmask & (1 << i))
+		if (supp_tx_chainmask & (1 << i))
 			num_chains++;
 	}
 
@@ -1725,7 +1726,7 @@ int ath10k_smart_ant_sta_connect(struct ath10k *ar,
 	struct ath10k_smart_ant_sta *smart_ant_sta;
 	struct ath10k_smart_ant_info *info = &ar->smart_ant_info;
 	struct ath10k_smart_ant_train_stats *train_stats;
-	u8 tx_chainmask = ar->cfg_tx_chainmask ? : ar->supp_tx_chainmask;
+	u8 tx_chainmask = ar->cfg_tx_chainmask ? : (1 << ar->num_rf_chains) - 1;
 	int i, ret;
 
 	lockdep_assert_held(&ar->conf_mutex);
