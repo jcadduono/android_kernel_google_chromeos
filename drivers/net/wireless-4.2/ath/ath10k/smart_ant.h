@@ -58,7 +58,7 @@
 #define ATH10K_SMART_ANT_RSSI_SAMPLE	10
 #define ATH10K_SMART_ANT_PER_MAX	100
 
-#define ATH10K_SMART_ANT_DEFAULT_ANT	5
+#define ATH10K_SMART_ANT_DEFAULT_ANT	1
 #define ATH10K_PPDU_SIZE_MAX		32
 
 /* Max number of antenna combinations 2 ^ max_supported_ant */
