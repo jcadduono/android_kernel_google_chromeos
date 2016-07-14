@@ -41,6 +41,9 @@ struct rfc1042_hdr {
 
 #define INTEROP_2G_256QAM_CAPBILITY   1
 
+extern u32 ath10k_default_antenna_2g;
+extern u32 ath10k_default_antenna_5g;
+
 struct ath10k *ath10k_mac_create(size_t priv_size);
 void ath10k_mac_destroy(struct ath10k *ar);
 int ath10k_mac_register(struct ath10k *ar);

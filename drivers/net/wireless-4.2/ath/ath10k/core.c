@@ -39,6 +39,8 @@ static bool hw_csum = true;
 #ifdef CONFIG_ATH10K_SMART_ANTENNA
 bool ath10k_enable_smart_antenna;
 #endif
+u32 ath10k_default_antenna_2g = ATH10K_DEFAULT_ANTENNA_2G;
+u32 ath10k_default_antenna_5g = ATH10K_DEFAULT_ANTENNA_5G;
 
 module_param_named(debug_mask, ath10k_debug_mask, uint, 0644);
 module_param_named(cryptmode, ath10k_cryptmode_param, uint, 0644);
@@ -50,6 +52,8 @@ module_param(hw_csum, bool, 0644);
 module_param_named(enable_smart_antenna, ath10k_enable_smart_antenna,
 		   bool, 0644);
 #endif
+module_param_named(default_antenna_2g, ath10k_default_antenna_2g, uint, 0644);
+module_param_named(default_antenna_5g, ath10k_default_antenna_5g, uint, 0644);
 
 MODULE_PARM_DESC(debug_mask, "Debugging mask");
 MODULE_PARM_DESC(uart_print, "Uart target debugging");
@@ -60,6 +64,8 @@ MODULE_PARM_DESC(hw_csum, "Enable HW checksum offload (default: on)");
 #ifdef CONFIG_ATH10K_SMART_ANTENNA
 MODULE_PARM_DESC(enable_smart_antenna, "Enable smart antenna supprot in fw");
 #endif
+MODULE_PARM_DESC(default_antenna_2g, "Default antenna config for 2G");
+MODULE_PARM_DESC(default_antenna_5g, "Default antenna config for 5G");
 
 static const struct ath10k_hw_params ath10k_hw_params_list[] = {
 	{
