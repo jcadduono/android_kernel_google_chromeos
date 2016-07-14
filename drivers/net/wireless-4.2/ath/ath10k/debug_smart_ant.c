@@ -60,9 +60,9 @@ static ssize_t ath10k_write_sa_enable_ops(struct file *file,
 			goto exit;
 		ar->debug.pktlog_filter |= ATH10K_PKTLOG_SMART_ANT;
 	} else {
-		ret = ath10k_wmi_pdev_disable_smart_ant(
+		ret = ath10k_wmi_pdev_sa_disabled_ant_sel(
 				ar,
-				WMI_SMART_ANT_MODE_PARALLEL,
+				WMI_SMART_ANT_DISABLED_MODE_PARALLEL,
 				default_antenna_config,
 				default_antenna_config);
 		if (ret)
