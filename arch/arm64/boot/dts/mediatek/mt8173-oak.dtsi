@@ -355,7 +355,6 @@
 		pinctrl-names = "default";
 		pinctrl-0 = <&trackpad_irq>;
 		reg = <0x15>;
-		vcc-supply = <&mt6397_vgp6_reg>;
 		wakeup-source;
 	};
 
@@ -1017,7 +1016,6 @@
 				regulator-min-microvolt = <3300000>;
 				regulator-max-microvolt = <3300000>;
 				regulator-enable-ramp-delay = <218>;
-				regulator-always-on;
 			};
 
 			mt6397_vibr_reg: ldo_vibr {
