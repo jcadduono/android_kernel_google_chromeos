@@ -5031,6 +5031,13 @@ static int ath10k_add_interface(struct ieee80211_hw *hw,
 		ath10k_smart_ant_disable(ar, arvif);
 		goto err_peer_delete;
 	}
+
+	/* For official SA test build:
+	   After init smart antenna in FW and Host Driver,
+	   disable it by default. It can then be enabled by user
+	   through run-time DFS flag smart_ant_enable
+	*/
+	ath10k_smart_ant_disable(ar, arvif);
 #endif
 
 	if (vif->type == NL80211_IFTYPE_MONITOR) {
