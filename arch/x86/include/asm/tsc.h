@@ -49,7 +49,6 @@ extern void tsc_init(void);
 extern void mark_tsc_unstable(char *reason);
 extern int unsynchronized_tsc(void);
 extern int check_tsc_unstable(void);
-extern int check_tsc_disabled(void);
 extern unsigned long native_calibrate_cpu(void);
 extern unsigned long native_calibrate_tsc(void);
 
