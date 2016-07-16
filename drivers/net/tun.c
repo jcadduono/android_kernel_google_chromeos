@@ -1883,7 +1883,7 @@ static long __tun_chr_ioctl(struct file *file, unsigned int cmd,
 
 	if (current->nsproxy->net_ns->core.sysctl_android_paranoid &&
 	    cmd != TUNGETIFF &&
-	    !capable(CAP_NET_ADMIN)) {
+	    !ns_capable(tfile->net->user_ns, CAP_NET_ADMIN)) {
 		return -EPERM;
 	}
 
