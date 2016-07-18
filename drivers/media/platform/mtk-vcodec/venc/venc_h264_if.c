@@ -212,6 +212,8 @@ static unsigned int h264_get_level(struct venc_h264_inst *inst,
 		return 40;
 	case V4L2_MPEG_VIDEO_H264_LEVEL_4_1:
 		return 41;
+	case V4L2_MPEG_VIDEO_H264_LEVEL_4_2:
+		return 42;
 	default:
 		mtk_vcodec_debug(inst, "unsupported level %d", level);
 		return 31;
