@@ -218,6 +218,13 @@ config MDIO_BCM_UNIMAC
 	  controllers as well as some Broadcom Ethernet switches such as the
 	  Starfighter 2 switches.
 
+config MDIO_IPQ40XX
+	tristate "Qualcomm Atheros ipq40xx MDIO interface"
+	depends on HAS_IOMEM && OF
+	help
+	  This driver supports the MDIO interface found in Qualcomm
+	  Atheros ipq40xx Soc chip.
+
 config AR40XX_PHY
 	tristate "Driver for Qualcomm Atheros IPQ40XX switches"
 	depends on HAS_IOMEM && OF

@@ -1509,20 +1509,20 @@ static int
 ar40xx_vlan_init(struct ar40xx_priv *priv)
 {
 	int port;
+	unsigned long bmp;
 
 	/* By default Enable VLAN */
 	priv->vlan = 1;
 	priv->vlan_table[AR40XX_LAN_VLAN] = priv->cpu_bmp | priv->lan_bmp;
 	priv->vlan_table[AR40XX_WAN_VLAN] = priv->cpu_bmp | priv->wan_bmp;
 	priv->vlan_tagged = priv->cpu_bmp;
-	for_each_set_bit(port, (const unsigned long *)&priv->lan_bmp,
-			 AR40XX_NUM_PORTS) {
+	bmp = priv->lan_bmp;
+	for_each_set_bit(port, &bmp, AR40XX_NUM_PORTS)
 			priv->pvid[port] = AR40XX_LAN_VLAN;
-	}
-	for_each_set_bit(port, (const unsigned long *)&priv->wan_bmp,
-			 AR40XX_NUM_PORTS) {
+
+	bmp = priv->wan_bmp;
+	for_each_set_bit(port, &bmp, AR40XX_NUM_PORTS)
 			priv->pvid[port] = AR40XX_WAN_VLAN;
-	}
 
 	return 0;
 }
@@ -1549,13 +1549,7 @@ next_port:
 		priv->mib_next_port = 0;
 
 	mutex_unlock(&priv->mib_lock);
-	schedule_delayed_work(&priv->mib_work,
-			      msecs_to_jiffies(AR40XX_MIB_WORK_DELAY));
-}
 
-static void
-ar40xx_mib_start(struct ar40xx_priv *priv)
-{
 	schedule_delayed_work(&priv->mib_work,
 			      msecs_to_jiffies(AR40XX_MIB_WORK_DELAY));
 }
@@ -1731,7 +1725,9 @@ ar40xx_start(struct ar40xx_priv *priv)
 	if (ret)
 		return ret;
 
-	ar40xx_mib_start(priv);
+	schedule_delayed_work(&priv->mib_work,
+			      msecs_to_jiffies(AR40XX_MIB_WORK_DELAY));
+
 	ar40xx_qm_err_check_work_start(priv);
 
 	return 0;
@@ -1860,53 +1856,54 @@ static struct phy_driver ar40xx_phy_driver = {
 
 static int ar40xx_probe(struct platform_device *pdev)
 {
-	struct device_node *switch_node = NULL;
-	struct device_node *psgmii_node = NULL;
+	struct device_node *switch_node;
+	struct device_node *psgmii_node;
 	const __be32 *mac_mode;
-	u32 len;
-	struct clk *ess_clk = NULL;
+	struct clk *ess_clk;
 	struct switch_dev *swdev;
-	struct ar40xx_priv *priv = NULL;
+	struct ar40xx_priv *priv;
+	u32 len;
 	u32 num_mibs;
 	struct resource psgmii_base = {0};
 	struct resource switch_base = {0};
 	int ret;
 
 	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
-	if (priv == NULL)
+	if (!priv)
 		return -ENOMEM;
 
 	ar40xx_priv = priv;
 
 	switch_node = of_node_get(pdev->dev.of_node);
-
 	if (of_address_to_resource(switch_node, 0, &switch_base) != 0)
 		return -EIO;
+
 	priv->hw_addr = devm_ioremap_resource(&pdev->dev, &switch_base);
-	if (!priv->hw_addr) {
-		dev_err(&pdev->dev, "ESS ioremap fail!\n");
-		return -ENOMEM;
+	if (IS_ERR(priv->hw_addr)) {
+		dev_err(&pdev->dev, "Failed to ioremap switch_base!\n");
+		return PTR_ERR(priv->hw_addr);
 	}
 
 	/*psgmii dts get*/
 	psgmii_node = of_find_node_by_name(NULL, "ess-psgmii");
 	if (!psgmii_node) {
-		dev_err(&pdev->dev, "Fail to find psgmii node!\n");
-		return -EIO;
+		dev_err(&pdev->dev, "Failed to find ess-psgmii node!\n");
+		return -EINVAL;
 	}
 
 	if (of_address_to_resource(psgmii_node, 0, &psgmii_base) != 0)
 		return -EIO;
+
 	priv->psgmii_hw_addr = devm_ioremap_resource(&pdev->dev, &psgmii_base);
-	if (!priv->psgmii_hw_addr) {
+	if (IS_ERR(priv->psgmii_hw_addr)) {
 		dev_err(&pdev->dev, "psgmii ioremap fail!\n");
-		return -ENOMEM;
+		return PTR_ERR(priv->psgmii_hw_addr);
 	}
 
 	mac_mode = of_get_property(switch_node, "switch_mac_mode", &len);
 	if (!mac_mode) {
-		dev_err(&pdev->dev, "fail to read mac mode\n");
-		return -EIO;
+		dev_err(&pdev->dev, "Failed to read switch_mac_mode\n");
+		return -EINVAL;
 	}
 	priv->mac_mode = be32_to_cpup(mac_mode);
 
@@ -1915,9 +1912,9 @@ static int ar40xx_probe(struct platform_device *pdev)
 		clk_prepare_enable(ess_clk);
 
 	priv->ess_rst = devm_reset_control_get(&pdev->dev, "ess_rst");
-	if (!priv->ess_rst) {
-		dev_err(&pdev->dev, "Fail t get reset control!\n");
-		return -EIO;
+	if (IS_ERR(priv->ess_rst)) {
+		dev_err(&pdev->dev, "Failed to get ess_rst control!\n");
+		return PTR_ERR(priv->ess_rst);
 	}
 
 	if (of_property_read_u32(switch_node, "switch_cpu_bmp",
@@ -1926,13 +1923,13 @@ static int ar40xx_probe(struct platform_device *pdev)
 				 &priv->lan_bmp) ||
 	    of_property_read_u32(switch_node, "switch_wan_bmp",
 				 &priv->wan_bmp)) {
-		dev_err(&pdev->dev, "Fail to read port properties\n");
+		dev_err(&pdev->dev, "Failed to read port properties\n");
 		return -EIO;
 	}
 
 	ret = phy_driver_register(&ar40xx_phy_driver);
 	if (ret) {
-		dev_err(&pdev->dev, "Fail to register ar40xx phy driver!\n");
+		dev_err(&pdev->dev, "Failed to register ar40xx phy driver!\n");
 		return -EIO;
 	}
 
