@@ -80,6 +80,19 @@
 	};
 };
 
+&cpu_thermal {
+	sustainable-power = <4500>; /* milliwatts */
+	trips {
+		threshold: trip-point@0 {
+			temperature = <60000>;
+		};
+
+		target: trip-point@1 {
+			temperature = <65000>;
+		};
+	};
+};
+
 &cros_ec {
 	i2c_tunnel_b: i2c-tunnel@1 {
 		compatible = "google,cros-ec-i2c-tunnel";
