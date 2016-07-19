@@ -176,6 +176,10 @@
 	/delete-node/pins_wp;
 };
 
+&mt6397_vgp6_reg {
+	regulator-always-on;
+};
+
 &pio {
 	/delete-node/anx7814_pins;
 	/delete-node/rt5514_irq;
@@ -204,4 +208,8 @@
 	codec-capture {
 		sound-dai = <&rt5650 1>;
 	};
+};
+
+&trackpad {
+	vcc-supply = <&mt6397_vgp6_reg>;
 };

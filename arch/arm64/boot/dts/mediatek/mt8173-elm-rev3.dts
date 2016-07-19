@@ -16,21 +16,6 @@
 #include "mt8173-elm.dtsi"
 
 / {
-	model = "Mediatek Elm rev0 board";
-	compatible = "google,elm-rev0", "google,elm", "mediatek,mt8173";
-};
-
-&i2c_tunnel {
-	thermal@4c {
-		compatible = "ti,tmp432";
-		reg = <0x4c>;
-	};
-};
-
-&mt6397_vgp6_reg {
-	/delete-property/regulator-always-on;
-};
-
-&trackpad {
-	/delete-property/vcc-supply;
+	model = "Mediatek Elm rev3 board";
+	compatible = "google,elm-rev3", "google,elm", "mediatek,mt8173";
 };
