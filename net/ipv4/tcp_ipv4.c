@@ -2430,6 +2430,7 @@ EXPORT_SYMBOL(tcp_prot);
 static int __net_init tcp_sk_init(struct net *net)
 {
 	net->ipv4.sysctl_tcp_ecn = 2;
+	net->ipv4.sysctl_tcp_default_init_rwnd = 2 * TCP_INIT_CWND;
 	return 0;
 }
 

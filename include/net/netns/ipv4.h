@@ -80,6 +80,7 @@ struct netns_ipv4 {
 
 	int sysctl_fwmark_reflect;
 	int sysctl_tcp_fwmark_accept;
+	int sysctl_tcp_default_init_rwnd;
 
 	struct ping_group_range ping_group_range;
 
