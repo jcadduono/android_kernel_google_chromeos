@@ -26,4 +26,14 @@ config QCA7000
 	  To compile this driver as a module, choose M here. The module
 	  will be called qcaspi.
 
+config ESSEDMA
+	tristate "Qualcomm Atheros ESS Edma support"
+	---help---
+	  This driver supports ethernet edma adapter.
+	  Say Y to build this driver.
+
+	  To compile this driver as a module, choose M here. The module
+	  will be called essedma.ko.
+
+
 endif # NET_VENDOR_QUALCOMM
