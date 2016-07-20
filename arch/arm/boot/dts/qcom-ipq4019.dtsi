@@ -377,6 +377,47 @@
 			};
 		};
 
+		ess-switch@c000000 {
+			compatible = "qcom,ess-switch";
+			reg = <0xc000000 0x80000>; /* 512KB */
+			switch_access_mode = "local bus";
+			resets = <&gcc ESS_RESET>;
+			reset-names = "ess_rst";
+			clocks = <&gcc GCC_ESS_CLK>;
+			clock-names = "ess_clk";
+			switch_cpu_bmp = <0x1>;  /* cpu port bitmap */
+			switch_lan_bmp = <0x1e>; /* lan port bitmap */
+			switch_wan_bmp = <0x20>; /* wan port bitmap */
+		};
+
+		ess-psgmii@98000 {
+			compatible = "qcom,ess-psgmii";
+			reg = <0x98000 0x800>; /* 2k */
+			psgmii_access_mode = "local bus";
+		};
+
+		mdio@90000 {
+			#address-cells = <1>;
+			#size-cells = <0>;
+			compatible = "qcom,ipq40xx-mdio";
+			reg = <0x90000 0x64>;
+			phy0: ethernet-phy@0 {
+				reg = <0>;
+			};
+			phy1: ethernet-phy@1 {
+				reg = <1>;
+			};
+			phy2: ethernet-phy@2 {
+				reg = <2>;
+			};
+			phy3: ethernet-phy@3 {
+				reg = <3>;
+			};
+			phy4: ethernet-phy@4 {
+				reg = <4>;
+			};
+		};
+
 		vccq_sd0: regulator@0 {
 			compatible = "qcom,regulator-ipq4019";
 			regulator-name = "SD0 VccQ";
