@@ -34,7 +34,6 @@
  * @base: crtc object.
  * @enabled: records whether crtc_enable succeeded
  * @planes: array of 4 drm_plane structures, one for each overlay plane
- * @pending_planes: whether any plane has pending changes to be applied
  * @config_regs: memory mapped mmsys configuration register space
  * @mutex: handle to one of the ten disp_mutex streams
  * @ddp_comp_nr: number of components in ddp_comp
@@ -64,7 +63,6 @@ struct mtk_drm_crtc {
 	struct drm_framebuffer		*old_fb[OVL_LAYER_NR];
 
 	struct drm_plane		planes[OVL_LAYER_NR];
-	bool				pending_planes;
 
 	void __iomem			*config_regs;
 	struct mtk_disp_mutex		*mutex;
@@ -483,7 +481,6 @@ static void mtk_drm_crtc_disable(struct drm_crtc *crtc)
 		plane_state->pending.enable = false;
 		plane_state->pending.config = true;
 	}
-	mtk_crtc->pending_planes = true;
 
 	flush_work(&mtk_crtc->cmdq_work);
 	wait_for_completion(&mtk_crtc->completion);
