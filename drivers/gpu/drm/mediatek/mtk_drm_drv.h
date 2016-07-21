@@ -51,6 +51,12 @@ struct mtk_drm_private {
 	struct drm_atomic_state *suspend_state;
 	struct drm_fb_helper fb_helper;
 	struct drm_gem_object *fbdev_bo;
+
+	struct {
+		struct work_struct	work;
+		struct list_head	list;
+		spinlock_t		lock;
+	} unreference;
 };
 
 extern struct platform_driver mtk_ddp_driver;
@@ -59,5 +65,8 @@ extern struct platform_driver mtk_disp_rdma_driver;
 extern struct platform_driver mtk_dpi_driver;
 extern struct platform_driver mtk_dsi_driver;
 extern struct platform_driver mtk_mipi_tx_driver;
+
+void mtk_atomic_state_get(struct drm_atomic_state *state);
+void mtk_atomic_state_put_queue(struct drm_atomic_state *state);
 
 #endif /* MTK_DRM_DRV_H */
