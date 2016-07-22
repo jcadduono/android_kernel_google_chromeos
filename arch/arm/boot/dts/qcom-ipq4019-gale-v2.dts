@@ -215,6 +215,25 @@
 					bias-disable;
 				};
 			};
+
+			mdio_pins: mdio_pinmux {
+				mux_1 {
+					pins = "gpio6";
+					function = "mdio0";
+					bias-disable;
+				};
+				mux_2 {
+					pins = "gpio7";
+					function = "mdc";
+					bias-disable;
+				};
+				mux_3 {
+					pins = "gpio40";
+					function = "gpio";
+					bias-disable;
+					output-high;
+				};
+			};
 		};
 
 		blsp_dma: dma@7884000 {
@@ -389,6 +408,18 @@
 			pinctrl-names = "default";
 			vqmmc-supply = <&vccq_sd0>;
 			non-removable;
+		};
+
+		ess-switch@c000000 {
+			switch_lan_bmp = <0x10>;
+			switch_wan_bmp = <0x20>;
+			switch_mac_mode = <0x0>;
+		};
+
+		mdio@90000 {
+			status = "ok";
+			pinctrl-0 = <&mdio_pins>;
+			pinctrl-names = "default";
 		};
 
 		watchdog@b017000 {
