@@ -307,6 +307,8 @@ enum ipq4019_functions {
 	qca_mux_i2s_tx_bclk,
 	qca_mux_i2s_tx_fsync,
 	qca_mux_i2s_txd,
+	qca_mux_mdio0,
+	qca_mux_mdc,
 	qca_mux_NA,
 };
 
@@ -399,6 +401,12 @@ static const char * const i2s_txd_groups[] = {
 static const char * const i2s_tx_bclk_groups[] = {
 	"gpio53",
 };
+static const char * const mdio0_groups[] = {
+        "gpio6",
+};
+static const char * const mdc_groups[] = {
+        "gpio7",
+};
 
 static const struct msm_function ipq4019_functions[] = {
 	FUNCTION(gpio),
@@ -425,6 +433,8 @@ static const struct msm_function ipq4019_functions[] = {
 	FUNCTION(i2s_rxd),
 	FUNCTION(i2s_txd),
 	FUNCTION(i2s_tx_bclk),
+	FUNCTION(mdio0),
+	FUNCTION(mdc),
 };
 
 static const struct msm_pingroup ipq4019_groups[] = {
@@ -434,8 +444,8 @@ static const struct msm_pingroup ipq4019_groups[] = {
 	PINGROUP(3, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
 	PINGROUP(4, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
 	PINGROUP(5, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	PINGROUP(6, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
-	PINGROUP(7, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
+	PINGROUP(6, mdio0, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
+	PINGROUP(7, mdc, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
 	PINGROUP(8, blsp_uart1, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
 	PINGROUP(9, blsp_uart1, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
 	PINGROUP(10, blsp_uart1, NA, NA, blsp_i2c0, NA, NA, NA, NA, NA, NA, NA, NA, NA, NA),
