@@ -7991,11 +7991,17 @@ ath10k_wmi_fill_set_smart_ant(struct ath10k *ar,
 	cmd->tx_default_antenna = __cpu_to_le32(tx_ant);
 
 	if (ar->hw_rev != ATH10K_HW_QCA4019) {
+		/* WW (Peregrine) needs to get gpio pin information from DT
+		 * and pass down to FW for configuring the GPIO pins for SA.
+		 */
 		ret = ath10k_wmi_get_smart_ant_gpio_dt(ar, cmd->gpio_pin,
 						       cmd->gpio_func);
 	} else {
-		pr_err("%s, yet to implement GPIO configuration for SA on Gale\n",
-		       __func__);
+		/* Gale (Dakota) doesn’t need to get GPIO information from DT
+		 * * and pass down to FW. GPIO configurations take place through
+		 * DT.
+		 */
+		ret = 0;
 	}
 
 	if (ret)
