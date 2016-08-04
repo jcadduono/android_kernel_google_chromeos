@@ -44,7 +44,9 @@
  * @name: format description
  * @pixelformat: the fourcc code for this format, 0 if not applicable
  * @num_planes: number of physically non-contiguous data planes
+ * @num_comp: number of logical data planes
  * @depth: per plane driver's private 'number of bits per pixel'
+ * @row_depth: per plane driver's private 'number of bits per pixel per row'
  * @flags: flags indicating which operation mode format applies to
 	   MTK_MDP_FMT_FLAG_OUTPUT is used in OUTPUT stream
 	   MTK_MDP_FMT_FLAG_CAPTURE is used in CAPTURE stream
@@ -53,7 +55,9 @@ struct mtk_mdp_fmt {
 	char	*name;
 	u32	pixelformat;
 	u16	num_planes;
+	u16	num_comp;
 	u8	depth[VIDEO_MAX_PLANES];
+	u8	row_depth[VIDEO_MAX_PLANES];
 	u32	flags;
 };
 

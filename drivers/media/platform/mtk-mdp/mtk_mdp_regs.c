@@ -28,6 +28,7 @@ enum MDP_COLOR_ENUM {
 	MDP_COLOR_UNKNOWN = 0,
 	MDP_COLOR_NV12 = MDP_COLORFMT_PACK(0, 2, 1, 1, 1, 8, 1, 0, 12),
 	MDP_COLOR_I420 = MDP_COLORFMT_PACK(0, 3, 0, 1, 1, 8, 1, 0, 8),
+	MDP_COLOR_YV12 = MDP_COLORFMT_PACK(0, 3, 0, 1, 1, 8, 1, 1, 8),
 	/* Mediatek proprietary format */
 	MDP_COLOR_420_MT21 = MDP_COLORFMT_PACK(5, 2, 1, 1, 1, 256, 1, 0, 12),
 };
@@ -43,6 +44,8 @@ static int32_t mtk_mdp_map_color_format(int v4l2_format)
 	case V4L2_PIX_FMT_YUV420M:
 	case V4L2_PIX_FMT_YUV420:
 		return MDP_COLOR_I420;
+	case V4L2_PIX_FMT_YVU420:
+		return MDP_COLOR_YV12;
 	}
 
 	mtk_mdp_err("Unknown format 0x%x", v4l2_format);
@@ -97,7 +100,7 @@ void mtk_mdp_hw_set_in_image_format(struct mtk_mdp_ctx *ctx)
 	struct mdp_config *config = &ctx->vpu.vsi->src_config;
 	struct mdp_buffer *src_buf = &ctx->vpu.vsi->src_buffer;
 
-	src_buf->plane_num = frame->fmt->num_planes;
+	src_buf->plane_num = frame->fmt->num_comp;
 	config->format = mtk_mdp_map_color_format(frame->fmt->pixelformat);
 	config->w_stride = 0; /* MDP will calculate it by color format. */
 	config->h_stride = 0; /* MDP will calculate it by color format. */
@@ -128,7 +131,7 @@ void mtk_mdp_hw_set_out_image_format(struct mtk_mdp_ctx *ctx)
 	struct mdp_config *config = &ctx->vpu.vsi->dst_config;
 	struct mdp_buffer *dst_buf = &ctx->vpu.vsi->dst_buffer;
 
-	dst_buf->plane_num = frame->fmt->num_planes;
+	dst_buf->plane_num = frame->fmt->num_comp;
 	config->format = mtk_mdp_map_color_format(frame->fmt->pixelformat);
 	config->w_stride = 0; /* MDP will calculate it by color format. */
 	config->h_stride = 0; /* MDP will calculate it by color format. */

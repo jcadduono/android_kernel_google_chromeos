@@ -63,20 +63,35 @@ static const struct mtk_mdp_fmt mtk_mdp_formats[] = {
 		.name		= "YUV420 MT21. 2p, Y/CbCr",
 		.pixelformat	= V4L2_PIX_FMT_MT21,
 		.depth		= { 8, 4 },
+		.row_depth	= { 8, 8 },
 		.num_planes	= 2,
+		.num_comp	= 2,
 		.flags		= MTK_MDP_FMT_FLAG_OUTPUT,
 	}, {
 		.name		= "YUV420 non-contig. 2p, Y/CbCr",
 		.pixelformat	= V4L2_PIX_FMT_NV12M,
 		.depth		= { 8, 4 },
+		.row_depth	= { 8, 8 },
 		.num_planes	= 2,
+		.num_comp	= 2,
 		.flags		= MTK_MDP_FMT_FLAG_OUTPUT |
 				  MTK_MDP_FMT_FLAG_CAPTURE,
 	}, {
 		.name		= "YUV420 non-contig. 3p, Y/Cb/Cr",
 		.pixelformat	= V4L2_PIX_FMT_YUV420M,
 		.depth		= { 8, 2, 2 },
+		.row_depth	= { 8, 4, 4 },
 		.num_planes	= 3,
+		.num_comp	= 3,
+		.flags		= MTK_MDP_FMT_FLAG_OUTPUT |
+				  MTK_MDP_FMT_FLAG_CAPTURE,
+	}, {
+		.name		= "YVU420 contig, YCrCb",
+		.pixelformat	= V4L2_PIX_FMT_YVU420,
+		.depth		= { 12 },
+		.row_depth	= { 8 },
+		.num_planes	= 1,
+		.num_comp	= 3,
 		.flags		= MTK_MDP_FMT_FLAG_OUTPUT |
 				  MTK_MDP_FMT_FLAG_CAPTURE,
 	}
@@ -224,8 +239,9 @@ static const struct mtk_mdp_fmt *mtk_mdp_try_fmt_mplane(struct mtk_mdp_ctx *ctx,
 	pix_mp->num_planes = fmt->num_planes;
 
 	for (i = 0; i < pix_mp->num_planes; ++i) {
-		int bpl = (pix_mp->width * fmt->depth[i]) >> 3;
-		int sizeimage = bpl * pix_mp->height;
+		int bpl = (pix_mp->width * fmt->row_depth[i]) / 8;
+		int sizeimage = (pix_mp->width * pix_mp->height *
+			fmt->depth[i]) / 8;
 
 		pix_mp->plane_fmt[i].bytesperline = bpl;
 		if (pix_mp->plane_fmt[i].sizeimage < sizeimage)
@@ -444,6 +460,17 @@ static void mtk_mdp_prepare_addr(struct mtk_mdp_ctx *ctx,
 	for (i = 0; i < planes; i++)
 		addr->addr[i] = vb2_dma_contig_plane_dma_addr(vb, i);
 
+	if (planes == 1) {
+		if (frame->fmt->pixelformat == V4L2_PIX_FMT_YVU420) {
+			addr->addr[1] = (dma_addr_t)(addr->addr[0] + pix_size);
+			addr->addr[2] = (dma_addr_t)(addr->addr[1] +
+					(pix_size >> 2));
+		} else {
+			dev_err(&ctx->mdp_dev->pdev->dev,
+				"Invalid pixelformat:0x%x\n",
+				frame->fmt->pixelformat);
+		}
+	}
 	mtk_mdp_dbg(3, "[%d] planes:%d, size:%d, addr:%p,%p,%p",
 		    ctx->id, planes, pix_size, (void *)addr->addr[0],
 		    (void *)addr->addr[1], (void *)addr->addr[2]);
@@ -653,9 +680,9 @@ static int mtk_mdp_g_fmt_mplane(struct mtk_mdp_ctx *ctx, struct v4l2_format *f)
 
 	for (i = 0; i < pix_mp->num_planes; ++i) {
 		pix_mp->plane_fmt[i].bytesperline = (frame->width *
-			frame->fmt->depth[i]) / 8;
-		pix_mp->plane_fmt[i].sizeimage =
-			 pix_mp->plane_fmt[i].bytesperline * frame->height;
+			frame->fmt->row_depth[i]) / 8;
+		pix_mp->plane_fmt[i].sizeimage = (frame->width *
+			frame->height * frame->fmt->depth[i]) / 8;
 
 		mtk_mdp_dbg(2, "[%d] p%d, bpl:%d, sizeimage:%d", ctx->id, i,
 			    pix_mp->plane_fmt[i].bytesperline,
