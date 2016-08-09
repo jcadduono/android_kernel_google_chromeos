@@ -520,6 +520,18 @@
 			non-removable;
 		};
 
+		edma@c080000 {
+			status = "disabled";
+		};
+
+		ess-switch@c000000 {
+			status = "disabled";
+		};
+
+		mdio@90000 {
+			status = "disabled";
+		};
+
 		wifi1: wifi@a800000 {
 			status = "ok";
 			pinctrl-0 = <&wifi1_1_pins>;
