@@ -26,7 +26,6 @@
 #include <linux/platform_device.h>
 #include <linux/slab.h>
 #include <linux/spinlock.h>
-#include <linux/suspend.h>
 #include <linux/workqueue.h>
 #include <soc/mediatek/cmdq.h>
 
@@ -219,7 +218,6 @@ struct cmdq_thread {
 
 struct cmdq {
 	struct device		*dev;
-	struct notifier_block	pm_notifier;
 
 	void __iomem		*base;
 	u32			irq;
@@ -249,9 +247,6 @@ struct cmdq {
 	spinlock_t		thread_lock;	/* for cmdq hardware thread */
 	int			thread_usage;
 	spinlock_t		exec_lock;	/* for exec task */
-
-	/* suspend */
-	bool			suspended;
 
 	/* command buffer pool */
 	struct cmdq_cmd_buf	cmd_buf_pool[CMDQ_CMD_BUF_POOL_BUF_NUM];
@@ -1676,25 +1671,6 @@ static void cmdq_core_handle_irq(struct cmdq *cqctx, int tid)
 	spin_unlock_irqrestore(&cqctx->exec_lock, flags);
 }
 
-static int cmdq_core_resumed_notifier(struct cmdq *cqctx)
-{
-	unsigned long flags = 0L;
-
-	spin_lock_irqsave(&cqctx->thread_lock, flags);
-	cqctx->suspended = false;
-
-	/*
-	 * during suspending, there may be queued tasks.
-	 * we should process them if any.
-	 */
-	queue_work(cqctx->task_consume_wq,
-		   &cqctx->task_consume_wait_queue_item);
-
-	spin_unlock_irqrestore(&cqctx->thread_lock, flags);
-
-	return 0;
-}
-
 static int cmdq_task_exec_async(struct cmdq_task *task, int tid)
 {
 	struct device *dev = task->cqctx->dev;
@@ -1726,13 +1702,6 @@ static void cmdq_core_consume_waiting_list(struct work_struct *work)
 	cqctx = container_of(work, struct cmdq,
 			     task_consume_wait_queue_item);
 	dev = cqctx->dev;
-
-	/*
-	 * when we're suspending,
-	 * do not execute any tasks. delay & hold them.
-	 */
-	if (cqctx->suspended)
-		return;
 
 	consume_time = ktime_get();
 
@@ -2707,103 +2676,6 @@ void cmdq_rec_destroy(struct cmdq_rec *handle)
 }
 EXPORT_SYMBOL(cmdq_rec_destroy);
 
-static int cmdq_pm_notifier_cb(struct notifier_block *nb, unsigned long event,
-			       void *ptr)
-{
-	struct cmdq *cqctx = container_of(nb, struct cmdq, pm_notifier);
-
-	switch (event) {
-	case PM_SUSPEND_PREPARE:
-		/*
-		 * Going to suspend the system
-		 * The next stage is freeze process.
-		 * We will queue all request in suspend callback,
-		 * so don't care this stage
-		 */
-		return NOTIFY_DONE;
-	case PM_POST_SUSPEND:
-		/*
-		 * processes had resumed in previous stage
-		 * (system resume callback)
-		 * resume CMDQ driver to execute.
-		 */
-		cmdq_core_resumed_notifier(cqctx);
-		return NOTIFY_OK;
-	default:
-		return NOTIFY_DONE;
-	}
-	return NOTIFY_DONE;
-}
-
-static int cmdq_suspend(struct device *dev)
-{
-	struct cmdq *cqctx;
-	unsigned long flags;
-	u32 exec_threads;
-	int ref_count;
-	int i;
-
-	cqctx = dev_get_drvdata(dev);
-	exec_threads = readl(cqctx->base + CMDQ_CURR_LOADED_THR_OFFSET);
-	ref_count = cqctx->thread_usage;
-
-	if ((ref_count > 0) || (exec_threads & CMDQ_THR_EXECUTING)) {
-		struct cmdq_task *task, *tmp;
-
-		dev_err(dev, "suspend: tasks running, kill tasks.\n");
-		dev_err(dev, "threads:0x%08x, ref:%d, AL empty:%d, base:0x%p\n",
-			exec_threads, ref_count,
-			list_empty(&cqctx->task_active_list), cqctx->base);
-
-		/*
-		 * We need to ensure the system is ready to suspend,
-		 * so kill all running CMDQ tasks and release HW engines.
-		 */
-
-		/* remove all active task from thread */
-		list_for_each_entry_safe(task, tmp, &cqctx->task_active_list,
-					 list_entry) {
-			if (task->thread != CMDQ_INVALID_THREAD) {
-				dev_err(dev, "suspend: thread=%d\n",
-					task->thread);
-
-				spin_lock_irqsave(&cqctx->exec_lock, flags);
-				cmdq_thread_force_remove_task(
-						task, task->thread);
-				task->task_state = TASK_STATE_KILLED;
-				spin_unlock_irqrestore(
-						&cqctx->exec_lock, flags);
-
-				cmdq_task_remove_thread(task);
-				cmdq_task_release_internal(task);
-			}
-		}
-		dev_err(dev, "suspend: ref:%d AL empty:%d\n",
-			cqctx->thread_usage,
-			list_empty(&cqctx->task_active_list));
-
-		/* disable all HW thread */
-		dev_err(dev, "suspend: disable all HW threads\n");
-		for (i = 0; i < CMDQ_MAX_THREAD_COUNT; i++)
-			cmdq_thread_disable(cqctx, i);
-
-		/* reset all cmdq_thread */
-		memset(&cqctx->thread[0], 0, sizeof(cqctx->thread));
-	}
-
-	spin_lock_irqsave(&cqctx->thread_lock, flags);
-	cqctx->suspended = true;
-	spin_unlock_irqrestore(&cqctx->thread_lock, flags);
-
-	/* ALWAYS allow suspend */
-	return 0;
-}
-
-static int cmdq_resume(struct device *dev)
-{
-	return 0;
-}
-
 static int cmdq_probe(struct platform_device *pdev)
 {
 	struct cmdq *cqctx;
@@ -2832,15 +2704,6 @@ static int cmdq_probe(struct platform_device *pdev)
 		goto fail;
 	}
 
-	/* hibernation and suspend events */
-	cqctx->pm_notifier.notifier_call = cmdq_pm_notifier_cb;
-	cqctx->pm_notifier.priority = 5;
-	ret = register_pm_notifier(&cqctx->pm_notifier);
-	if (ret) {
-		dev_err(&pdev->dev, "failed to register cmdq pm notifier\n");
-		goto fail;
-	}
-
 	return ret;
 
 fail:
@@ -2850,21 +2713,9 @@ fail:
 
 static int cmdq_remove(struct platform_device *pdev)
 {
-	struct cmdq *cqctx = platform_get_drvdata(pdev);
-	int status;
-
-	status = unregister_pm_notifier(&cqctx->pm_notifier);
-	if (status)
-		dev_err(&pdev->dev, "unregister pm notifier failed\n");
-
 	cmdq_core_deinitialize(pdev);
 	return 0;
 }
-
-static const struct dev_pm_ops cmdq_pm_ops = {
-	.suspend = cmdq_suspend,
-	.resume = cmdq_resume,
-};
 
 static const struct of_device_id cmdq_of_ids[] = {
 	{.compatible = "mediatek,mt8173-gce",},
@@ -2877,7 +2728,6 @@ static struct platform_driver cmdq_drv = {
 	.driver = {
 		.name = CMDQ_DRIVER_DEVICE_NAME,
 		.owner = THIS_MODULE,
-		.pm = &cmdq_pm_ops,
 		.of_match_table = cmdq_of_ids,
 	}
 };
