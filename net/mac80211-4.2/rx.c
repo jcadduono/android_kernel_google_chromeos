@@ -1624,13 +1624,8 @@ ieee80211_rx_h_decrypt(struct ieee80211_rx_data *rx)
 		}
 
 		/* check per-station GTK first, if multicast packet */
-		if (is_multicast_ether_addr(hdr->addr1) && rx->sta) {
+		if (is_multicast_ether_addr(hdr->addr1) && rx->sta)
 			rx->key = rcu_dereference(rx->sta->gtk[keyidx]);
-			/* WAR for chrome-os-partner:55285 */
-			if (ieee80211_vif_is_mesh(&rx->sdata->vif) &&
-			    ieee80211_is_action(hdr->frame_control))
-				status->flag &= ~RX_FLAG_DECRYPTED;
-		}
 
 		/* if not found, try default key */
 		if (!rx->key) {
