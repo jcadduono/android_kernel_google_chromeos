@@ -186,7 +186,7 @@
 				sdclk {
 					pins = "gpio27";
 					function = "sdio_clk";
-					drive-strength = <16>;
+					drive-strength = <4>;
 				};
 				sdcmd {
 					pins = "gpio28";
