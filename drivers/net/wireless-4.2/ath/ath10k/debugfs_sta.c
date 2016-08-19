@@ -18,6 +18,7 @@
 #include "wmi-ops.h"
 #include "wmi.h"
 #include "debug.h"
+#include <net/mac80211.h>
 
 static char ath10k_map_rate_code_number(u8 rate, u8 pream)
 {
@@ -777,6 +778,67 @@ static const struct file_operations fops_peer_tid_log = {
 	.llseek = default_llseek,
 };
 
+static ssize_t ath10k_txq_stats_read(struct file *file, char __user *user_buf,
+				     size_t count, loff_t *ppos)
+{
+	struct ieee80211_sta *sta = file->private_data;
+	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
+	struct ath10k *ar = arsta->arvif->ar;
+	char *buf;
+	int i, len = 0, retval = 0, size = 1024;
+
+	buf = kzalloc(size, GFP_KERNEL);
+	if (!buf)
+		return -ENOMEM;
+
+	ieee80211_sta_get_txq_state(sta,
+				    arsta->txq_stats.q_state);
+
+	mutex_lock(&ar->conf_mutex);
+	len += scnprintf(buf + len, size - len,
+			"txq stats:\n");
+	len += scnprintf(buf + len, size - len,
+			" q: VO_q_len-state VI_q_len-state ");
+	len += scnprintf(buf + len, size - len,
+			"BE_q_len-state BK_q_len-state\n");
+	len += scnprintf(buf + len, size - len,
+			" %hhu: %lu-%hhu\t\t%lu-%hhu\t\t%lu-%hhu\t\t%lu-%hhu\n",
+			arsta->txq_stats.q,
+			arsta->txq_stats.txq_len[0],
+			arsta->txq_stats.q_state[0],
+			arsta->txq_stats.txq_len[1],
+			arsta->txq_stats.q_state[1],
+			arsta->txq_stats.txq_len[2],
+			arsta->txq_stats.q_state[2],
+			arsta->txq_stats.txq_len[3],
+			arsta->txq_stats.q_state[3]
+			);
+	len += scnprintf(buf + len, size - len,
+			" last tx fetch ind in msec\n");
+	len += scnprintf(buf + len, size - len,
+			" VO\tVI\tBE\tBK\n");
+	for (i = 0; i < 4; i++) {
+		len += scnprintf(buf + len, size - len,
+				 " %u\t",
+				 jiffies_to_msecs(jiffies -
+				 arsta->txq_stats.tx_fetch_ind[i]));
+	}
+	if (len > size)
+		len = size;
+	mutex_unlock(&ar->conf_mutex);
+	retval = simple_read_from_buffer(user_buf, count, ppos, buf, len);
+	kfree(buf);
+
+	return retval;
+}
+
+static const struct file_operations fops_txq_stats = {
+	.open = simple_open,
+	.read = ath10k_txq_stats_read,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
 void ath10k_sta_add_debugfs(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 			    struct ieee80211_sta *sta, struct dentry *dir)
 {
@@ -792,4 +854,6 @@ void ath10k_sta_add_debugfs(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 	debugfs_create_file("tpc", S_IRUGO | S_IWUSR, dir, sta,
 			    &fops_set_tpc);
 	debugfs_create_file("peer_tid_log", S_IRUSR, dir, sta, &fops_peer_tid_log);
+	debugfs_create_file("txq_stats", S_IRUSR, dir, sta,
+			    &fops_txq_stats);
 }

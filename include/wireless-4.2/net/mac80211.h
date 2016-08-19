@@ -5474,4 +5474,8 @@ struct sk_buff *ieee80211_tx_dequeue(struct ieee80211_hw *hw,
 void ieee80211_txq_get_depth(struct ieee80211_txq *txq,
 			     unsigned long *frame_cnt,
 			     unsigned long *byte_cnt);
+void ieee80211_txq_get_q(struct ieee80211_txq *txq, u8 *q);
+
+void ieee80211_sta_get_txq_state(struct ieee80211_sta *sta,
+				 u8 *state);
 #endif /* MAC80211_H */

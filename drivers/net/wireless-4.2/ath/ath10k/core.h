@@ -387,6 +387,13 @@ struct ath10k_txq {
 	unsigned long num_push_allowed;
 };
 
+struct ath10k_txq_stats {
+	u8 q;
+	u8 q_state[4];
+	unsigned long txq_len[4];
+	unsigned long tx_fetch_ind[4];
+};
+
 struct ath10k_sta {
 	struct ath10k_vif *arvif;
 
@@ -405,7 +412,7 @@ struct ath10k_sta {
 	u64 rx_duration;
 	struct ath10k_tx_stats tx_stats;
 #endif
-
+	struct ath10k_txq_stats txq_stats;
 	u8 tpc;
 
 	struct ath10k_smart_ant_sta *smart_ant_sta;

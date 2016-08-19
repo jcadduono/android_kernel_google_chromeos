@@ -3382,3 +3382,27 @@ void ieee80211_txq_get_depth(struct ieee80211_txq *txq,
 		*byte_cnt = txqi->byte_cnt;
 }
 EXPORT_SYMBOL(ieee80211_txq_get_depth);
+
+void ieee80211_txq_get_q(struct ieee80211_txq *txq, u8 *q)
+{
+	struct sta_info *sta;
+
+	sta = container_of(txq->sta, struct sta_info, sta);
+	if (sta) {
+		if (sta->sta_id)
+			*q = sta->sta_id_off + 4;
+	}
+}
+EXPORT_SYMBOL(ieee80211_txq_get_q);
+
+void ieee80211_sta_get_txq_state(struct ieee80211_sta *sta,
+				 u8 *state)
+{
+	struct sta_info *s_info = container_of(sta, struct sta_info, sta);
+
+	state[0] = test_bit(0, s_info->txqs_stopped);
+	state[1] = test_bit(1, s_info->txqs_stopped);
+	state[2] = test_bit(2, s_info->txqs_stopped);
+	state[3] = test_bit(3, s_info->txqs_stopped);
+}
+EXPORT_SYMBOL(ieee80211_sta_get_txq_state);

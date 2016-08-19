@@ -56,7 +56,7 @@ static void __ath10k_htt_tx_txq_recalc(struct ieee80211_hw *hw,
 	int idx;
 	u32 bit;
 	u16 peer_id;
-	u8 tid;
+	u8 tid, q = 0;
 	u8 count;
 
 	lockdep_assert_held(&ar->htt.tx_lock);
@@ -77,6 +77,15 @@ static void __ath10k_htt_tx_txq_recalc(struct ieee80211_hw *hw,
 	idx = peer_id / 32;
 
 	ieee80211_txq_get_depth(txq, &frame_cnt, &byte_cnt);
+	if (txq->sta) {
+		ieee80211_txq_get_q(txq, &q);
+		if ((txq->ac + q) < 64) {
+			arsta->txq_stats.txq_len[txq->ac] = frame_cnt;
+			arsta->txq_stats.q = q + txq->ac;
+		} else {
+			ath10k_warn(ar, "ac %hhu q %hhu\n", txq->ac, q);
+		}
+	}
 	count = ath10k_htt_tx_txq_calc_size(byte_cnt);
 
 	if (unlikely(peer_id >= ar->htt.tx_q_state.num_peers) ||
