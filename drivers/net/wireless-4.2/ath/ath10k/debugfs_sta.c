@@ -736,6 +736,47 @@ static const struct file_operations fops_set_tpc = {
 	.llseek = default_llseek,
 };
 
+static ssize_t ath10k_dbg_sta_read_peer_tid_log(struct file *file, char __user *user_buf,
+						size_t count, loff_t *ppos)
+{
+	struct ieee80211_sta *sta = file->private_data;
+	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
+	struct ath10k *ar = arsta->arvif->ar;
+	char buf[50];
+	int ret, len;
+
+	mutex_lock(&ar->conf_mutex);
+
+	len = 0;
+	if (ar->state != ATH10K_STATE_ON) {
+		ret = -ENETDOWN;
+		goto out;
+	}
+
+	/* This will enable the FW log message and dumped on the console*/
+
+	ret = ath10k_wmi_peer_set_param(ar, arsta->arvif->vdev_id, sta->addr,
+					WMI_PEER_DEBUG, 1);
+	if (ret) {
+		len = scnprintf(buf, sizeof(buf) - len, "%s %d\n",
+				"failed to set peer tid for station ret: ", ret);
+		goto out;
+	} else
+		len = scnprintf(buf, sizeof(buf) - len, "\n %s \n\n",
+				"dumping peer tid logs on the console");
+
+out:
+	mutex_unlock(&ar->conf_mutex);
+	return simple_read_from_buffer(user_buf, count, ppos, buf, len);
+}
+
+static const struct file_operations fops_peer_tid_log = {
+	.open = simple_open,
+	.read = ath10k_dbg_sta_read_peer_tid_log,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
 void ath10k_sta_add_debugfs(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 			    struct ieee80211_sta *sta, struct dentry *dir)
 {
@@ -750,4 +791,5 @@ void ath10k_sta_add_debugfs(struct ieee80211_hw *hw, struct ieee80211_vif *vif,
 			    &fops_tx_stats);
 	debugfs_create_file("tpc", S_IRUGO | S_IWUSR, dir, sta,
 			    &fops_set_tpc);
+	debugfs_create_file("peer_tid_log", S_IRUSR, dir, sta, &fops_peer_tid_log);
 }
