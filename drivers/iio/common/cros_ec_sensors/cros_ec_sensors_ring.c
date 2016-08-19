@@ -467,7 +467,7 @@ static int cros_ec_ring_probe(struct platform_device *pdev)
 	struct cros_ec_device *ec_device;
 	struct iio_dev *indio_dev;
 	struct cros_ec_sensors_ring_state *state;
-	int i, ret;
+	int ret;
 
 	if (!ec_dev || !ec_dev->ec_dev) {
 		dev_warn(&pdev->dev, "No CROS EC device found.\n");
@@ -527,10 +527,6 @@ static int cros_ec_ring_probe(struct platform_device *pdev)
 					 cros_ec_ring_handler, NULL);
 	if (ret < 0)
 		goto err_trigger_unregister;
-
-	/* Enable all channels by default */
-	for (i = 0; i < MAX_CHANNEL; i++)
-		iio_scan_mask_set(indio_dev, indio_dev->buffer, i);
 
 	ret = iio_device_register(indio_dev);
 	if (ret < 0)
