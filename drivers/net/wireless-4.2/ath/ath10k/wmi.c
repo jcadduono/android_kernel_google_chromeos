@@ -29,6 +29,7 @@
 #include "wmi-ops.h"
 #include "p2p.h"
 #include "hw.h"
+#include "fwlog.h"
 
 /* MAIN WMI cmd track */
 static struct wmi_cmd_map wmi_cmd_map = {
@@ -2574,6 +2575,7 @@ int ath10k_wmi_event_debug_mesg(struct ath10k *ar, struct sk_buff *skb)
 		   skb->len);
 
 	trace_ath10k_wmi_dbglog(ar, skb->data, skb->len);
+	ath10k_handle_fwlog_msg(ar, skb);
 
 	return 0;
 }
@@ -5123,7 +5125,7 @@ static void ath10k_wmi_op_rx(struct ath10k *ar, struct sk_buff *skb)
 		break;
 	case WMI_DEBUG_MESG_EVENTID:
 		ath10k_wmi_event_debug_mesg(ar, skb);
-		break;
+		return;
 	case WMI_UPDATE_STATS_EVENTID:
 		ath10k_wmi_event_update_stats(ar, skb);
 		break;
@@ -5253,7 +5255,7 @@ static void ath10k_wmi_10_1_op_rx(struct ath10k *ar, struct sk_buff *skb)
 		break;
 	case WMI_10X_DEBUG_MESG_EVENTID:
 		ath10k_wmi_event_debug_mesg(ar, skb);
-		break;
+		return;
 	case WMI_10X_UPDATE_STATS_EVENTID:
 		ath10k_wmi_event_update_stats(ar, skb);
 		break;
@@ -5378,7 +5380,7 @@ static void ath10k_wmi_10_2_op_rx(struct ath10k *ar, struct sk_buff *skb)
 		break;
 	case WMI_10_2_DEBUG_MESG_EVENTID:
 		ath10k_wmi_event_debug_mesg(ar, skb);
-		break;
+		return;
 	case WMI_10_2_UPDATE_STATS_EVENTID:
 		ath10k_wmi_event_update_stats(ar, skb);
 		break;
@@ -5514,7 +5516,7 @@ static void ath10k_wmi_10_4_op_rx(struct ath10k *ar, struct sk_buff *skb)
 		break;
 	case WMI_10_4_DEBUG_MESG_EVENTID:
 		ath10k_wmi_event_debug_mesg(ar, skb);
-		break;
+		return;
 	case WMI_10_4_SERVICE_READY_EVENTID:
 		ath10k_wmi_event_service_ready(ar, skb);
 		return;
