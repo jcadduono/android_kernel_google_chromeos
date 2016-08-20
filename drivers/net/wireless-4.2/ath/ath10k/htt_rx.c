@@ -2270,6 +2270,7 @@ static void ath10k_htt_rx_tx_mode_switch_ind(struct ath10k *ar,
 static void
 ath10k_update_per_peer_stats(struct ath10k_peer_tx_stats *tx_stats,
 			     struct ath10k_per_peer_tx_stats *p_tx_stats,
+			     struct htt_per_peer_tx_stats_ind *h_tx_stats,
 			     u8 ppdu)
 {
 	if (p_tx_stats) {
@@ -2284,7 +2285,72 @@ ath10k_update_per_peer_stats(struct ath10k_peer_tx_stats *tx_stats,
 		tx_stats->succ_pkts = p_tx_stats->success_pkts[ppdu];
 		tx_stats->retry_pkts = p_tx_stats->retry_pkts[ppdu];
 		tx_stats->failed_pkts = p_tx_stats->failed_pkts[ppdu];
+	} else {
+		tx_stats->succ_bytes = __le32_to_cpu(h_tx_stats->succ_bytes);
+		tx_stats->retry_bytes = __le32_to_cpu(h_tx_stats->retry_bytes);
+		tx_stats->failed_bytes =
+			__le32_to_cpu(h_tx_stats->failed_bytes);
+		tx_stats->ratecode = h_tx_stats->ratecode;
+		tx_stats->flags = h_tx_stats->flags;
+		tx_stats->succ_pkts = __le16_to_cpu(h_tx_stats->succ_pkts);
+		tx_stats->retry_pkts = __le16_to_cpu(h_tx_stats->retry_pkts);
+		tx_stats->failed_pkts = __le16_to_cpu(h_tx_stats->failed_pkts);
 	}
+}
+
+static void
+ath10k_htt_fetch_10_4_peer_stats(struct ath10k *ar, struct sk_buff *skb)
+{
+	struct htt_resp *resp = (struct htt_resp *)skb->data;
+	struct ath10k_peer_tx_stats *p_tx_stats = &ar->peer_tx_stats;
+	struct htt_per_peer_tx_stats_ind *tx_stats;
+	struct ieee80211_sta *sta = NULL;
+	struct ath10k_sta *arsta;
+	struct ath10k_peer *peer;
+	u32 peer_id = 0, i;
+	u8 ppdu_len, num_ppdu;
+
+	num_ppdu = resp->peer_tx_stats.num_ppdu;
+	ppdu_len = resp->peer_tx_stats.ppdu_len * sizeof(__le32);
+
+	if (skb->len < sizeof(struct htt_resp_hdr) + num_ppdu * ppdu_len) {
+		ath10k_warn(ar, "invalid peer stats event: len %d\n", skb->len);
+		return;
+	}
+
+	tx_stats = (struct htt_per_peer_tx_stats_ind *)
+			(resp->peer_tx_stats.payload);
+	peer_id = tx_stats->peer_id;
+
+	rcu_read_lock();
+	spin_lock_bh(&ar->data_lock);
+	peer = ath10k_peer_find_by_id(ar, peer_id);
+	if (!peer)
+		goto err;
+
+	sta = peer->sta;
+	if (!sta)
+		goto err;
+
+	for (i = 0; i < num_ppdu; i++) {
+		tx_stats = (struct htt_per_peer_tx_stats_ind *)
+			   (resp->peer_tx_stats.payload + i * ppdu_len);
+
+		arsta = (struct ath10k_sta *)sta->drv_priv;
+		ath10k_update_per_peer_stats(p_tx_stats, NULL, tx_stats, i);
+		ath10k_accumulate_per_peer_tx_stats(ar, sta, p_tx_stats);
+		arsta->tx_stats.tx_duration +=
+			__le16_to_cpu(tx_stats->tx_duration);
+	}
+	spin_unlock_bh(&ar->data_lock);
+	rcu_read_unlock();
+
+	return;
+
+err:
+	spin_unlock_bh(&ar->data_lock);
+	rcu_read_unlock();
+	ath10k_warn(ar, "invalid per peer stats received\n");
 }
 
 static void ath10k_fetch_10_4_tx_stats(struct ath10k *ar, u8 *data)
@@ -2325,7 +2391,8 @@ static void ath10k_fetch_10_4_tx_stats(struct ath10k *ar, u8 *data)
 
 		arsta = (struct ath10k_sta *)sta->drv_priv;
 		for (i = 0; i < tx_stats->tx_ppdu_cnt; i++) {
-			ath10k_update_per_peer_stats(p_tx_stats, tx_stats, i);
+			ath10k_update_per_peer_stats(p_tx_stats, tx_stats,
+						     NULL, i);
 			ath10k_accumulate_per_peer_tx_stats(ar, sta,
 							    p_tx_stats);
 		}
@@ -2390,7 +2457,7 @@ static void ath10k_fetch_10_2_tx_stats(struct ath10k *ar, u8 *data)
 
 	arsta = (struct ath10k_sta *)sta->drv_priv;
 	for (i = 0; i < tx_stats->tx_ppdu_cnt; i++) {
-		ath10k_update_per_peer_stats(p_tx_stats, tx_stats, i);
+		ath10k_update_per_peer_stats(p_tx_stats, tx_stats, NULL, i);
 		ath10k_accumulate_per_peer_tx_stats(ar, sta, p_tx_stats);
 	}
 
@@ -2596,6 +2663,10 @@ void ath10k_htt_t2h_msg_handler(struct ath10k *ar, struct sk_buff *skb)
 		break;
 	case HTT_T2H_MSG_TYPE_TX_MODE_SWITCH_IND:
 		ath10k_htt_rx_tx_mode_switch_ind(ar, skb);
+		break;
+	case HTT_T2H_MSG_TYPE_PEER_STATS:
+		if (ath10k_peer_stats_enabled(ar))
+			ath10k_htt_fetch_10_4_peer_stats(ar, skb);
 		break;
 	case HTT_T2H_MSG_TYPE_EN_STATS:
 		ath10k_smart_ant_10_4_proc_tx_feedback(ar, skb);
