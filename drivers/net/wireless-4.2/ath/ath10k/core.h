@@ -319,20 +319,6 @@ struct ath10k_peer {
 };
 
 struct ath10k_tx_stats {
-	u64 total_bytes_mcs[VHT_MCS_NUM];
-	u64 total_bytes_bw[VHT_BW_NUM];
-	u64 total_bytes_nss[VHT_NSS_NUM];
-	u64 total_bytes_legacy_rates[LEGACY_RATE_NUM];
-	u64 total_bytes_gi[VHT_GI_NUM];
-	u64 total_bytes_rate_num[VHT_RATE_NUM];
-
-	u64 total_pkts_mcs[VHT_MCS_NUM];
-	u64 total_pkts_bw[VHT_BW_NUM];
-	u64 total_pkts_nss[VHT_NSS_NUM];
-	u64 total_pkts_legacy_rates[LEGACY_RATE_NUM];
-	u64 total_pkts_gi[VHT_GI_NUM];
-	u64 total_pkts_rate_num[VHT_RATE_NUM];
-
 	u64 succ_bytes_mcs[VHT_MCS_NUM];
 	u64 succ_bytes_bw[VHT_BW_NUM];
 	u64 succ_bytes_nss[VHT_NSS_NUM];
@@ -731,6 +717,21 @@ enum ath10k_tx_pause_reason {
 
 #define ATH10K_RATECODE_LIST_TIMEOUT	100 /* msecs */
 
+struct ath10k_peer_tx_stats {
+	u32	succ_bytes;
+	u32	retry_bytes;
+	u32	failed_bytes;
+	u8	ratecode;
+	u8	flags;
+	u16	peer_id;
+	u16	succ_pkts;
+	u16	retry_pkts;
+	u16	failed_pkts;
+	u16	duration;
+	u32	reserved1;
+	u32	reserved2;
+};
+
 struct ath10k {
 	struct ath_common ath_common;
 	struct ieee80211_hw *hw;
@@ -1028,7 +1029,7 @@ struct ath10k {
 
 	struct ath10k_thermal thermal;
 	struct ath10k_wow wow;
-	struct ath10k_per_peer_tx_stats peer_tx_stats;
+	struct ath10k_peer_tx_stats peer_tx_stats;
 
 	struct completion chan_survey_completed;
 	/* cycle count for operating channel */

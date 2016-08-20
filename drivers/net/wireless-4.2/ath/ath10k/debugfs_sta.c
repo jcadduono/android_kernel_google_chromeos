@@ -118,216 +118,163 @@ static void ath10k_fill_tx_bitrate(struct ieee80211_hw *hw,
 	ieee80211_tx_status_noskb(hw, sta, &info);
 }
 
-void ath10k_update_peer_tx_stats(struct ath10k *ar,
-				 struct ieee80211_sta *sta,
-				 struct ath10k_per_peer_tx_stats *peer_stats)
+void ath10k_accumulate_per_peer_tx_stats(struct ath10k *ar,
+					 struct ieee80211_sta *sta,
+					 struct ath10k_peer_tx_stats
+					 *peer_stats)
 {
 	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
-	u8 pream, bw, mcs, nss, rate, pkts, gi;
-	int i, idx;
-	struct ath10k_tx_stats *tx_stats;
+	u8 pream, bw, mcs, nss, rate, gi;
+	int idx;
+	struct ath10k_tx_stats *tx_stats = &arsta->tx_stats;
 	bool legacy_rate;
 	struct rate_info txrate;
 
-	spin_lock_bh(&ar->data_lock);
-	tx_stats = &arsta->tx_stats;
-	pkts = peer_stats->tx_ppdu_cnt;
+	pream = ATH10K_HW_PREAMBLE(peer_stats->ratecode);
+	legacy_rate = ((pream == WMI_RATE_PREAMBLE_CCK) ||
+		       (pream == WMI_RATE_PREAMBLE_OFDM));
 
-	for (i = 0; i < pkts; i++) {
-		pream = ATH10K_HW_PREAMBLE(peer_stats->ratecode[i]);
-		legacy_rate = ((pream == WMI_RATE_PREAMBLE_CCK) ||
-			       (pream == WMI_RATE_PREAMBLE_OFDM));
+	gi = ATH10K_HW_GI(peer_stats->flags);
 
-		gi = ATH10K_HW_GI(peer_stats->flags[i]);
+	if (legacy_rate) {
+		rate = ATH10K_HW_LEGACY_RATE(peer_stats->ratecode);
+		mcs = ath10k_map_rate_code_number(rate, pream);
+		if (mcs == LEGACY_RATE_NUM)
+			return;
 
-		if (legacy_rate) {
-			rate = ATH10K_HW_LEGACY_RATE(peer_stats->ratecode[i]);
-			mcs = ath10k_map_rate_code_number(rate, pream);
-			if (mcs == LEGACY_RATE_NUM)
-				continue;
-			tx_stats->succ_bytes_legacy_rates[mcs] +=
-				__le16_to_cpu(peer_stats->success_bytes[i]);
-			tx_stats->succ_pkts_legacy_rates[mcs] +=
-				(peer_stats->success_pkts[i]);
-			tx_stats->fail_bytes_legacy_rates[mcs] +=
-				__le16_to_cpu(peer_stats->failed_bytes[i]);
-			tx_stats->fail_pkts_legacy_rates[mcs] +=
-				(peer_stats->failed_pkts[i]);
-			tx_stats->retry_bytes_legacy_rates[mcs] +=
-				__le16_to_cpu(peer_stats->retry_bytes[i]);
-			tx_stats->retry_pkts_legacy_rates[mcs] +=
-				(peer_stats->retry_pkts[i]);
-			tx_stats->total_bytes_legacy_rates[mcs] +=
-				__le16_to_cpu(peer_stats->success_bytes[i]) +
-				__le16_to_cpu(peer_stats->failed_bytes[i]) +
-				__le16_to_cpu(peer_stats->retry_bytes[i]);
-			tx_stats->total_pkts_legacy_rates[mcs] +=
-				(peer_stats->success_pkts[i] +
-				peer_stats->failed_pkts[i] +
-				peer_stats->retry_pkts[i]);
-			tx_stats->ack_fails +=
-				ATH10K_HW_BA_FAIL(peer_stats->flags[i]);
+		tx_stats->succ_bytes_legacy_rates[mcs] +=
+				(peer_stats->succ_bytes);
+		tx_stats->succ_pkts_legacy_rates[mcs] +=
+				(peer_stats->succ_pkts);
+		tx_stats->fail_bytes_legacy_rates[mcs] +=
+				(peer_stats->failed_bytes);
+		tx_stats->fail_pkts_legacy_rates[mcs] +=
+				(peer_stats->failed_pkts);
+		tx_stats->retry_bytes_legacy_rates[mcs] +=
+				(peer_stats->retry_bytes);
+		tx_stats->retry_pkts_legacy_rates[mcs] +=
+				(peer_stats->retry_pkts);
+		tx_stats->ack_fails +=
+				ATH10K_HW_BA_FAIL(peer_stats->flags);
+	} else {
+		bw = ATH10K_HW_BW(peer_stats->flags);
+		nss = ATH10K_HW_NSS(peer_stats->ratecode) - 1;
+		mcs = ATH10K_HW_MCS_RATE(peer_stats->ratecode);
+		idx = mcs * 8 + 8 * 10 * (nss);
+		idx += bw * 2 + gi;
+
+		if (nss >= VHT_NSS_NUM || bw >= VHT_BW_NUM ||
+		    mcs >= VHT_MCS_NUM)
+			return;
+
+		if (ATH10K_HW_AMPDU(peer_stats->flags)) {
+			tx_stats->ba_fails +=
+				ATH10K_HW_BA_FAIL(peer_stats->flags);
+			tx_stats->ampdu_bytes_mcs[mcs] +=
+					(peer_stats->succ_bytes) +
+					(peer_stats->retry_bytes);
+			tx_stats->ampdu_pkts_mcs[mcs] +=
+					(peer_stats->succ_pkts +
+					 peer_stats->retry_pkts);
+			tx_stats->ampdu_bytes_bw[bw] +=
+				(peer_stats->succ_bytes) +
+				(peer_stats->retry_bytes);
+			tx_stats->ampdu_bytes_nss[nss] +=
+				(peer_stats->succ_bytes) +
+				(peer_stats->retry_bytes);
+			tx_stats->ampdu_bytes_gi[gi] +=
+				(peer_stats->succ_bytes) +
+				(peer_stats->retry_bytes);
+			tx_stats->ampdu_bytes_rate_num[idx] +=
+				(peer_stats->succ_bytes) +
+				(peer_stats->retry_bytes);
+			tx_stats->ampdu_pkts_bw[bw] +=
+					(peer_stats->succ_pkts +
+					 peer_stats->retry_pkts);
+			tx_stats->ampdu_pkts_nss[nss] +=
+					(peer_stats->succ_pkts +
+					 peer_stats->retry_pkts);
+			tx_stats->ampdu_pkts_gi[gi] +=
+					(peer_stats->succ_pkts +
+					 peer_stats->retry_pkts);
+			tx_stats->ampdu_pkts_rate_num[idx] +=
+					(peer_stats->succ_pkts +
+					 peer_stats->retry_pkts);
 		} else {
-			bw = ATH10K_HW_BW(peer_stats->flags[i]);
-			nss = ATH10K_HW_NSS(peer_stats->ratecode[i]) - 1;
-			mcs = ATH10K_HW_MCS_RATE(peer_stats->ratecode[i]);
-			idx = mcs * 8 + 8 * 10 * (nss);
-			idx += bw * 2 + gi;
-
-			if (nss > 2 || bw > 2 || mcs > 9) {
-				continue;
-			}
-			if (ATH10K_HW_AMPDU(peer_stats->flags[i])) {
-				tx_stats->ba_fails +=
-					ATH10K_HW_BA_FAIL(peer_stats->flags[i]);
-				tx_stats->ampdu_bytes_mcs[mcs] +=
-					__le16_to_cpu(peer_stats->success_bytes[i]) +
-					__le16_to_cpu(peer_stats->retry_bytes[i]);
-				tx_stats->ampdu_bytes_bw[bw] +=
-					__le16_to_cpu(peer_stats->success_bytes[i]) +
-					__le16_to_cpu(peer_stats->retry_bytes[i]);
-				tx_stats->ampdu_bytes_nss[nss] +=
-					__le16_to_cpu(peer_stats->success_bytes[i]) +
-					__le16_to_cpu(peer_stats->retry_bytes[i]);
-				tx_stats->ampdu_bytes_gi[gi] +=
-					__le16_to_cpu(peer_stats->success_bytes[i]) +
-					__le16_to_cpu(peer_stats->retry_bytes[i]);
-				tx_stats->ampdu_bytes_rate_num[idx] +=
-					__le16_to_cpu(peer_stats->success_bytes[i]) +
-					__le16_to_cpu(peer_stats->retry_bytes[i]);
-				tx_stats->ampdu_pkts_mcs[mcs] +=
-						(peer_stats->success_pkts[i] +
-						 peer_stats->retry_pkts[i]);
-				tx_stats->ampdu_pkts_bw[bw] +=
-						(peer_stats->success_pkts[i] +
-						 peer_stats->retry_pkts[i]);
-				tx_stats->ampdu_pkts_nss[nss] +=
-						(peer_stats->success_pkts[i] +
-						 peer_stats->retry_pkts[i]);
-				tx_stats->ampdu_pkts_gi[gi] +=
-						(peer_stats->success_pkts[i] +
-						 peer_stats->retry_pkts[i]);
-				tx_stats->ampdu_pkts_rate_num[idx] +=
-						(peer_stats->success_pkts[i] +
-						 peer_stats->retry_pkts[i]);
-			} else {
-				tx_stats->ack_fails +=
-					ATH10K_HW_BA_FAIL(peer_stats->flags[i]);
-			}
-			tx_stats->succ_bytes_mcs[mcs] +=
-				__le16_to_cpu(peer_stats->success_bytes[i]);
-			tx_stats->succ_bytes_bw[bw] +=
-				__le16_to_cpu(peer_stats->success_bytes[i]);
-			tx_stats->succ_bytes_nss[nss] +=
-				__le16_to_cpu(peer_stats->success_bytes[i]);
-			tx_stats->succ_bytes_gi[gi] +=
-				__le16_to_cpu(peer_stats->success_bytes[i]);
-			tx_stats->succ_bytes_rate_num[idx] +=
-				__le16_to_cpu(peer_stats->success_bytes[i]);
-			tx_stats->succ_pkts_mcs[mcs] +=
-				(peer_stats->success_pkts[i]);
-			tx_stats->succ_pkts_bw[bw] +=
-				(peer_stats->success_pkts[i]);
-			tx_stats->succ_pkts_nss[nss] +=
-				(peer_stats->success_pkts[i]);
-			tx_stats->succ_pkts_gi[gi] +=
-				(peer_stats->success_pkts[i]);
-			tx_stats->succ_pkts_rate_num[idx] +=
-				(peer_stats->success_pkts[i]);
-			tx_stats->fail_bytes_mcs[mcs] +=
-				__le16_to_cpu(peer_stats->failed_bytes[i]);
-			tx_stats->fail_bytes_bw[bw] +=
-				__le16_to_cpu(peer_stats->failed_bytes[i]);
-			tx_stats->fail_bytes_nss[nss] +=
-				__le16_to_cpu(peer_stats->failed_bytes[i]);
-			tx_stats->fail_bytes_gi[gi] +=
-				__le16_to_cpu(peer_stats->failed_bytes[i]);
-			tx_stats->fail_bytes_rate_num[idx] +=
-				__le16_to_cpu(peer_stats->failed_bytes[i]);
-			tx_stats->fail_pkts_mcs[mcs] +=
-				(peer_stats->failed_pkts[i]);
-			tx_stats->fail_pkts_bw[bw] +=
-				(peer_stats->failed_pkts[i]);
-			tx_stats->fail_pkts_nss[nss] +=
-				(peer_stats->failed_pkts[i]);
-			tx_stats->fail_pkts_gi[gi] +=
-				(peer_stats->failed_pkts[i]);
-			tx_stats->fail_pkts_rate_num[idx] +=
-				(peer_stats->failed_pkts[i]);
-			tx_stats->retry_bytes_mcs[mcs] +=
-				__le16_to_cpu(peer_stats->retry_bytes[i]);
-			tx_stats->retry_bytes_bw[bw] +=
-				__le16_to_cpu(peer_stats->retry_bytes[i]);
-			tx_stats->retry_bytes_nss[nss] +=
-				__le16_to_cpu(peer_stats->retry_bytes[i]);
-			tx_stats->retry_bytes_gi[gi] +=
-				__le16_to_cpu(peer_stats->retry_bytes[i]);
-			tx_stats->retry_bytes_rate_num[idx] +=
-				__le16_to_cpu(peer_stats->retry_bytes[i]);
-			tx_stats->retry_pkts_mcs[mcs] +=
-				(peer_stats->retry_pkts[i]);
-			tx_stats->retry_pkts_bw[bw] +=
-				(peer_stats->retry_pkts[i]);
-			tx_stats->retry_pkts_nss[nss] +=
-				(peer_stats->retry_pkts[i]);
-			tx_stats->retry_pkts_gi[gi] +=
-				(peer_stats->retry_pkts[i]);
-			tx_stats->retry_pkts_rate_num[idx] +=
-				(peer_stats->retry_pkts[i]);
-			tx_stats->total_bytes_mcs[mcs] +=
-				__le16_to_cpu(peer_stats->success_bytes[i]) +
-				__le16_to_cpu(peer_stats->failed_bytes[i]) +
-				__le16_to_cpu(peer_stats->retry_bytes[i]);
-			tx_stats->total_bytes_bw[bw] +=
-				__le16_to_cpu(peer_stats->success_bytes[i]) +
-				__le16_to_cpu(peer_stats->failed_bytes[i]) +
-				__le16_to_cpu(peer_stats->retry_bytes[i]);
-			tx_stats->total_bytes_nss[nss] +=
-				__le16_to_cpu(peer_stats->success_bytes[i]) +
-				__le16_to_cpu(peer_stats->failed_bytes[i]) +
-				__le16_to_cpu(peer_stats->retry_bytes[i]);
-			tx_stats->total_bytes_gi[gi] +=
-				__le16_to_cpu(peer_stats->success_bytes[i]) +
-				__le16_to_cpu(peer_stats->failed_bytes[i]) +
-				__le16_to_cpu(peer_stats->retry_bytes[i]);
-			tx_stats->total_bytes_rate_num[idx] +=
-				__le16_to_cpu(peer_stats->success_bytes[i]) +
-				__le16_to_cpu(peer_stats->failed_bytes[i]) +
-				__le16_to_cpu(peer_stats->retry_bytes[i]);
-			tx_stats->total_pkts_mcs[mcs] +=
-				peer_stats->success_pkts[i] +
-				peer_stats->failed_pkts[i] +
-				peer_stats->retry_pkts[i];
-			tx_stats->total_pkts_bw[bw] +=
-				(peer_stats->success_pkts[i] +
-				peer_stats->failed_pkts[i] +
-				peer_stats->retry_pkts[i]);
-			tx_stats->total_pkts_nss[nss] +=
-				(peer_stats->success_pkts[i] +
-				peer_stats->failed_pkts[i] +
-				peer_stats->retry_pkts[i]);
-			tx_stats->total_pkts_gi[gi] +=
-				(peer_stats->success_pkts[i] +
-				peer_stats->failed_pkts[i] +
-				peer_stats->retry_pkts[i]);
-			tx_stats->total_pkts_rate_num[idx] +=
-				(peer_stats->success_pkts[i] +
-				peer_stats->failed_pkts[i] +
-				peer_stats->retry_pkts[i]);
+			tx_stats->ack_fails +=
+				ATH10K_HW_BA_FAIL(peer_stats->flags);
 		}
-
-		txrate.flags = pream;
-		txrate.mcs = mcs;
-		txrate.nss = nss + 1;
-		txrate.bw = bw;
-		ath10k_fill_tx_bitrate(ar->hw, sta, &txrate, rate, gi,
-				       peer_stats->success_pkts[i],
-				       peer_stats->failed_pkts[i],
-				       peer_stats->retry_pkts[i]);
-
+		tx_stats->succ_bytes_mcs[mcs] +=
+				(peer_stats->succ_bytes);
+		tx_stats->succ_pkts_mcs[mcs] +=
+				(peer_stats->succ_pkts);
+		tx_stats->fail_bytes_mcs[mcs] +=
+				(peer_stats->failed_bytes);
+		tx_stats->fail_pkts_mcs[mcs] +=
+				(peer_stats->failed_pkts);
+		tx_stats->retry_bytes_mcs[mcs] +=
+				(peer_stats->retry_bytes);
+		tx_stats->retry_pkts_mcs[mcs] +=
+				(peer_stats->retry_pkts);
+		tx_stats->succ_bytes_bw[bw] +=
+			(peer_stats->succ_bytes);
+		tx_stats->succ_bytes_nss[nss] +=
+			(peer_stats->succ_bytes);
+		tx_stats->succ_bytes_gi[gi] +=
+			(peer_stats->succ_bytes);
+		tx_stats->succ_bytes_rate_num[idx] +=
+			(peer_stats->succ_bytes);
+		tx_stats->succ_pkts_bw[bw] +=
+			(peer_stats->succ_pkts);
+		tx_stats->succ_pkts_nss[nss] +=
+			(peer_stats->succ_pkts);
+		tx_stats->succ_pkts_gi[gi] +=
+			(peer_stats->succ_pkts);
+		tx_stats->succ_pkts_rate_num[idx] +=
+			(peer_stats->succ_pkts);
+		tx_stats->fail_bytes_bw[bw] +=
+			(peer_stats->failed_bytes);
+		tx_stats->fail_bytes_nss[nss] +=
+			(peer_stats->failed_bytes);
+		tx_stats->fail_bytes_gi[gi] +=
+			(peer_stats->failed_bytes);
+		tx_stats->fail_bytes_rate_num[idx] +=
+			(peer_stats->failed_bytes);
+		tx_stats->fail_pkts_bw[bw] +=
+			(peer_stats->failed_pkts);
+		tx_stats->fail_pkts_nss[nss] +=
+			(peer_stats->failed_pkts);
+		tx_stats->fail_pkts_gi[gi] +=
+			(peer_stats->failed_pkts);
+		tx_stats->fail_pkts_rate_num[idx] +=
+			(peer_stats->failed_pkts);
+		tx_stats->retry_bytes_bw[bw] +=
+			(peer_stats->retry_bytes);
+		tx_stats->retry_bytes_nss[nss] +=
+			(peer_stats->retry_bytes);
+		tx_stats->retry_bytes_gi[gi] +=
+			(peer_stats->retry_bytes);
+		tx_stats->retry_bytes_rate_num[idx] +=
+			(peer_stats->retry_bytes);
+		tx_stats->retry_pkts_bw[bw] +=
+			(peer_stats->retry_pkts);
+		tx_stats->retry_pkts_nss[nss] +=
+			(peer_stats->retry_pkts);
+		tx_stats->retry_pkts_gi[gi] +=
+			(peer_stats->retry_pkts);
+		tx_stats->retry_pkts_rate_num[idx] +=
+			(peer_stats->retry_pkts);
 	}
-	tx_stats->tx_duration += __le32_to_cpu(peer_stats->tx_duration);
-	spin_unlock_bh(&ar->data_lock);
+
+	txrate.flags = pream;
+	txrate.mcs = mcs;
+	txrate.nss = nss + 1;
+	txrate.bw = bw;
+	ath10k_fill_tx_bitrate(ar->hw, sta, &txrate, rate, gi,
+			       peer_stats->succ_pkts,
+			       peer_stats->failed_pkts,
+			       peer_stats->retry_pkts);
+
 }
 
 static void ath10k_sta_update_extd_stats_rx_duration(struct ath10k *ar,

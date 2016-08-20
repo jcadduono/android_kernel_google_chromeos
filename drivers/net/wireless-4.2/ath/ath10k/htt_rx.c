@@ -2267,76 +2267,144 @@ static void ath10k_htt_rx_tx_mode_switch_ind(struct ath10k *ar,
 	ath10k_mac_tx_push_pending(ar);
 }
 
-static void ath10k_process_tx_stats(struct ath10k *ar, u32 peer_id,
-			     struct ath10k_per_peer_tx_stats *p_tx_stats)
+static void
+ath10k_update_per_peer_stats(struct ath10k_peer_tx_stats *tx_stats,
+			     struct ath10k_per_peer_tx_stats *p_tx_stats,
+			     u8 ppdu)
 {
-	struct ath10k_peer *peer;
-	struct ieee80211_sta *sta;
-	u8 peer_mac[ETH_ALEN];
-
-	spin_lock_bh(&ar->data_lock);
-	peer = ath10k_peer_find_by_id(ar, peer_id);
-	if (!peer) {
-		spin_unlock_bh(&ar->data_lock);
-		return;
+	if (p_tx_stats) {
+		tx_stats->succ_bytes =
+			__le16_to_cpu(p_tx_stats->success_bytes[ppdu]);
+		tx_stats->retry_bytes =
+			__le16_to_cpu(p_tx_stats->retry_bytes[ppdu]);
+		tx_stats->failed_bytes =
+			__le16_to_cpu(p_tx_stats->failed_bytes[ppdu]);
+		tx_stats->ratecode = p_tx_stats->ratecode[ppdu];
+		tx_stats->flags = p_tx_stats->flags[ppdu];
+		tx_stats->succ_pkts = p_tx_stats->success_pkts[ppdu];
+		tx_stats->retry_pkts = p_tx_stats->retry_pkts[ppdu];
+		tx_stats->failed_pkts = p_tx_stats->failed_pkts[ppdu];
 	}
-	ether_addr_copy(peer_mac, peer->addr);
-	spin_unlock_bh(&ar->data_lock);
-
-	rcu_read_lock();
-	sta = ieee80211_find_sta_by_ifaddr(ar->hw, peer_mac, NULL);
-	if (!sta) {
-		rcu_read_unlock();
-		ath10k_dbg(ar, ATH10K_DBG_HTT,
-			   "Sta entry for %pM not found\n", peer_mac);
-		return;
-	}
-	ath10k_update_peer_tx_stats(ar, sta, p_tx_stats);
-	rcu_read_unlock();
 }
 
 static void ath10k_fetch_10_4_tx_stats(struct ath10k *ar, u8 *data)
 {
-	struct ath10k_pktlog_10_4_hdr *hdr = (struct ath10k_pktlog_10_4_hdr *)data;
-	struct ath10k_per_peer_tx_stats *p_tx_stats = &ar->peer_tx_stats;
+	struct ath10k_pktlog_10_4_hdr *hdr =
+			(struct ath10k_pktlog_10_4_hdr *)data;
+	struct ath10k_peer_tx_stats *p_tx_stats = &ar->peer_tx_stats;
+	struct ath10k_per_peer_tx_stats *tx_stats;
+	struct ieee80211_sta *sta;
+	struct ath10k_sta *arsta;
+	struct ath10k_peer *peer;
+	int len = __le16_to_cpu(hdr->size);
 	u16 log_type = __le16_to_cpu(hdr->log_type);
-	u32 peer_id = 0;
+	u32 peer_id = 0, i;
+
+	if (len < ATH10K_10_4_TX_STATS_OFFSET + sizeof(*tx_stats))
+		return;
 
 	if (log_type == ATH_PKTLOG_TYPE_TX_STAT) {
-		memcpy(p_tx_stats, (hdr->payload) +
-		       ATH10K_10_4_TX_STATS_OFFSET, sizeof(*p_tx_stats));
+		tx_stats = (struct ath10k_per_peer_tx_stats *)
+			   ((hdr->payload) +
+			    ATH10K_10_4_TX_STATS_OFFSET);
 
-		if (!p_tx_stats->tx_ppdu_cnt)
+		if (!tx_stats->tx_ppdu_cnt)
 			return;
 
-		peer_id = p_tx_stats->peer_id;
-		ath10k_process_tx_stats(ar, peer_id, p_tx_stats);
+		peer_id = tx_stats->peer_id;
+
+		rcu_read_lock();
+		spin_lock_bh(&ar->data_lock);
+		peer = ath10k_peer_find_by_id(ar, peer_id);
+		if (!peer)
+			goto err;
+
+		sta = peer->sta;
+		if (!sta)
+			goto err;
+
+		arsta = (struct ath10k_sta *)sta->drv_priv;
+		for (i = 0; i < tx_stats->tx_ppdu_cnt; i++) {
+			ath10k_update_per_peer_stats(p_tx_stats, tx_stats, i);
+			ath10k_accumulate_per_peer_tx_stats(ar, sta,
+							    p_tx_stats);
+		}
+		arsta->tx_stats.tx_duration +=
+				__le32_to_cpu(tx_stats->tx_duration);
+		spin_unlock_bh(&ar->data_lock);
+		rcu_read_unlock();
+
+		return;
 	}
+
+err:
+	spin_unlock_bh(&ar->data_lock);
+	rcu_read_unlock();
+	ath10k_warn(ar, "invalid per peer stats received\n");
 }
 
 static void ath10k_fetch_10_2_tx_stats(struct ath10k *ar, u8 *data)
 {
 	struct ath10k_pktlog_hdr *hdr = (struct ath10k_pktlog_hdr *)data;
-	struct ath10k_per_peer_tx_stats *p_tx_stats = &ar->peer_tx_stats;
+	struct ath10k_peer_tx_stats *p_tx_stats = &ar->peer_tx_stats;
+	struct ath10k_per_peer_tx_stats *tx_stats;
+	struct ieee80211_sta *sta;
+	struct ath10k_sta *arsta;
+	struct ath10k_peer *peer;
+	int len = __le16_to_cpu(hdr->size);
 	u16 log_type = __le16_to_cpu(hdr->log_type);
-	u32 peer_id = 0;
+	u32 peer_id = 0, i;
 
 	if (log_type != ATH_PKTLOG_TYPE_TX_CTRL &&
 	    log_type != ATH_PKTLOG_TYPE_TX_STAT)
 		return;
 
+	if (len < ATH10K_10_2_TX_STATS_OFFSET + sizeof(*tx_stats))
+		return;
+
 	if (log_type == ATH_PKTLOG_TYPE_TX_STAT) {
-		memcpy(p_tx_stats, (hdr->payload) +
-		       ATH10K_10_2_TX_STATS_OFFSET, sizeof(*p_tx_stats));
+		tx_stats = (struct ath10k_per_peer_tx_stats *)
+			   ((hdr->payload) +
+			    ATH10K_10_2_TX_STATS_OFFSET);
 
-		if (!p_tx_stats->tx_ppdu_cnt)
-			return;
+		if (!tx_stats->tx_ppdu_cnt)
+			goto err;
 
-		peer_id = p_tx_stats->peer_id;
-		ath10k_process_tx_stats(ar, peer_id, p_tx_stats);
+		peer_id = tx_stats->peer_id;
+	} else {
+		u32 *tx_ctrl_desc;
+
+		tx_ctrl_desc = (u32 *)hdr->payload;
+		peer_id = __le32_to_cpu(tx_ctrl_desc[ATH10K_TXC_PEERID]);
 	}
-}
 
+	rcu_read_lock();
+	spin_lock_bh(&ar->data_lock);
+	peer = ath10k_peer_find_by_id(ar, peer_id);
+	if (!peer)
+		goto err;
+
+	sta = peer->sta;
+	if (!sta)
+		goto err;
+
+	arsta = (struct ath10k_sta *)sta->drv_priv;
+	for (i = 0; i < tx_stats->tx_ppdu_cnt; i++) {
+		ath10k_update_per_peer_stats(p_tx_stats, tx_stats, i);
+		ath10k_accumulate_per_peer_tx_stats(ar, sta, p_tx_stats);
+	}
+
+	arsta->tx_stats.tx_duration += __le32_to_cpu(tx_stats->tx_duration);
+	spin_unlock_bh(&ar->data_lock);
+	rcu_read_unlock();
+
+	return;
+
+err:
+	spin_unlock_bh(&ar->data_lock);
+	rcu_read_unlock();
+	ath10k_warn(ar, "invalid per peer stats received\n");
+}
 static inline enum ieee80211_band phy_mode_to_band(u32 phy_mode)
 {
 	enum ieee80211_band band;
