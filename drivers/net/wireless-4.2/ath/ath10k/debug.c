@@ -1154,6 +1154,65 @@ static const struct file_operations fops_htt_stats_mask = {
 	.llseek = default_llseek,
 };
 
+static ssize_t ath10k_write_warm_hw_reset(struct file *file,
+					  const char __user *user_buf,
+					  size_t count, loff_t *ppos)
+{
+	struct ath10k *ar = file->private_data;
+	char buf[32];
+	size_t buf_size;
+	int ret;
+	bool val;
+
+	buf_size = min(count, (sizeof(buf) - 1));
+	if (copy_from_user(buf, user_buf, buf_size))
+		return -EFAULT;
+
+	buf[buf_size] = '\0';
+
+	if (strtobool(buf, &val) != 0)
+		return -EINVAL;
+
+	if (!val)
+		return -EINVAL;
+
+	mutex_lock(&ar->conf_mutex);
+
+	if (ar->state != ATH10K_STATE_ON) {
+		ret = -ENETDOWN;
+		goto exit;
+	}
+
+	if ((ar->wmi.op_version !=
+	     ATH10K_FW_WMI_OP_VERSION_10_4) &&
+	     (!test_bit(WMI_SERVICE_RESET_CHIP, ar->wmi.svc_map))) {
+		ath10k_warn(ar, "failed to map wmi service\n");
+		ret = -ENOTSUPP;
+		goto exit;
+	}
+
+	ret = ath10k_wmi_pdev_set_param(ar, ar->wmi.pdev_param->pdev_reset,
+					WMI_RST_MODE_WARM_RESET);
+
+	if (ret) {
+		ath10k_warn(ar, "failed to warm hw reset: %d\n", ret);
+		goto exit;
+	}
+
+	ret = count;
+
+exit:
+	mutex_unlock(&ar->conf_mutex);
+	return ret;
+}
+
+static const struct file_operations fops_warm_hw_reset = {
+	.write = ath10k_write_warm_hw_reset,
+	.open = simple_open,
+	.owner = THIS_MODULE,
+	.llseek = default_llseek,
+};
+
 static ssize_t ath10k_write_reset_htt_stats(struct file *file,
 					    const char __user *user_buf,
 					    size_t count, loff_t *ppos)
@@ -2624,6 +2683,9 @@ int ath10k_debug_register(struct ath10k *ar)
 
 	debugfs_create_file("htt_stats_mask", S_IRUSR | S_IWUSR,
 			    ar->debug.debugfs_phy, ar, &fops_htt_stats_mask);
+
+	debugfs_create_file("warm_hw_reset", S_IRUSR | S_IWUSR,
+			    ar->debug.debugfs_phy, ar, &fops_warm_hw_reset);
 
 	debugfs_create_file("reset_htt_stats", S_IRUSR | S_IWUSR,
 			    ar->debug.debugfs_phy, ar, &fops_reset_htt_stats);
