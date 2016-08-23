@@ -73,7 +73,7 @@
 
 			led_reset {
 					pins = "gpio22";
-					bias-pull,up;
+					output-high;
 			};
 
 			sys_reset {
