@@ -104,7 +104,7 @@ PVRSRVBridgePhysmemImportDmaBuf(IMG_UINT32 ui32DispatchTableEntry,
 							&psPhysmemImportDmaBufOUT->hPMRPtr,
 							(void *) psPMRPtrInt,
 							PVRSRV_HANDLE_TYPE_PHYSMEM_PMR,
-							PVRSRV_HANDLE_ALLOC_FLAG_MULTI
+							PVRSRV_HANDLE_ALLOC_FLAG_SHARED
 							,(PFN_HANDLE_RELEASE)&PMRUnrefPMR);
 	if (psPhysmemImportDmaBufOUT->eError != PVRSRV_OK)
 	{
