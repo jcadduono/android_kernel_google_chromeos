@@ -132,6 +132,20 @@
 /* Max timeout in ms for 32k bytes */
 #define TOUT_MAX			300
 
+#define SCL_NOISE_REJECT		24
+#define SCL_NOISE_REJECT_MASK		0x3
+#define SDA_NOISE_REJECT		26
+#define SDA_NOISE_REJECT_MASK		0x3
+#define QUP_CLK_NOISE_REJECT_ENABLE	0x2
+
+#define I2C_SCL_NOISE_REJECTION(reg_val, noise_rej_val) \
+		(((reg_val) & ~(SCL_NOISE_REJECT_MASK << SCL_NOISE_REJECT)) | \
+		(((noise_rej_val) & SCL_NOISE_REJECT_MASK) << SCL_NOISE_REJECT))
+
+#define I2C_SDA_NOISE_REJECTION(reg_val, noise_rej_val) \
+		(((reg_val) & ~(SDA_NOISE_REJECT_MASK << SDA_NOISE_REJECT)) | \
+		(((noise_rej_val) & SDA_NOISE_REJECT_MASK) << SDA_NOISE_REJECT))
+
 struct qup_i2c_block {
 	int	count;
 	int	pos;
@@ -161,6 +175,7 @@ struct qup_i2c_dev {
 	struct i2c_adapter	adap;
 
 	int			clk_ctl;
+	u32			mstr_cfg;
 	int			out_fifo_sz;
 	int			in_fifo_sz;
 	int			out_blk_sz;
@@ -1259,7 +1274,8 @@ static int qup_i2c_xfer_v2(struct i2c_adapter *adap,
 
 	/* Configure QUP as I2C mini core */
 	writel(I2C_MINI_CORE | I2C_N_VAL_V2, qup->base + QUP_CONFIG);
-	writel(QUP_V2_TAGS_EN, qup->base + QUP_I2C_MASTER_GEN);
+
+	writel(qup->mstr_cfg | QUP_V2_TAGS_EN, qup->base + QUP_I2C_MASTER_GEN);
 
 	if ((qup->is_dma)) {
 		/* All i2c_msgs should be transferred using either dma or cpu */
@@ -1379,6 +1395,7 @@ static int qup_i2c_probe(struct platform_device *pdev)
 	u32 clk_freq = 100000;
 	u32 qup_clk_freq;
 	int blocks;
+	u32 noise_rej_scl, noise_rej_sda;
 
 	qup = devm_kzalloc(&pdev->dev, sizeof(*qup), GFP_KERNEL);
 	if (!qup)
@@ -1543,6 +1560,51 @@ nodma:
 	fs_div = ((src_clk_freq / clk_freq) / 2) - 3;
 	hs_div = 3;
 	qup->clk_ctl = (hs_div << 8) | (fs_div & 0xff);
+
+
+	if (!of_property_read_u32(node, "noise-reject-scl", &noise_rej_scl)) {
+		if (noise_rej_scl > 3) {
+			dev_info(qup->dev,
+				"noise-reject-scl = %d, setting to 3\n",
+				noise_rej_scl);
+			noise_rej_scl = 3;
+		} else {
+			dev_info(qup->dev, "noise-reject-scl = %d\n",
+					noise_rej_scl);
+		}
+		qup->mstr_cfg = QUP_CLK_NOISE_REJECT_ENABLE;
+		/*
+		 * Enable the noise rejection
+		 */
+		writel(qup->mstr_cfg, qup->base + QUP_I2C_MASTER_GEN);
+		/*
+		 * Set SCL noise rejection values
+		 */
+		qup->clk_ctl = I2C_SCL_NOISE_REJECTION(qup->clk_ctl,
+							noise_rej_scl);
+	}
+
+	if (!of_property_read_u32(node, "noise-reject-sda", &noise_rej_sda)) {
+		if (noise_rej_sda > 3) {
+			dev_info(qup->dev,
+				"noise-reject-sda = %d, setting to 3\n",
+				noise_rej_sda);
+			noise_rej_sda = 3;
+		} else {
+			dev_info(qup->dev, "noise-reject-sda = %d\n",
+				noise_rej_sda);
+		}
+		qup->mstr_cfg = QUP_CLK_NOISE_REJECT_ENABLE;
+		/*
+		 * Enable the noise rejection
+		 */
+		writel(qup->mstr_cfg, qup->base + QUP_I2C_MASTER_GEN);
+		/*
+		 * Set SDA noise rejection values
+		 */
+		qup->clk_ctl = I2C_SDA_NOISE_REJECTION(qup->clk_ctl,
+							noise_rej_sda);
+	}
 
 	/*
 	 * Time it takes for a byte to be clocked out on the bus.

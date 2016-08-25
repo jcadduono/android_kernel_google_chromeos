@@ -24,20 +24,25 @@ Optional properties:
                     Hz. If omitted, then the frequency configured by bootloader
 		    will be used.
 
+ - noise-reject-scl: Should specify the desired scl noise reject value (max value 3)
+ - noise-reject-sda: Should specify the desired sda noise reject value (max value 3)
 Child nodes should conform to i2c bus binding.
 
 Example:
 
- i2c@f9924000 {
- 	compatible = "qcom,i2c-qup-v2.2.1";
- 	reg = <0xf9924000 0x1000>;
- 	interrupts = <0 96 0>;
+i2c@f9924000 {
+	compatible = "qcom,i2c-qup-v2.2.1";
+	reg = <0xf9924000 0x1000>;
+	interrupts = <0 96 0>;
 
- 	clocks = <&gcc GCC_BLSP1_QUP2_I2C_APPS_CLK>, <&gcc GCC_BLSP1_AHB_CLK>;
- 	clock-names = "core", "iface";
+	clocks = <&gcc GCC_BLSP1_QUP2_I2C_APPS_CLK>, <&gcc GCC_BLSP1_AHB_CLK>;
+	clock-names = "core", "iface";
 
- 	clock-frequency = <355000>;
+	clock-frequency = <355000>;
 
- 	#address-cells = <1>;
- 	#size-cells = <0>;
- };
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	noise-reject-scl = <0x1>;
+	noise-reject-sda = <0x1>;
+};
