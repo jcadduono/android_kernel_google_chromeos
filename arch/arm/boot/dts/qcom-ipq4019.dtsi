@@ -225,6 +225,8 @@
 			qup-clock-frequency  = <19050000>;
 			dmas = <&blsp_dma 11>, <&blsp_dma 10>;
 			dma-names = "rx", "tx";
+			noise-reject-scl = <0x1>;
+			noise-reject-sda = <0x1>;
 			status = "disabled";
                 };
 
