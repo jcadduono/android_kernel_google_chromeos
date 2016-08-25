@@ -33,8 +33,8 @@
 #include "rate.h"
 #include "debugfs_sta.h"
 
-#ifdef CONFIG_MAC80211_PACKET_TRACE
-#include "packet_trace.h"
+#ifdef CONFIG_MAC80211_WIFI_DIAG
+#include "wifi_diag.h"
 #endif
 
 static inline void ieee80211_rx_stats(struct net_device *dev, u32 len)
@@ -3149,11 +3149,11 @@ static void ieee80211_rx_handlers(struct ieee80211_rx_data *rx,
 	ieee80211_rx_result res = RX_DROP_MONITOR;
 	struct sk_buff *skb;
 
-#ifdef CONFIG_MAC80211_PACKET_TRACE
+#ifdef CONFIG_MAC80211_WIFI_DIAG
 #define CALL_RXH(rxh)			\
 	do {                            \
 		res = rxh(rx);          \
-		PACKET_TRACE_RX_DBG(rx, res, " %s", #rxh);	\
+		WIFI_DIAG_RX_DBG(rx, res, "%s", #rxh);	\
 		if (res != RX_CONTINUE)	\
 			goto rxh_next;  \
 	} while (0);
@@ -3223,11 +3223,11 @@ static void ieee80211_invoke_rx_handlers(struct ieee80211_rx_data *rx)
 
 	__skb_queue_head_init(&reorder_release);
 
-#ifdef CONFIG_MAC80211_PACKET_TRACE
+#ifdef CONFIG_MAC80211_WIFI_DIAG
 #define CALL_RXH(rxh)			\
 	do {                            \
 		res = rxh(rx);          \
-		PACKET_TRACE_RX_DBG(rx, res, " %s", #rxh);	\
+		WIFI_DIAG_RX_DBG(rx, res, "%s", #rxh);	\
 		if (res != RX_CONTINUE)	\
 			goto rxh_next;  \
 	} while (0);
@@ -3420,8 +3420,8 @@ static bool ieee80211_prepare_and_rx_handle(struct ieee80211_rx_data *rx,
 
 	rx->skb = skb;
 
-#ifdef CONFIG_MAC80211_PACKET_TRACE
-	PACKET_TRACE_SET_RX_STATUS(local, rx->sta, skb);
+#ifdef CONFIG_MAC80211_WIFI_DIAG
+	WIFI_DIAG_SET_RX_STATUS(local, rx->sta, skb);
 #endif
 
 	if (!ieee80211_accept_frame(rx))

@@ -320,13 +320,14 @@ config MAC80211_STA_HASH_MAX_SIZE
 
 	  If unsure, leave the default of 0.
 
-config MAC80211_PACKET_TRACE
-	bool "Enable mac80211 packet trace debug support"
+config MAC80211_WIFI_DIAG
+	bool "Enable WiFi diagnostic support"
 	depends on MAC80211_DEBUGFS
 	default n
 	---help---
-	 This options enables packet trace along driver data path to
-	 match 802.11 frame with configured packet patterns for specified
-	 stations.
+	 This options enables WiFi diagnostic along driver data path to
+	 match 802.11 frames with configured packet patterns for stations
+	 specified through debugfs. The abnormal TX/RX status of these
+	 frames will be logged for diagnostics purpose.
 
 	 If unsure, leave default of n.

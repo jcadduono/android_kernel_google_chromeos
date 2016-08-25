@@ -749,7 +749,7 @@ enum mac80211_rate_control_flags {
 };
 
 
-#ifdef CONFIG_MAC80211_PACKET_TRACE
+#ifdef CONFIG_MAC80211_WIFI_DIAG
 #define IEEE80211_TX_INFO_COMMON_EXTRA			8
 #define IEEE80211_TX_INFO_STATUS_DRIVER_DATA_SIZE	8
 #define IEEE80211_TX_INFO_DRIVER_DATA_SIZE		32
@@ -860,8 +860,8 @@ struct ieee80211_tx_info {
 
 	u16 ack_frame_id;
 
-#ifdef CONFIG_MAC80211_PACKET_TRACE
-	u32 pt_cookie;
+#ifdef CONFIG_MAC80211_WIFI_DIAG
+	u32 wifi_diag_cookie;
 #endif
 
 	union {
@@ -1141,8 +1141,8 @@ struct ieee80211_rx_status {
 	u8 chains;
 	s8 chain_signal[IEEE80211_MAX_CHAINS];
 	u8 ampdu_delimiter_crc;
-#ifdef CONFIG_MAC80211_PACKET_TRACE
-	u32 pt_cookie;
+#ifdef CONFIG_MAC80211_WIFI_DIAG
+	u32 wifi_diag_cookie;
 #endif
 };
 
