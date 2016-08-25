@@ -1552,17 +1552,9 @@ ieee80211_rx_h_decrypt(struct ieee80211_rx_data *rx)
 		    mmie_keyidx >= NUM_DEFAULT_KEYS + NUM_DEFAULT_MGMT_KEYS)
 			return RX_DROP_MONITOR; /* unexpected BIP keyidx */
 		if (rx->sta) {
-#ifdef WAR30087845
-			/* b:30087845 - allow receiver side to accept both
-			 * encrypted and unencrypted frames to allow
-			 * compatibility for limited time so we can safely
-			 * upgrade units. Intended to be reverted once upgrade
-			 * fully deployed.
-			 */
 			if (ieee80211_is_group_privacy_action(skb) &&
 			    test_sta_flag(rx->sta, WLAN_STA_MFP))
 				return RX_DROP_MONITOR;
-#endif
 
 			rx->key = rcu_dereference(rx->sta->gtk[mmie_keyidx]);
 		}
