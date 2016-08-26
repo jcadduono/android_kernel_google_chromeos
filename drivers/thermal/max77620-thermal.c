@@ -67,7 +67,8 @@ static irqreturn_t max77620_thermal_irq(int irq, void *data)
 {
 	struct max77620_therm_zone *ptherm_zone = data;
 
-	thermal_zone_device_update(ptherm_zone->tz_device);
+	thermal_zone_device_update(ptherm_zone->tz_device,
+				THERMAL_EVENT_UNSPECIFIED);
 	return IRQ_HANDLED;
 }
 

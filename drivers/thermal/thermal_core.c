@@ -359,7 +359,8 @@ static void bind_cdev(struct thermal_cooling_device *cdev)
 			if (ret)
 				print_bind_err_msg(pos, cdev, ret);
 			else
-				thermal_zone_device_update(pos);
+				thermal_zone_device_update(pos,
+					THERMAL_EVENT_UNSPECIFIED);
 			continue;
 		}
 
@@ -377,7 +378,7 @@ static void bind_cdev(struct thermal_cooling_device *cdev)
 			       tzp->tbp[i].binding_limits,
 			       tzp->tbp[i].weight);
 		}
-		thermal_zone_device_update(pos);
+		thermal_zone_device_update(pos, THERMAL_EVENT_UNSPECIFIED);
 	}
 
 	mutex_unlock(&thermal_list_lock);
@@ -576,7 +577,8 @@ static void update_temperature(struct thermal_zone_device *tz)
 				tz->last_temperature, tz->temperature);
 }
 
-void thermal_zone_device_update(struct thermal_zone_device *tz)
+void thermal_zone_device_update(struct thermal_zone_device *tz,
+				enum thermal_notify_event event)
 {
 	int count;
 
@@ -584,6 +586,8 @@ void thermal_zone_device_update(struct thermal_zone_device *tz)
 		return;
 
 	update_temperature(tz);
+
+	tz->notify_event = event;
 
 	for (count = 0; count < tz->trips; count++)
 		handle_thermal_trip(tz, count);
@@ -595,7 +599,7 @@ static void thermal_zone_device_check(struct work_struct *work)
 	struct thermal_zone_device *tz = container_of(work, struct
 						      thermal_zone_device,
 						      poll_queue.work);
-	thermal_zone_device_update(tz);
+	thermal_zone_device_update(tz, THERMAL_EVENT_UNSPECIFIED);
 }
 
 /* sys I/F for thermal zone */
@@ -834,7 +838,7 @@ passive_store(struct device *dev, struct device_attribute *attr,
 
 	tz->forced_passive = state;
 
-	thermal_zone_device_update(tz);
+	thermal_zone_device_update(tz, THERMAL_EVENT_UNSPECIFIED);
 
 	return count;
 }
@@ -925,7 +929,7 @@ emul_temp_store(struct device *dev, struct device_attribute *attr,
 	}
 
 	if (!ret)
-		thermal_zone_device_update(tz);
+		thermal_zone_device_update(tz, THERMAL_EVENT_UNSPECIFIED);
 
 	return ret ? ret : count;
 }
@@ -1940,7 +1944,7 @@ struct thermal_zone_device *thermal_zone_device_register(const char *type,
 
 	INIT_DELAYED_WORK(&(tz->poll_queue), thermal_zone_device_check);
 
-	thermal_zone_device_update(tz);
+	thermal_zone_device_update(tz, THERMAL_EVENT_UNSPECIFIED);
 
 	return tz;
 

@@ -176,7 +176,7 @@ static void therm_est_work_func(struct work_struct *work)
 	if (est->thz &&
 	    ((est->cur_temp < est->low_limit) ||
 	    (est->cur_temp >= est->high_limit))) {
-		thermal_zone_device_update(est->thz);
+		thermal_zone_device_update(est->thz, THERMAL_EVENT_UNSPECIFIED);
 		therm_est_update_limits(est);
 	}
 

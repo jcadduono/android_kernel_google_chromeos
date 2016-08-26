@@ -537,7 +537,8 @@ static irqreturn_t max8973_thermal_irq(int irq, void *data)
 
 	if (val & MAX77621_CHIPID_TJINT_I) {
 		dev_dbg(mchip->dev, "Junction Temp warning occurred\n");
-		thermal_zone_device_update(mchip->tz_device);
+		thermal_zone_device_update(mchip->tz_device,
+				   THERMAL_EVENT_UNSPECIFIED);
 		return IRQ_HANDLED;
 	} else {
 		return IRQ_NONE;

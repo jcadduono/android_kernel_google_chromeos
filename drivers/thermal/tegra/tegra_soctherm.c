@@ -708,15 +708,18 @@ static irqreturn_t soctherm_thermal_isr_thread(int irq, void *dev_id)
 		st &= ~ex;
 		if (cp) {
 			tz = ts->therm_tzs[TEGRA124_SOCTHERM_SENSOR_CPU];
-			thermal_zone_device_update(tz);
+			thermal_zone_device_update(tz,
+					THERMAL_EVENT_UNSPECIFIED);
 		}
 		if (gp) {
 			tz = ts->therm_tzs[TEGRA124_SOCTHERM_SENSOR_GPU];
-			thermal_zone_device_update(tz);
+			thermal_zone_device_update(tz,
+					THERMAL_EVENT_UNSPECIFIED);
 		}
 		if (pl) {
 			tz = ts->therm_tzs[TEGRA124_SOCTHERM_SENSOR_PLLX];
-			thermal_zone_device_update(tz);
+			thermal_zone_device_update(tz,
+					THERMAL_EVENT_UNSPECIFIED);
 		}
 	}
 
@@ -2898,7 +2901,8 @@ int soctherm_resume(struct device *dev)
 						zone->cur_high_trip);
 
 		if (tegra->therm_tzs[i])
-			thermal_zone_device_update(tegra->therm_tzs[i]);
+			thermal_zone_device_update(tegra->therm_tzs[i],
+						THERMAL_EVENT_UNSPECIFIED);
 	}
 
 	enable_irq(tegra->thermal_irq);
