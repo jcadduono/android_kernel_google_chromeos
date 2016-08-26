@@ -232,13 +232,9 @@ static int cpufreq_thermal_notifier(struct notifier_block *nb,
 
 			max_freq = cpufreq_dev->cpufreq_val;
 
-			if (policy->max != max_freq) {
+			if (policy->max != max_freq)
 				cpufreq_verify_within_limits(policy, 0,
 							     max_freq);
-				dev_info(cpufreq_dev->cpu_dev,
-					 "thermal throttled: max_freq=%lu\n",
-					 max_freq);
-			}
 		}
 		mutex_unlock(&cooling_list_lock);
 		break;
@@ -538,6 +534,10 @@ static int cpufreq_set_cur_state(struct thermal_cooling_device *cdev,
 	cpufreq_device->cpufreq_val = clip_freq;
 
 	cpufreq_update_policy(cpu);
+
+	dev_info(cpufreq_device->cpu_dev,
+		 "Cooling state set to %lu. New max freq = %u\n",
+		 state, clip_freq);
 
 	return 0;
 }
