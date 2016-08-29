@@ -2737,6 +2737,8 @@ static void ath10k_htt_txrx_compl_task(unsigned long ptr)
 		dev_kfree_skb_any(skb);
 	}
 
+	ath10k_mac_tx_push_pending(ar);
+
 	while ((skb = __skb_dequeue(&tx_ind_q))) {
 		ath10k_htt_rx_tx_fetch_ind(ar, skb);
 		dev_kfree_skb_any(skb);
