@@ -2371,7 +2371,7 @@ static void ath10k_fetch_10_4_tx_stats(struct ath10k *ar, u8 *data)
 	u16 log_type = __le16_to_cpu(hdr->log_type);
 	u32 peer_id = 0, i;
 
-	if (len < ATH10K_10_4_TX_STATS_OFFSET + sizeof(*tx_stats))
+	if (len != (ATH10K_10_4_TX_STATS_OFFSET + sizeof(*tx_stats)))
 		return;
 
 	if (log_type == ATH_PKTLOG_TYPE_TX_STAT) {
