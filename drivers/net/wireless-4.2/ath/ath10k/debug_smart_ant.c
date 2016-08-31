@@ -27,7 +27,7 @@ static ssize_t ath10k_write_sa_enable_ops(struct file *file,
 	struct ath10k *ar = file->private_data;
 	int ret;
 	u8 enable;
-	u32 default_antenna_config;
+	u32 default_antenna_config, param;
 
 	if (!ath10k_smart_ant_enabled(ar))
 		return -ENOTSUPP;
@@ -52,13 +52,26 @@ static ssize_t ath10k_write_sa_enable_ops(struct file *file,
 		if (ret)
 			goto exit;
 
-		ret = ath10k_wmi_pdev_pktlog_enable(
+		if (ar->hw_rev == ATH10K_HW_QCA4019) {
+			/* enable enhanced stats through which we get tx
+			 * feedbacks
+			 */
+			param = ar->wmi.pdev_param->en_stats;
+			ret = ath10k_wmi_pdev_set_param(ar, param, 1);
+
+			if (ret)
+				ath10k_err(ar, "Enabling EN_STATS failed\n");
+		} else {
+			/* Enable tx feedback through packetlog */
+			ret = ath10k_wmi_pdev_pktlog_enable(
 				ar,
-				ar->debug.pktlog_filter |
-				ATH10K_PKTLOG_SMART_ANT);
+				(ar->debug.pktlog_filter |
+				 ATH10K_PKTLOG_SMART_ANT));
+			ar->debug.pktlog_filter |= ATH10K_PKTLOG_SMART_ANT;
+		}
+
 		if (ret)
 			goto exit;
-		ar->debug.pktlog_filter |= ATH10K_PKTLOG_SMART_ANT;
 	} else {
 		ret = ath10k_wmi_pdev_sa_disabled_ant_sel(
 				ar,
@@ -68,13 +81,21 @@ static ssize_t ath10k_write_sa_enable_ops(struct file *file,
 		if (ret)
 			goto exit;
 
-		ar->debug.pktlog_filter &= ~ATH10K_PKTLOG_SMART_ANT;
-		if (ar->debug.pktlog_filter) {
-			ath10k_wmi_pdev_pktlog_enable(
-				ar,
-				ar->debug.pktlog_filter);
-		} else {
-			ath10k_wmi_pdev_pktlog_disable(ar);
+		if (ar->hw_rev == ATH10K_HW_QCA4019) {
+			param = ar->wmi.pdev_param->en_stats;
+			ret = ath10k_wmi_pdev_set_param(ar, param, 0);
+
+			if (ret)
+				ath10k_err(ar, "Disabling EN_STATS failed\n");
+		} else{
+			ar->debug.pktlog_filter &= ~ATH10K_PKTLOG_SMART_ANT;
+			if (ar->debug.pktlog_filter) {
+				ath10k_wmi_pdev_pktlog_enable(
+					ar,
+					ar->debug.pktlog_filter);
+			} else {
+				ath10k_wmi_pdev_pktlog_disable(ar);
+			}
 		}
 	}
 	ar->smart_ant_info.enabled = enable;
