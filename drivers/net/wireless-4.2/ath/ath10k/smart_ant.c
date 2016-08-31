@@ -1785,8 +1785,11 @@ void ath10k_smart_ant_10_4_proc_tx_feedback(struct ath10k *ar,
 
 	memset(&feed_back, 0, sizeof(feed_back));
 
-	ath10k_dbg(ar, ATH10K_DBG_SMART_ANT,
-		   "Tx feedback from sta: %pM\n", peer_mac);
+	if (ar->smart_ant_info.debug_level >=
+	    ATH10K_SMART_ANT_DBG_LVL_TRAIN_STATS) {
+		ath10k_dbg(ar, ATH10K_DBG_SMART_ANT,
+			   "Tx feedback from sta: %pM\n", peer_mac);
+	}
 
 	feed_back.npkts = __le32_to_cpu(ppdu_stats->mpdus_queued);
 	feed_back.nbad = __le32_to_cpu(ppdu_stats->mpdus_failed);
