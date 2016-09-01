@@ -49,6 +49,7 @@ struct msm_function {
  * @oe_bit:               Offset in @ctl_reg for controlling output enable.
  * @in_bit:               Offset in @io_reg for the input bit value.
  * @out_bit:              Offset in @io_reg for the output bit value.
+ * @od_bit:               Offset in @io_reg for controlling output drain.
  * @intr_enable_bit:      Offset in @intr_cfg_reg for enabling the interrupt for this group.
  * @intr_status_bit:      Offset in @intr_status_reg for reading and acking the interrupt
  *                        status.
@@ -84,6 +85,7 @@ struct msm_pingroup {
 	unsigned oe_bit:5;
 	unsigned in_bit:5;
 	unsigned out_bit:5;
+	unsigned od_bit:5;
 
 	unsigned intr_enable_bit:5;
 	unsigned intr_status_bit:5;
