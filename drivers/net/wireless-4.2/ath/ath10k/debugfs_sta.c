@@ -54,8 +54,6 @@ static void ath10k_fill_tx_bitrate(struct ieee80211_hw *hw,
 
 	memset(&info, 0, sizeof(info));
 	info.status.rates[0].count = retries;
-	if (success && !failed)
-		info.flags = IEEE80211_TX_STAT_ACK;
 
 	switch (txrate->flags) {
 	case WMI_RATE_PREAMBLE_OFDM:
@@ -116,7 +114,11 @@ static void ath10k_fill_tx_bitrate(struct ieee80211_hw *hw,
 	default:
 		break;
 	}
-	ieee80211_tx_status_noskb(hw, sta, &info);
+
+	if (success) {
+		info.flags = IEEE80211_TX_STAT_ACK;
+		ieee80211_tx_status_noskb(hw, sta, &info);
+	}
 }
 
 void ath10k_accumulate_per_peer_tx_stats(struct ath10k *ar,
