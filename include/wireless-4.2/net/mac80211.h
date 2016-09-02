@@ -1914,6 +1914,12 @@ struct ieee80211_txq {
  *	in one command, mac80211 doesn't have to run separate scans per band.
  *
  * @NUM_IEEE80211_HW_FLAGS: number of hardware flags, used for sizing arrays
+ *
+ * @IEEE80211_HW_REPORTS_LOW_ACK: The driver (or firmware) reports low ack event
+ *     based on its own algorithm. For such devices, mac80211 does not report
+ *     low ack event based on lost packets.
+ *
+ * @NUM_IEEE80211_HW_FLAGS: number of hardware flags, used for sizing arrays
  */
 enum ieee80211_hw_flags {
 	IEEE80211_HW_HAS_RATE_CONTROL,
@@ -1945,6 +1951,7 @@ enum ieee80211_hw_flags {
 	IEEE80211_HW_CHANCTX_STA_CSA,
 	IEEE80211_HW_SUPPORTS_CLONED_SKBS,
 	IEEE80211_HW_SINGLE_SCAN_ON_ALL_BANDS,
+	IEEE80211_HW_REPORTS_LOW_ACK,
 
 	/* keep last, obviously */
 	NUM_IEEE80211_HW_FLAGS
