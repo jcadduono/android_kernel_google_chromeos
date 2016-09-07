@@ -150,7 +150,7 @@
 				mux {
 					pins = "gpio20", "gpio21";
 					function = "blsp_i2c0";
-					bias-disable;
+					drive-open-drain;
 				};
 			};
 
@@ -158,7 +158,7 @@
 				mux {
 					pins = "gpio34", "gpio35";
 					function = "blsp_i2c1";
-					bias-disable;
+					drive-open-drain;
 				};
 			};
 
