@@ -23,9 +23,16 @@ Optional properties:
  - qup-clock-frequency: Should specify the desired i2c qup clock frequency in
                     Hz. If omitted, then the frequency configured by bootloader
 		    will be used.
-
  - noise-reject-scl: Should specify the desired scl noise reject value (max value 3)
  - noise-reject-sda: Should specify the desired sda noise reject value (max value 3)
+ - duty-cycle: Specify clock dividers for i2c bus duty-cycle.
+		Bits 16:8 should have the high timer divider value (min value
+		is 7). Bits 7:0 should have the Fast/Standard (FS) divider
+		value (min value is 7). Computing the correct divider values
+		for a specific duty cycle requires using the clock-frequency
+		property above. In other words, do not change clock-frequency
+		without recomputing duty-cycle.
+
 Child nodes should conform to i2c bus binding.
 
 Example:
@@ -45,4 +52,5 @@ i2c@f9924000 {
 
 	noise-reject-scl = <0x1>;
 	noise-reject-sda = <0x1>;
+	duty-cycle = <0x5edb>;
 };

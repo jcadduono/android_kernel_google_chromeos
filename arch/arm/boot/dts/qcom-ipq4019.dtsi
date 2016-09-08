@@ -223,6 +223,7 @@
 			clock-names = "iface", "core";
 			clock-frequency  = <100000>;
 			qup-clock-frequency  = <19050000>;
+			duty-cycle = <0x5edb>;
 			dmas = <&blsp_dma 11>, <&blsp_dma 10>;
 			dma-names = "rx", "tx";
 			noise-reject-scl = <0x1>;
