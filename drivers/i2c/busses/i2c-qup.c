@@ -1390,8 +1390,11 @@ static int qup_i2c_probe(struct platform_device *pdev)
 	unsigned long one_bit_t;
 	struct resource *res;
 	u32 io_mode, hw_ver, size;
-	int ret, fs_div, hs_div;
-	int src_clk_freq;
+	int ret;
+	u32 fs_div;	/* bits 7:0, fast/standard divider OR low counter */
+	u32 hs_div;	/* bits 10:8, UNDOCUMENTED */
+	u32 ht_div;	/* bits 23:16, High Time Divider, min value 7 */
+	u32 duty_cycle;
 	u32 clk_freq = 100000;
 	u32 qup_clk_freq;
 	int blocks;
@@ -1556,11 +1559,24 @@ nodma:
 	size = QUP_INPUT_FIFO_SIZE(io_mode);
 	qup->in_fifo_sz = qup->in_blk_sz * (2 << size);
 
-	src_clk_freq = clk_get_rate(qup->clk);
-	fs_div = ((src_clk_freq / clk_freq) / 2) - 3;
-	hs_div = 3;
-	qup->clk_ctl = (hs_div << 8) | (fs_div & 0xff);
+	if (!of_property_read_u32(node, "duty-cycle", &duty_cycle)) {
+		fs_div = duty_cycle & 0xff;
+		hs_div = 0;
+		ht_div = (duty_cycle >> 8) & 0xff;
+	} else {
+		int src_clk_freq = clk_get_rate(qup->clk);
 
+		fs_div = (((src_clk_freq / clk_freq) / 2) - 3) & 0xff;
+		hs_div = 3;	/* min value is 3 */
+		ht_div = 0;	/* 0 means "legacy mode"; 50/50 duty cycle */
+	}
+	dev_dbg(qup->dev, "fs_div = 0x%x hs_div = 0x%x\n", fs_div, hs_div);
+
+	/* 80-NG347-3BX, page 24: bits 7:0  min value is 7 */
+	if (fs_div < 7)
+		fs_div = 7;
+
+	qup->clk_ctl = ht_div << 16 | hs_div << 8 | fs_div;
 
 	if (!of_property_read_u32(node, "noise-reject-scl", &noise_rej_scl)) {
 		if (noise_rej_scl > 3) {
