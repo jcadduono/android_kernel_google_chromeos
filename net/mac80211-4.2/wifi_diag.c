@@ -53,12 +53,10 @@ struct wifi_diag_cookie {
 #define MAX_STATIONS		32
 
 /* function prototype to match frame types */
-typedef bool (*ftype_handler)(struct wifi_diag *cfg,
-			      struct sk_buff *skb,
-			      bool tx);
+typedef bool (*ftype_handler)(struct wifi_diag *cfg, struct sk_buff *skb);
 
 /* function prototype to decode more frame information */
-typedef int (*ftype_sprintf)(struct sk_buff *skb, char *s, size_t max_len);
+typedef int (*ftype_sprintf)(struct sk_buff *skb, char *buf, size_t size);
 
 #define MATCH_TYPE_DESCR_SZ	16
 
@@ -153,7 +151,7 @@ struct wifi_diag {
 #define WD_LOG_INTERNAL(fmt, ...) pr_debug(fmt, ##__VA_ARGS__)
 #define WD_LOG_TXRX(fmt, ...) pr_info(fmt, ##__VA_ARGS__)
 
-#define LOG_COOKIE_STR_SZ	30
+#define LOG_COOKIE_STR_SZ	48
 #define LOG_PREFIX_STR_SZ	128
 
 #define DEBUGFS_MAX_INPUT_SZ	128
@@ -457,13 +455,10 @@ static inline bool check_all_etypes(struct wifi_diag *cfg,
  *
  * @cfg: wifi diag configuration
  * @skb: ieee80211 frame
- * @tx: true for TX, false for RX
  *
  * Return: true on match, false otherwise
  */
-static inline bool check_arp(struct wifi_diag *cfg,
-			     struct sk_buff *skb,
-			     bool tx)
+static bool check_arp(struct wifi_diag *cfg, struct sk_buff *skb)
 {
 	return check_etype(skb, ETH_P_ARP); /* 0x0806 */
 }
@@ -473,15 +468,119 @@ static inline bool check_arp(struct wifi_diag *cfg,
  *
  * @cfg: wifi diag configuration
  * @skb: ieee80211 frame
- * @tx: true for TX, false for RX
  *
  * Return: true on match, false otherwise
  */
-static inline bool check_eapol(struct wifi_diag *cfg,
-			       struct sk_buff *skb,
-			       bool tx)
+static bool check_eapol(struct wifi_diag *cfg, struct sk_buff *skb)
 {
 	return check_etype(skb, ETH_P_PAE); /* 0x888E */
+}
+
+struct dns_pkt {
+	struct iphdr iph;	/* IP header */
+	struct udphdr udph;	/* UDP header */
+	__be16 msg_id;
+#if defined(__LITTLE_ENDIAN_BITFIELD)
+	unsigned int RD:1;
+	unsigned int TC:1;
+	unsigned int AA:1;
+	unsigned int opcode:4;
+	unsigned int QR:1;
+
+	unsigned int rcode:4;
+	unsigned int res:3;
+	unsigned int RA:1;
+#elif defined(__BIG_ENDIAN_BITFIELD)
+	unsigned int QR:1;
+	unsigned int opcode:4;
+	unsigned int AA:1;
+	unsigned int TC:1;
+	unsigned int RD:1;
+
+	unsigned int RA:1;
+	unsigned int res:3;
+	unsigned int rcode:4;
+#else
+# error	"Please fix <bits/endian.h>"
+#endif
+	__be16 QD_count;
+	__be16 AN_count;
+	__be16 NS_count;
+	__be16 AR_count;
+	__u8 queries[0];
+};
+
+#define DNS_SERVICE_PORT	53
+
+/**
+ * check_dns - DNS frame handler
+ *
+ * @cfg: wifi diag configuration
+ * @skb: ieee80211 frame
+ *
+ * Return: true on match, false otherwise
+ */
+static bool check_dns(struct wifi_diag *cfg, struct sk_buff *skb)
+{
+	const struct ieee80211_hdr *hdr = (void *)skb->data;
+	__le16 fc = hdr->frame_control;
+	int hdr_len;
+	int etype;
+	struct dns_pkt *b;
+	struct iphdr *h;
+
+	if (!ieee80211_is_data(fc))
+		return 0;
+
+	hdr_len = ieee80211_hdr_len(skb);
+
+	if (!hdr_len || skb->len < hdr_len + 8)
+		return false;
+
+	b = (struct dns_pkt *)&skb->data[hdr_len + 8];
+	h = &b->iph;
+
+	if (skb->len < hdr_len + 8 + sizeof(*b))
+		return false;
+
+	etype = (skb->data[hdr_len + 6] << 8) + skb->data[hdr_len + 7];
+
+	if (etype != ETH_P_IP ||
+	    h->version != 4 ||
+	    h->ihl != 5 ||
+	    h->protocol != IPPROTO_UDP ||
+	    ip_is_fragment(h) ||
+	    skb->len < ntohs(h->tot_len) + hdr_len + 8 ||
+	    ip_fast_csum((char *)h, h->ihl) ||
+	    ntohs(h->tot_len) < ntohs(b->udph.len) + sizeof(struct iphdr))
+		return false;
+
+	if (b->udph.source != htons(DNS_SERVICE_PORT) &&
+	    b->udph.dest != htons(DNS_SERVICE_PORT))
+		return false;
+
+	return true;
+}
+
+/**
+ * get_dns_info - Get additional DNS frame information
+ *
+ * @skb: ieee80211 frame
+ * @buf: char buffer allocated by caller
+ * @size: size of buffer
+ *
+ * Return: number of characters written to buffer
+ */
+static int get_dns_info(struct sk_buff *skb, char *buf, size_t size)
+{
+	int hdr_len;
+	struct dns_pkt *b;
+
+	hdr_len = ieee80211_hdr_len(skb);
+	b = (struct dns_pkt *)&skb->data[hdr_len + 8];
+	return scnprintf(buf, size, "dns %s 0x%04x",
+			 b->QR ? "Response" : "Query",
+			 be16_to_cpu(b->msg_id));
 }
 
 /* bootp_pktstructure and recv validation of BOOTP/DHCP frame is
@@ -515,13 +614,10 @@ struct bootp_pkt {		/* BOOTP packet format */
  *
  * @cfg: wifi diag configuration
  * @skb: ieee80211 frame
- * @tx: true for TX, false for RX
  *
  * Return: true on match, false otherwise
  */
-static inline bool check_dhcp(struct wifi_diag *cfg,
-			      struct sk_buff *skb,
-			      bool tx)
+static bool check_dhcp(struct wifi_diag *cfg, struct sk_buff *skb)
 {
 	const struct ieee80211_hdr *hdr = (void *)skb->data;
 	__le16 fc = hdr->frame_control;
@@ -535,7 +631,7 @@ static inline bool check_dhcp(struct wifi_diag *cfg,
 
 	hdr_len = ieee80211_hdr_len(skb);
 
-	if (!hdr_len)
+	if (!hdr_len || skb->len < hdr_len + 8)
 		return false;
 
 	b = (struct bootp_pkt *)&skb->data[hdr_len + 8];
@@ -553,11 +649,13 @@ static inline bool check_dhcp(struct wifi_diag *cfg,
 	    ip_is_fragment(h) ||
 	    skb->len < ntohs(h->tot_len) + hdr_len + 8 ||
 	    ip_fast_csum((char *)h, h->ihl) ||
-	    ntohs(h->tot_len) < ntohs(b->udph.len) + sizeof(struct iphdr) ||
-	    (tx && b->udph.source != htons(DHCP_SERVER_PORT) &&
-	     b->udph.dest != htons(DHCP_CLIENT_PORT)) ||
-	    (!tx && b->udph.source != htons(DHCP_CLIENT_PORT) &&
-	     b->udph.dest != htons(DHCP_SERVER_PORT)))
+	    ntohs(h->tot_len) < ntohs(b->udph.len) + sizeof(struct iphdr))
+		return false;
+
+	if (!(b->udph.source == htons(DHCP_SERVER_PORT) &&
+	      b->udph.dest == htons(DHCP_CLIENT_PORT)) &&
+	    !(b->udph.source == htons(DHCP_CLIENT_PORT) &&
+	      b->udph.dest == htons(DHCP_SERVER_PORT)))
 		return false;
 
 	return true;
@@ -574,7 +672,6 @@ static inline bool check_dhcp(struct wifi_diag *cfg,
  */
 static inline bool check_all_ftypes(struct wifi_diag *cfg,
 				    struct sk_buff *skb,
-				    bool tx,
 				    u8 *id)
 {
 	int i;
@@ -583,7 +680,7 @@ static inline bool check_all_ftypes(struct wifi_diag *cfg,
 	for (i = 0; i < MAX_FTYPES; i++) {
 		if (cfg->ftypes[i].handler &&
 		    cfg->ftypes[i].enable &&
-		    cfg->ftypes[i].handler(cfg, skb, tx)) {
+		    cfg->ftypes[i].handler(cfg, skb)) {
 			*id = cfg->ftypes[i].id;
 			spin_unlock(&cfg->config_lock);
 			return true;
@@ -1081,6 +1178,7 @@ int wifi_diag_init(struct ieee80211_local *local)
 	/* Install handlers for perdefined frame type checks */
 	install_ftype_handler(cfg, "arp", check_arp, NULL, false);
 	install_ftype_handler(cfg, "dhcp", check_dhcp, NULL, false);
+	install_ftype_handler(cfg, "dns", check_dns, get_dns_info, false);
 	install_ftype_handler(cfg, "eapol", check_eapol, NULL, false);
 
 	cfg->allowed_mgmt_stypes = 0x1C0F;
@@ -1132,7 +1230,7 @@ static inline bool setup_cookie(struct wifi_diag *cfg,
 		cookie->flags = F_IS_MGMT;
 	else if (check_all_etypes(cfg, skb, &id))
 		cookie->flags = F_IS_ETHERTYPE;
-	else if (check_all_ftypes(cfg, skb, tx, &id))
+	else if (check_all_ftypes(cfg, skb, &id))
 		cookie->flags = F_IS_FRAMETYPE;
 
 	if (!cookie->flags)
@@ -1146,16 +1244,16 @@ static inline bool setup_cookie(struct wifi_diag *cfg,
 
 static bool sprintf_cookie(struct ieee80211_local *local,
 			   struct wifi_diag_cookie *cookie,
-			   char *s, size_t max_len)
+			   char *buf, size_t size)
 {
 	struct wifi_diag *cfg = local->wifi_diag_config;
 	struct match_type *match;
 	int len = 0;
 
-	s[0] = '\0';
+	buf[0] = '\0';
 	if (cookie->flags & F_IS_MGMT) {
 		if (cfg->enabled_mgmt_stypes & BIT(cookie->id & 0x0F))
-			len += snprintf(s, max_len, "MGMT %s",
+			len += snprintf(buf, size, "MGMT %s",
 					mtype_str[cookie->id & 0x0F]);
 		else
 			return false;
@@ -1163,7 +1261,7 @@ static bool sprintf_cookie(struct ieee80211_local *local,
 		spin_lock_bh(&cfg->match_type_lock);
 		match = idr_find(&cfg->match_types, cookie->id);
 		if (match)
-			len += snprintf(s, max_len, "0x%04x", match->etype);
+			len += snprintf(buf, size, "0x%04x", match->etype);
 		spin_unlock_bh(&cfg->match_type_lock);
 		if (!match)
 			return false;
@@ -1171,7 +1269,7 @@ static bool sprintf_cookie(struct ieee80211_local *local,
 		spin_lock_bh(&cfg->match_type_lock);
 		match = idr_find(&cfg->match_types, cookie->id);
 		if (match)
-			len += snprintf(s, max_len, "%s", match->ftype->name);
+			len += snprintf(buf, size, "%s", match->ftype->name);
 		spin_unlock_bh(&cfg->match_type_lock);
 		if (!match)
 			return false;
@@ -1179,9 +1277,8 @@ static bool sprintf_cookie(struct ieee80211_local *local,
 		return false;
 	}
 
-	max_len -= len;
-	if (max_len >= 9)
-		snprintf(s + len, max_len, "(%u)", cookie->token);
+	if (size >= len + 9)
+		snprintf(buf + len, size - len, "(%u)", cookie->token);
 
 	return true;
 }
@@ -1189,31 +1286,30 @@ static bool sprintf_cookie(struct ieee80211_local *local,
 static bool sprintf_cookie_ext(struct ieee80211_local *local,
 			       struct sk_buff *skb,
 			       struct wifi_diag_cookie *cookie,
-			       char *s, size_t max_len)
+			       char *buf, size_t size)
 {
 	struct wifi_diag *cfg = local->wifi_diag_config;
 	struct match_type *match;
 	int len = 0;
 
 	if (!(cookie->flags & F_IS_FRAMETYPE))
-		return sprintf_cookie(local, cookie, s, max_len);
+		return sprintf_cookie(local, cookie, buf, size);
 
-	s[0] = '\0';
+	buf[0] = '\0';
 	spin_lock_bh(&cfg->match_type_lock);
 	match = idr_find(&cfg->match_types, cookie->id);
 	if (match) {
 		if (match->ftype->get_info)
-			len += match->ftype->get_info(skb, s, max_len);
+			len = match->ftype->get_info(skb, buf, size);
 		else
-			len += snprintf(s, max_len, "%s", match->ftype->name);
+			len = snprintf(buf, size, "%s", match->ftype->name);
 	}
 	spin_unlock_bh(&cfg->match_type_lock);
 	if (!match)
 		return false;
 
-	max_len -= len;
-	if (max_len >= 9)
-		snprintf(s + len, max_len, "(%u)", cookie->token);
+	if (size >= len + 9)
+		snprintf(buf + len, size - len, "(%u)", cookie->token);
 
 	return true;
 }
