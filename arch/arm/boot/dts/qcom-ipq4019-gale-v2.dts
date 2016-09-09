@@ -384,13 +384,6 @@
 					max-cur = [78];
 				};
 			};
-
-			ec {
-					compatible = "google,cros-ec-i2c";
-					reg = <0x1e>;
-					interrupt-parent = <&tlmm>;
-					interrupts = <39 IRQ_TYPE_LEVEL_LOW>;
-			};
 		};
 
 		rng@0x00022000 {
