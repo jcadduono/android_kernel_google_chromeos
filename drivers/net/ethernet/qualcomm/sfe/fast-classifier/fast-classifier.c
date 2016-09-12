@@ -200,7 +200,7 @@ static inline void fast_classifier_incr_exceptions(fast_classifier_exception_t e
  *
  * Returns 1 if the packet is forwarded or 0 if it isn't.
  */
-int fast_classifier_recv(struct sk_buff *skb)
+static int fast_classifier_recv(struct sk_buff *skb)
 {
 	struct net_device *dev;
 	struct net_device *master_dev = NULL;

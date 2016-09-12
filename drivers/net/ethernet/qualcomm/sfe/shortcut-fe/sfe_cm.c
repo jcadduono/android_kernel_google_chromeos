@@ -121,7 +121,7 @@ static inline void sfe_cm_incr_exceptions(sfe_cm_exception_t except)
  *
  * Returns 1 if the packet is forwarded or 0 if it isn't.
  */
-int sfe_cm_recv(struct sk_buff *skb)
+static int sfe_cm_recv(struct sk_buff *skb)
 {
 	struct net_device *dev;
 
@@ -857,7 +857,7 @@ static void sfe_cm_sync_rule(struct sfe_connection_sync *sis)
 /*
  * sfe_cm_device_event()
  */
-int sfe_cm_device_event(struct notifier_block *this, unsigned long event, void *ptr)
+static int sfe_cm_device_event(struct notifier_block *this, unsigned long event, void *ptr)
 {
 	struct net_device *dev = SFE_DEV_EVENT_PTR(ptr);
 
