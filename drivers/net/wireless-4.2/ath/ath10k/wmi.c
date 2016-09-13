@@ -5568,6 +5568,9 @@ static void ath10k_wmi_10_4_op_rx(struct ath10k *ar, struct sk_buff *skb)
 		ath10k_wmi_event_ratecode_list(ar, skb);
 #endif
 		break;
+	case WMI_10_4_PDEV_TPC_CONFIG_EVENTID:
+		ath10k_wmi_event_pdev_tpc_config(ar, skb);
+		break;
 	default:
 		ath10k_warn(ar, "Unknown eventid: %d\n", id);
 		break;
@@ -8569,6 +8572,7 @@ static const struct wmi_ops wmi_10_4_ops = {
 	.gen_addba_send = ath10k_wmi_op_gen_addba_send,
 	.gen_addba_set_resp = ath10k_wmi_op_gen_addba_set_resp,
 	.gen_delba_send = ath10k_wmi_op_gen_delba_send,
+	.gen_pdev_get_tpc_config = ath10k_wmi_10_2_4_op_gen_pdev_get_tpc_config,
 	.fw_stats_fill = ath10k_wmi_10_4_op_fw_stats_fill,
 	.ext_resource_config = ath10k_wmi_10_4_ext_resource_config,
 
