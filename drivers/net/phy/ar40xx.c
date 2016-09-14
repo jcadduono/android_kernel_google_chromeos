@@ -180,38 +180,43 @@ ar40xx_phy_mmd_read(struct ar40xx_priv *priv, u32 phy_id,
 
 /* Start of swconfig support */
 
-static int
+static void
 ar40xx_phy_poll_reset(struct ar40xx_priv *priv)
 {
-	struct mii_bus *bus;
-	u32 reset_done = 0;
-	u32 retries = 500, i;
+	u32 i, in_reset, retries = 500;
+	struct mii_bus *bus = priv->mii_bus;
 
-	bus = priv->mii_bus;
+	/* Assume RESET was recently issued to some or all of the phys */
+	in_reset = GENMASK(AR40XX_NUM_PHYS - 1, 0);
 
-	while (reset_done != GENMASK(AR40XX_NUM_PHYS - 1, 0)) {
-		if (retries-- == 0)
-			return -ETIMEDOUT;
-
-		msleep(1);
+	while (retries--) {
+		/* 1ms should be plenty of time.
+		 * 802.3 spec allows for a max wait time of 500ms
+		 */
+		usleep_range(1000, 2000);
 
 		for (i = 0; i < AR40XX_NUM_PHYS; i++) {
 			int val;
 
 			/* skip devices which have completed reset */
-			if (reset_done & BIT(i))
+			if (!(in_reset & BIT(i)))
 				continue;
 
 			val = mdiobus_read(bus, i, MII_BMCR);
 			if (val < 0)
-				return val;
+				continue;
 
+			/* mark when phy is no longer in reset state */
 			if (!(val & BMCR_RESET))
-				reset_done |= BIT(i);
+				in_reset &= ~BIT(i);
 		}
+
+		if (!in_reset)
+			return;
 	}
 
-	return 0;
+	dev_warn(&bus->dev, "Failed to reset all phys! (in_reset: 0x%x)\n",
+		 in_reset);
 }
 
 static void
@@ -891,8 +896,8 @@ ar40xx_ess_reset(struct ar40xx_priv *priv)
 	reset_control_assert(priv->ess_rst);
 	mdelay(10);
 	reset_control_deassert(priv->ess_rst);
-	/* To wait for the end of ess reset
-	  * it cost 5~10ms for all inner tables init done
+	/* Waiting for all inner tables init done.
+	  * It cost 5~10ms.
 	  */
 	mdelay(10);
 
