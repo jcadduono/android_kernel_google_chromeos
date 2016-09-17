@@ -917,11 +917,12 @@ static int qup_i2c_wait_for_complete(struct qup_i2c_dev *qup,
 	if (qup->bus_err || qup->qup_err) {
 		if (qup->bus_err & QUP_I2C_NACK_FLAG) {
 			dev_err(qup->dev, "NACK from %x\n", msg->addr);
+			ret = -EAGAIN;
 		} else {
 			dev_err(qup->dev, "Bus Error %08x Qup Error %08x\n",
 					qup->bus_err, qup->qup_err);
+			ret = -EIO;
 		}
-		ret = -EIO;
 	}
 
 	return ret;
@@ -1632,6 +1633,7 @@ nodma:
 	dev_dbg(qup->dev, "IN:block:%d, fifo:%d, OUT:block:%d, fifo:%d\n",
 		qup->in_blk_sz, qup->in_fifo_sz,
 		qup->out_blk_sz, qup->out_fifo_sz);
+	qup->adap.retries = 3;
 
 	i2c_set_adapdata(&qup->adap, qup);
 	qup->adap.dev.parent = qup->dev;
