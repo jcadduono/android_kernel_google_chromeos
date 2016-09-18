@@ -1752,8 +1752,7 @@ void ath10k_smart_ant_10_4_proc_tx_feedback(struct ath10k *ar,
 		return;
 
 	if (ppdu_stats->pkt_type != ATH10K_FTYPE_DATA ||
-	    ppdu_stats->is_mcast ||
-	    ppdu_stats->tx_status)
+	    ppdu_stats->is_mcast)
 		return;
 
 	max_chains = smart_ant_get_rf_chains(ar);
