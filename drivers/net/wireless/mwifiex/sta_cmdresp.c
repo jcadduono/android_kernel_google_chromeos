@@ -981,6 +981,28 @@ static int mwifiex_ret_sdio_rx_aggr_cfg(struct mwifiex_private *priv,
 	return 0;
 }
 
+static int mwifiex_ret_robust_coex(struct mwifiex_private *priv,
+				   struct host_cmd_ds_command *resp,
+				   bool *is_timeshare)
+{
+	struct host_cmd_ds_robust_coex *coex = &resp->params.coex;
+	struct mwifiex_ie_types_robust_coex *coex_tlv;
+	u16 action = le16_to_cpu(coex->action);
+	u32 mode;
+
+	coex_tlv = (struct mwifiex_ie_types_robust_coex
+		    *)((u8 *)coex + sizeof(struct host_cmd_ds_robust_coex));
+	if (action == HostCmd_ACT_GEN_GET) {
+		mode = le32_to_cpu(coex_tlv->mode);
+		if (mode == MWIFIEX_COEX_MODE_TIMESHARE)
+			*is_timeshare = true;
+		else
+			*is_timeshare = false;
+	}
+
+	return 0;
+}
+
 /*
  * This function handles the command responses.
  *
@@ -1168,6 +1190,9 @@ int mwifiex_process_sta_cmdresp(struct mwifiex_private *priv, u16 cmdresp_no,
 		break;
 	case HostCmd_CMD_HS_WAKEUP_REASON:
 		ret = mwifiex_ret_wakeup_reason(priv, resp, data_buf);
+		break;
+	case HostCmd_CMD_ROBUST_COEX:
+		ret = mwifiex_ret_robust_coex(priv, resp, data_buf);
 		break;
 	default:
 		mwifiex_dbg(adapter, ERROR,

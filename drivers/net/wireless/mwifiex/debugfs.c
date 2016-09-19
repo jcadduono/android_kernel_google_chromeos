@@ -927,6 +927,56 @@ mwifiex_hscfg_read(struct file *file, char __user *ubuf,
 }
 
 static ssize_t
+mwifiex_timeshare_coex_read(struct file *file, char __user *ubuf,
+                           size_t count, loff_t *ppos)
+{
+       struct mwifiex_private *priv = file->private_data;
+       char buf[3];
+       bool timeshare_coex;
+       int ret;
+       unsigned int len;
+
+       if (priv->adapter->fw_api_ver != MWIFIEX_FW_V15)
+		return -EOPNOTSUPP;
+
+	ret = mwifiex_send_cmd(priv, HostCmd_CMD_ROBUST_COEX,
+			       HostCmd_ACT_GEN_GET, 0, &timeshare_coex, true);
+	if (ret)
+		return ret;
+
+	len = sprintf(buf, "%d\n", timeshare_coex);
+	return simple_read_from_buffer(ubuf, count, ppos, buf, len);
+}
+
+static ssize_t
+mwifiex_timeshare_coex_write(struct file *file, const char __user *ubuf,
+			     size_t count, loff_t *ppos)
+{
+	bool timeshare_coex;
+	struct mwifiex_private *priv = file->private_data;
+	char kbuf[16];
+	int ret;
+
+	if (priv->adapter->fw_api_ver != MWIFIEX_FW_V15)
+		return -EOPNOTSUPP;
+
+	memset(kbuf, 0, sizeof(kbuf));
+
+	if (copy_from_user(&kbuf, ubuf, min_t(size_t, sizeof(kbuf) - 1, count)))
+		return -EFAULT;
+
+	if (strtobool(kbuf, &timeshare_coex))
+		return -EINVAL;
+
+	ret = mwifiex_send_cmd(priv, HostCmd_CMD_ROBUST_COEX,
+			       HostCmd_ACT_GEN_SET, 0, &timeshare_coex, true);
+	if (ret)
+		return ret;
+	else
+		return count;
+}
+
+static ssize_t
 mwifiex_reset_write(struct file *file,
 		    const char __user *ubuf, size_t count, loff_t *ppos)
 {
@@ -1010,6 +1060,7 @@ MWIFIEX_DFS_FILE_READ_OPS(sdio_regs);
 MWIFIEX_DFS_FILE_OPS(regrdwr);
 MWIFIEX_DFS_FILE_OPS(rdeeprom);
 MWIFIEX_DFS_FILE_OPS(memrw);
+MWIFIEX_DFS_FILE_OPS(timeshare_coex);
 MWIFIEX_DFS_FILE_OPS(debug_mask);
 MWIFIEX_DFS_FILE_OPS(hscfg);
 MWIFIEX_DFS_FILE_WRITE_OPS(reset);
@@ -1040,6 +1091,7 @@ mwifiex_dev_debugfs_init(struct mwifiex_private *priv)
 	MWIFIEX_DFS_ADD_FILE(debug_mask);
 	MWIFIEX_DFS_ADD_FILE(hscfg);
 	MWIFIEX_DFS_ADD_FILE(reset);
+	MWIFIEX_DFS_ADD_FILE(timeshare_coex);
 }
 
 /*

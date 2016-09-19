@@ -1516,6 +1516,33 @@ static int mwifiex_cmd_cfg_data(struct mwifiex_private *priv,
 	return 0;
 }
 
+static int mwifiex_cmd_robust_coex(struct mwifiex_private *priv,
+				   struct host_cmd_ds_command *cmd,
+				   u16 cmd_action, bool *is_timeshare)
+{
+	struct host_cmd_ds_robust_coex *coex = &cmd->params.coex;
+	struct mwifiex_ie_types_robust_coex *coex_tlv;
+
+	cmd->command = cpu_to_le16(HostCmd_CMD_ROBUST_COEX);
+	cmd->size = cpu_to_le16(sizeof(*coex) + sizeof(*coex_tlv) + S_DS_GEN);
+
+	coex->action = cpu_to_le16(cmd_action);
+	coex_tlv = (struct mwifiex_ie_types_robust_coex *)
+				((u8 *)coex + sizeof(*coex));
+	coex_tlv->header.type = cpu_to_le16(TLV_TYPE_ROBUST_COEX);
+	coex_tlv->header.len = cpu_to_le16(sizeof(coex_tlv->mode));
+
+	if (coex->action == HostCmd_ACT_GEN_GET)
+		return 0;
+
+	if (*is_timeshare)
+		coex_tlv->mode = cpu_to_le32(MWIFIEX_COEX_MODE_TIMESHARE);
+	else
+		coex_tlv->mode = cpu_to_le32(MWIFIEX_COEX_MODE_SPATIAL);
+
+	return 0;
+}
+
 static int
 mwifiex_cmd_coalesce_cfg(struct mwifiex_private *priv,
 			 struct host_cmd_ds_command *cmd,
@@ -1990,6 +2017,11 @@ int mwifiex_sta_prepare_cmd(struct mwifiex_private *priv, uint16_t cmd_no,
 		break;
 	case HostCmd_CMD_HS_WAKEUP_REASON:
 		ret = mwifiex_cmd_get_wakeup_reason(priv, cmd_ptr);
+		break;
+
+	case HostCmd_CMD_ROBUST_COEX:
+		ret = mwifiex_cmd_robust_coex(priv, cmd_ptr, cmd_action,
+					      data_buf);
 		break;
 
 	default:
