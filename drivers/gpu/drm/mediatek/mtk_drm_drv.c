@@ -397,14 +397,14 @@ static int mtk_drm_kms_init(struct drm_device *drm)
 	drm_kms_helper_poll_init(drm);
 	drm_mode_config_reset(drm);
 
-	ret = mtk_fbdev_init(drm);
-	if (ret)
-		goto err_kms_helper_poll_fini;
-
 	INIT_WORK(&private->unreference.work, mtk_unreference_work);
 	INIT_LIST_HEAD(&private->unreference.list);
 	spin_lock_init(&private->unreference.lock);
 	init_waitqueue_head(&private->commit.crtcs_event);
+
+	ret = mtk_fbdev_init(drm);
+	if (ret)
+		goto err_kms_helper_poll_fini;
 
 	return 0;
 
