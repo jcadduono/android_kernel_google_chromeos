@@ -608,6 +608,11 @@ static unsigned int sfe_cm_post_routing(struct sk_buff *skb, int is_v4)
 	sic.src_mtu = src_dev->mtu;
 	sic.dest_mtu = dest_dev->mtu;
 
+	if (skb->mark) {
+		DEBUG_TRACE("SKB MARK NON ZERO %x\n", skb->mark);
+	}
+	sic.mark = skb->mark;
+
 	if (likely(is_v4)) {
 		sfe_ipv4_create_rule(&sic);
 	} else {
