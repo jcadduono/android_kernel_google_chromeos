@@ -2057,6 +2057,7 @@ int mwifiex_sta_init_cmd(struct mwifiex_private *priv, u8 first_sta)
 	struct mwifiex_adapter *adapter = priv->adapter;
 	int ret;
 	u16 enable = true;
+	bool timeshare_coex = true;
 	struct mwifiex_ds_11n_amsdu_aggr_ctrl amsdu_aggr_ctrl;
 	struct mwifiex_ds_auto_ds auto_ds;
 	enum state_11d_t state_11d;
@@ -2211,6 +2212,10 @@ int mwifiex_sta_init_cmd(struct mwifiex_private *priv, u8 first_sta)
 			mwifiex_dbg(priv->adapter, ERROR,
 				    "11D: failed to enable 11D\n");
 	}
+
+	/* Send cmd to fw to enable timeshare coexistence */
+	ret = mwifiex_send_cmd(priv, HostCmd_CMD_ROBUST_COEX,
+			       HostCmd_ACT_GEN_SET, 0, &timeshare_coex, true);
 
 	/* set last_init_cmd before sending the command */
 	priv->adapter->last_init_cmd = HostCmd_CMD_11N_CFG;
