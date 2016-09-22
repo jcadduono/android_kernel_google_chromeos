@@ -1078,9 +1078,9 @@ int wifi_diag_init(struct ieee80211_local *local)
 	INIT_LIST_HEAD(&cfg->station_list);
 
 	/* Install handlers for perdefined frame type checks */
-	install_ftype_handler(cfg, "arp", check_arp, NULL, true);
-	install_ftype_handler(cfg, "dhcp", check_dhcp, NULL, true);
-	install_ftype_handler(cfg, "eapol", check_eapol, NULL, true);
+	install_ftype_handler(cfg, "arp", check_arp, NULL, false);
+	install_ftype_handler(cfg, "dhcp", check_dhcp, NULL, false);
+	install_ftype_handler(cfg, "eapol", check_eapol, NULL, false);
 
 	cfg->allowed_mgmt_stypes = 0x1C0F;
 	cfg->enabled_mgmt_stypes = 0;
