@@ -38,7 +38,16 @@ static void handle_init_ack_msg(struct vdec_vpu_ipi_init_ack *msg)
 void vpu_dec_ipi_handler(void *data, unsigned int len, void *priv)
 {
 	struct vdec_vpu_ipi_ack *msg = data;
-	struct vdec_vpu_inst *vpu = (struct vdec_vpu_inst *)msg->ap_inst_addr;
+	struct vdec_vpu_inst *vpu;
+
+	if (!msg->ap_inst_addr) {
+		/* Cannot use mtk_vcodec_err because it needs vdec_vpu_inst. */
+		pr_err("%s: invalid ap_inst_addr with id=%X status=%d len=%u\n",
+		       __func__, msg->msg_id, msg->status, len);
+		return;
+	}
+
+	vpu = (struct vdec_vpu_inst *)msg->ap_inst_addr;
 
 	mtk_vcodec_debug(vpu, "+ id=%X", msg->msg_id);
 
