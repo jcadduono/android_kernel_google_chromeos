@@ -1303,9 +1303,6 @@ static void ieee80211_drv_tx(struct ieee80211_local *local,
 
 	__skb_queue_tail(&txqi->queue, skb);
 	spin_unlock_bh(&txqi->queue.lock);
-#ifdef CONFIG_MAC80211_WIFI_DIAG
-	WIFI_DIAG_TX_SDATA_DBG(sdata, skb, TX_QUEUED, "%s", __func__);
-#endif
 
 	drv_wake_tx_queue(local, txqi);
 

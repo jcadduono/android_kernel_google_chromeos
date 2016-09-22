@@ -151,6 +151,7 @@ struct wifi_diag {
 };
 
 #define WD_LOG_INTERNAL(fmt, ...) pr_debug(fmt, ##__VA_ARGS__)
+#define WD_LOG_TXRX(fmt, ...) pr_info(fmt, ##__VA_ARGS__)
 
 #define LOG_COOKIE_STR_SZ	30
 #define LOG_PREFIX_STR_SZ	128
@@ -1245,8 +1246,8 @@ void wifi_diag_set_tx_info(struct ieee80211_local *local,
 	setup_cookie(cfg, skb, true, cookie);
 	if (sprintf_cookie_ext(local, skb, cookie,
 			       cookie_str, LOG_COOKIE_STR_SZ))
-		WD_LOG_INTERNAL("%s: STA %pM TX %s\n",
-				dev_name, addr, cookie_str);
+		WD_LOG_TXRX("%s: STA %pM TX %s\n",
+			    dev_name, addr, cookie_str);
 }
 EXPORT_SYMBOL(wifi_diag_set_tx_info);
 
@@ -1280,9 +1281,9 @@ void wifi_diag_set_rx_status(struct ieee80211_local *local,
 	if (sprintf_cookie_ext(local, skb, cookie,
 			       cookie_str, LOG_COOKIE_STR_SZ)) {
 		sn = (__le16_to_cpu(hdr->seq_ctrl) & IEEE80211_SCTL_SEQ) >> 4;
-		WD_LOG_INTERNAL("%s: STA %pM RX %s RSSI=%d SN=%d\n",
-				dev_name, addr, cookie_str,
-				status->signal, sn);
+		WD_LOG_TXRX("%s: STA %pM RX %s RSSI=%d SN=%d\n",
+			    dev_name, addr, cookie_str,
+			    status->signal, sn);
 	}
 }
 EXPORT_SYMBOL(wifi_diag_set_rx_status);
@@ -1351,7 +1352,7 @@ void wifi_diag_tx_log_dbg(struct ieee80211_local *local,
 
 	va_start(args, fmt);
 	vaf.va = &args;
-	pr_debug("%s %pV\n", prefix, &vaf);
+	WD_LOG_TXRX("%s %pV\n", prefix, &vaf);
 	va_end(args);
 }
 EXPORT_SYMBOL(wifi_diag_tx_log_dbg);
@@ -1400,7 +1401,7 @@ void wifi_diag_tx_status_log_dbg(struct ieee80211_local *local,
 
 	va_start(args, fmt);
 	vaf.va = &args;
-	pr_debug("%s %pV\n", prefix, &vaf);
+	WD_LOG_TXRX("%s %pV\n", prefix, &vaf);
 	va_end(args);
 }
 EXPORT_SYMBOL(wifi_diag_tx_status_log_dbg);
@@ -1447,7 +1448,7 @@ void wifi_diag_rx_status_log_dbg(struct ieee80211_local *local,
 
 	va_start(args, fmt);
 	vaf.va = &args;
-	pr_debug("%s %pV\n", prefix, &vaf);
+	WD_LOG_TXRX("%s %pV\n", prefix, &vaf);
 	va_end(args);
 }
 EXPORT_SYMBOL(wifi_diag_rx_status_log_dbg);
