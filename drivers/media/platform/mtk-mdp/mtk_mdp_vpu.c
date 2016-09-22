@@ -37,9 +37,16 @@ static void mtk_mdp_vpu_ipi_handler(void *data, unsigned int len, void *priv)
 {
 	unsigned int msg_id = *(unsigned int *)data;
 	struct mdp_ipi_comm_ack *msg = (struct mdp_ipi_comm_ack *)data;
-	struct mtk_mdp_vpu *vpu = (struct mtk_mdp_vpu *)msg->ap_inst;
+	struct mtk_mdp_vpu *vpu;
 	struct mtk_mdp_ctx *ctx;
 
+	if (!msg->ap_inst) {
+		pr_err("%s: invalid ap_inst with id=%X status=%d len=%u\n",
+		       __func__, msg->msg_id, msg->status, len);
+		return;
+	}
+
+	vpu = (struct mtk_mdp_vpu *)msg->ap_inst;
 	vpu->failure = msg->status;
 	if (!vpu->failure) {
 		switch (msg_id) {
