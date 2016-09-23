@@ -516,7 +516,6 @@ static const struct net_device_ops edma_axi_netdev_ops = {
 	.ndo_stop               = edma_close,
 	.ndo_start_xmit         = edma_xmit,
 	.ndo_set_mac_address    = edma_set_mac_addr,
-	.ndo_select_queue	= edma_select_xps_queue,
 #ifdef CONFIG_RFS_ACCEL
 	.ndo_rx_flow_steer      = edma_rx_flow_steer,
 	.ndo_register_rfs_filter = edma_register_rfs_filter,

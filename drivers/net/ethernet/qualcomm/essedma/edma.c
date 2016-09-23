@@ -1550,18 +1550,6 @@ int edma_register_rfs_filter(struct net_device *netdev,
 	return 0;
 }
 
-/* edma_select_xps_queue()
- *	Called by Linux TX stack to populate Linux TX queue
- */
-u16 edma_select_xps_queue(struct net_device *dev, struct sk_buff *skb,
-		         void *accel_priv, select_queue_fallback_t fallback)
-{
-	int cpu = get_cpu();
-	put_cpu();
-
-	return cpu;
-}
-
 /* edma_alloc_tx_rings()
  *	Allocate rx rings
  */
