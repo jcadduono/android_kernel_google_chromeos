@@ -475,7 +475,7 @@ static struct snd_soc_dai_link skylake_dais[] = {
 	},
 	[SKL_DPCM_AUDIO_REF_CP] = {
 		.name = "Skl Audio Reference cap",
-		.stream_name = "Wake on Voice",
+		.stream_name = "Refcap",
 		.cpu_dai_name = "Reference Pin",
 		.codec_name = "snd-soc-dummy",
 		.codec_dai_name = "snd-soc-dummy-dai",
