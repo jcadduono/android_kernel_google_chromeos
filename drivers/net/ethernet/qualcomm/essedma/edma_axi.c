@@ -48,6 +48,8 @@ static u32 edma_default_group2_vtag  __read_mostly = EDMA_DEFAULT_GROUP2_VLAN;
 static u32 edma_default_group3_vtag  __read_mostly = EDMA_DEFAULT_GROUP3_VLAN;
 static u32 edma_default_group4_vtag  __read_mostly = EDMA_DEFAULT_GROUP4_VLAN;
 static u32 edma_default_group5_vtag  __read_mostly = EDMA_DEFAULT_GROUP5_VLAN;
+static u32 edma_rss_idt_val = EDMA_RSS_IDT_VALUE;
+static u32 edma_rss_idt_idx;
 
 static int edma_weight_assigned_to_q __read_mostly;
 static int edma_queue_to_virtual_q __read_mostly;
@@ -355,6 +357,39 @@ static int edma_change_group5_vtag(struct ctl_table *table, int write,
 	return ret;
 }
 
+static int edma_set_rss_idt_value(struct ctl_table *table, int write,
+				  void __user *buffer, size_t *lenp,
+				  loff_t *ppos)
+{
+	int ret;
+
+	ret = proc_dointvec(table, write, buffer, lenp, ppos);
+	if (write && !ret)
+		edma_write_reg(EDMA_REG_RSS_IDT(edma_rss_idt_idx),
+			       edma_rss_idt_val);
+	return ret;
+}
+
+static int edma_set_rss_idt_idx(struct ctl_table *table, int write,
+				void __user *buffer, size_t *lenp,
+				loff_t *ppos)
+{
+	int ret;
+	u32 old_value = edma_rss_idt_idx;
+
+	ret = proc_dointvec(table, write, buffer, lenp, ppos);
+	if (!write || ret)
+		return ret;
+
+	if (edma_rss_idt_idx >= EDMA_NUM_IDT) {
+		pr_err("Invalid RSS indirection table index %d\n",
+		       edma_rss_idt_idx);
+		edma_rss_idt_idx = old_value;
+		return -EINVAL;
+	}
+	return ret;
+}
+
 static int edma_weight_assigned_to_queues(struct ctl_table *table, int write,
 					  void __user *buffer, size_t *lenp,
 					  loff_t *ppos)
@@ -497,6 +532,20 @@ static struct ctl_table edma_table[] = {
 		.maxlen         = sizeof(int),
 		.mode           = 0644,
 		.proc_handler   = edma_change_group5_vtag
+	},
+	{
+		.procname       = "edma_rss_idt_value",
+		.data           = &edma_rss_idt_val,
+		.maxlen         = sizeof(int),
+		.mode           = 0644,
+		.proc_handler   = edma_set_rss_idt_value
+	},
+	{
+		.procname       = "edma_rss_idt_idx",
+		.data           = &edma_rss_idt_idx,
+		.maxlen         = sizeof(int),
+		.mode           = 0644,
+		.proc_handler   = edma_set_rss_idt_idx
 	},
 	{}
 };
