@@ -25,6 +25,7 @@
 #include <linux/regulator/consumer.h>
 #include <linux/slab.h>
 #include <linux/uaccess.h>
+#include <linux/dmi.h>
 
 /* Version */
 #define MXT_VER_20		20
@@ -3407,12 +3408,40 @@ static void mxt_input_close(struct input_dev *dev)
 	mxt_stop(data);
 }
 
-static int mxt_input_inhibit(struct input_dev *input)
+static void mxt_enable_deepsleep(struct mxt_data *data)
 {
 	static const u8 T7_config_deepsleep[3] = { 0x00, 0x00, 0x00 };
-	struct mxt_data *data = input_get_drvdata(input);
 	struct device *dev = &data->client->dev;
 	int ret;
+
+	ret = mxt_set_regs(data, MXT_GEN_POWER_T7, 0, 0,
+			   T7_config_deepsleep, 3);
+	if (ret)
+		dev_err(dev, "Set T7 Power config failed, %d\n", ret);
+}
+
+static void mxt_shutdown(struct i2c_client *client)
+{
+	static const struct dmi_system_id dmi_need_deep_sleep[] = {
+		{
+			.ident = "ChromeOS Celes",
+			.matches = {
+				DMI_MATCH(DMI_SYS_VENDOR, "GOOGLE"),
+				DMI_MATCH(DMI_PRODUCT_NAME, "Celes"),
+			},
+		},
+		{ }
+	};
+	struct mxt_data *data = i2c_get_clientdata(client);
+
+	if (dmi_check_system(dmi_need_deep_sleep))
+		mxt_enable_deepsleep(data);
+}
+
+static int mxt_input_inhibit(struct input_dev *input)
+{
+	struct mxt_data *data = input_get_drvdata(input);
+	struct device *dev = &data->client->dev;
 
 	dev_dbg(dev, "inhibit\n");
 
@@ -3420,10 +3449,7 @@ static int mxt_input_inhibit(struct input_dev *input)
 
 	mxt_save_all_regs(data);
 
-	ret = mxt_set_regs(data, MXT_GEN_POWER_T7, 0, 0,
-			   T7_config_deepsleep, 3);
-	if (ret)
-		dev_err(dev, "Set T7 Power config failed, %d\n", ret);
+	mxt_enable_deepsleep(data);
 
 	mxt_stop(data);
 
@@ -4129,6 +4155,7 @@ static struct i2c_driver mxt_driver = {
 		.async_probe = true,
 	},
 	.probe		= mxt_probe,
+	.shutdown	= mxt_shutdown,
 	.id_table	= mxt_id,
 };
 
