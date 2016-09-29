@@ -57,6 +57,9 @@ MODULE_PARM_DESC(reset_mode, "0: auto, 1: warm only (default: 0)");
 #define ATH10K_PCI_TARGET_WAIT 3000
 #define ATH10K_PCI_NUM_WARM_RESET_ATTEMPTS 3
 
+#define QCA4019_SRAM_ADDR	0x000C0000
+#define QCA4019_SRAM_LEN	0x00040000 /* 256 kb */
+
 static const struct pci_device_id ath10k_pci_id_table[] = {
 	{ PCI_VDEVICE(ATHEROS, QCA988X_2_0_DEVICE_ID) }, /* PCI-E QCA988X V2 */
 	{ PCI_VDEVICE(ATHEROS, QCA6164_2_1_DEVICE_ID) }, /* PCI-E QCA6164 V2.1 */
@@ -841,6 +844,7 @@ void ath10k_pci_rx_replenish_retry(unsigned long ptr)
 static u32 ath10k_pci_targ_cpu_to_ce_addr(struct ath10k *ar, u32 addr)
 {
 	u32 val = 0;
+	u32 region = addr & 0xfffff;
 
 	switch (ar->hw_rev) {
 	case ATH10K_HW_QCA988X:
@@ -856,7 +860,14 @@ static u32 ath10k_pci_targ_cpu_to_ce_addr(struct ath10k *ar, u32 addr)
 		break;
 	}
 
-	val |= 0x100000 | (addr & 0xfffff);
+	if (ar->hw_rev == ATH10K_HW_QCA4019 &&
+	    (region >= QCA4019_SRAM_ADDR && region <=
+	     (QCA4019_SRAM_ADDR + QCA4019_SRAM_LEN))) {
+		val |= region;
+	} else {
+		val |= 0x100000 | region;
+	}
+
 	return val;
 }
 
