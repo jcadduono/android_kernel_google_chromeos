@@ -4964,11 +4964,9 @@ u32 cfg80211_calculate_bitrate(struct rate_info *rate);
  *
  * @dev: the netdev
  * @dst: the destination's address
- * @next_hop: the next hop's address
  * @gfp: allocation flags
  */
-void cfg80211_new_mpath(struct net_device *dev, u8 *dst, u8 *next_hop,
-				gfp_t gfp);
+void cfg80211_new_mpath(struct net_device *dev, u8 *dst, gfp_t gfp);
 
 /**
  * cfg80211_unregister_wdev - remove the given wdev

@@ -435,6 +435,7 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 	bool process = true;
 	bool mpath_table_updated = 0;
 	u8 hopcount;
+	u8 dest[ETH_ALEN];
 
 	rcu_read_lock();
 	sta = sta_info_get(sdata, mgmt->sa);
@@ -540,6 +541,7 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 						  mpath->dst,sta->addr, new_metric,action );
 				mpath->pstats.path_change_count++;
 				mpath_table_updated=1;
+				memcpy(dest, mpath->dst, ETH_ALEN);
 			} else if (MP_DIFF(new_metric,mpath->metric) > (mpath->metric*LOG_PERCENT_DIFF)/100)  {
 				mpath_dbg(sdata,
 						  "MESH MPLMU DIRECT dst %pM next hop %pM metric from %d to %d ft 0x%x\n",
@@ -595,6 +597,7 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 						  mpath->dst,sta->addr,last_hop_metric,action );
 				mpath->pstats.path_change_count++;
 				mpath_table_updated=1;
+				memcpy(dest, mpath->dst, ETH_ALEN);
 			} else if (MP_DIFF(last_hop_metric,mpath->metric) > (mpath->metric*LOG_PERCENT_DIFF)/100)  {
 				mpath_dbg(sdata,
 						  "MESH MPLMU DIRECT dst %pM next hop %pM metric from %d to %d ft 0x%x\n",
@@ -615,8 +618,7 @@ static u32 hwmp_route_info_get(struct ieee80211_sub_if_data *sdata,
 	rcu_read_unlock();
 	if (mpath_table_updated) {
 		mesh_path_table_debug_dump(sdata);
-		cfg80211_new_mpath(sdata->dev, mpath->dst, sta->addr,
-				   GFP_KERNEL);
+		cfg80211_new_mpath(sdata->dev, dest, GFP_KERNEL);
 	}
 	return process ? new_metric : 0;
 }

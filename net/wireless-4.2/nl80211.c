@@ -12769,13 +12769,13 @@ void cfg80211_tdls_oper_request(struct net_device *dev, const u8 *peer,
 }
 EXPORT_SYMBOL(cfg80211_tdls_oper_request);
 
-void cfg80211_new_mpath(struct net_device *dev, u8 *dst,
-			u8 *next_hop, gfp_t gfp)
+void cfg80211_new_mpath(struct net_device *dev, u8 *dst, gfp_t gfp)
 {
 	struct wiphy *wiphy = dev->ieee80211_ptr->wiphy;
 	struct cfg80211_registered_device *rdev = wiphy_to_rdev(wiphy);
 	struct mpath_info pinfo;
 	struct sk_buff *msg;
+	u8 next_hop[ETH_ALEN];
 
 	memset(&pinfo, 0, sizeof(pinfo));
 
