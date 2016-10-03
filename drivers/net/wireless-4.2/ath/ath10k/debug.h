@@ -190,13 +190,20 @@ ath10k_accumulate_per_peer_tx_stats(struct ath10k *ar,
 #endif /* CONFIG_MAC80211_DEBUGFS */
 
 #ifdef CONFIG_ATH10K_DEBUG
-__printf(3, 4) void ath10k_dbg(struct ath10k *ar,
-			       enum ath10k_debug_mask mask,
-			       const char *fmt, ...);
+__printf(3, 4) void __ath10k_dbg(struct ath10k *ar,
+				 enum ath10k_debug_mask mask,
+				 const char *fmt, ...);
 void ath10k_dbg_dump(struct ath10k *ar,
 		     enum ath10k_debug_mask mask,
 		     const char *msg, const char *prefix,
 		     const void *buf, size_t len);
+#define ath10k_dbg(ar, mask, format, ...)				\
+	do {								\
+		if (unlikely((ath10k_debug_mask & mask) ||		\
+			      trace_ath10k_log_dbg_enabled())) {	\
+			__ath10k_dbg(ar, mask, format, ##__VA_ARGS__);	\
+		}							\
+	} while (0)
 #else /* CONFIG_ATH10K_DEBUG */
 
 static inline int ath10k_dbg(struct ath10k *ar,
