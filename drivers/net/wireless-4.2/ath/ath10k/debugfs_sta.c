@@ -46,7 +46,7 @@ static void ath10k_fill_tx_bitrate(struct ieee80211_hw *hw,
 				   struct ieee80211_sta *sta,
 				   struct rate_info *txrate,
 				   u8 rate, u8 sgi, u8 success, u8 failed,
-				   u8 retries)
+				   u8 retries, bool skip_auto_rate)
 {
 	struct ath10k_sta *arsta = (struct ath10k_sta *)sta->drv_priv;
 	struct ieee80211_chanctx_conf *conf = NULL;
@@ -115,7 +115,7 @@ static void ath10k_fill_tx_bitrate(struct ieee80211_hw *hw,
 		break;
 	}
 
-	if (success) {
+	if (success && !skip_auto_rate) {
 		info.flags = IEEE80211_TX_STAT_ACK;
 		ieee80211_tx_status_noskb(hw, sta, &info);
 	}
@@ -130,7 +130,7 @@ void ath10k_accumulate_per_peer_tx_stats(struct ath10k *ar,
 	u8 pream, bw, mcs, nss, rate, gi;
 	int idx;
 	struct ath10k_tx_stats *tx_stats = &arsta->tx_stats;
-	bool legacy_rate;
+	bool legacy_rate, skip_auto_rate;
 	struct rate_info txrate;
 
 	pream = ATH10K_HW_PREAMBLE(peer_stats->ratecode);
@@ -138,6 +138,7 @@ void ath10k_accumulate_per_peer_tx_stats(struct ath10k *ar,
 		       (pream == WMI_RATE_PREAMBLE_OFDM));
 
 	gi = ATH10K_HW_GI(peer_stats->flags);
+	skip_auto_rate = ATH10K_HW_DATA_PKT(peer_stats->flags);
 
 	if (legacy_rate) {
 		rate = ATH10K_HW_LEGACY_RATE(peer_stats->ratecode);
@@ -276,8 +277,8 @@ void ath10k_accumulate_per_peer_tx_stats(struct ath10k *ar,
 	ath10k_fill_tx_bitrate(ar->hw, sta, &txrate, rate, gi,
 			       peer_stats->succ_pkts,
 			       peer_stats->failed_pkts,
-			       peer_stats->retry_pkts);
-
+			       peer_stats->retry_pkts,
+			       skip_auto_rate);
 }
 
 static void ath10k_sta_update_extd_stats_rx_duration(struct ath10k *ar,
