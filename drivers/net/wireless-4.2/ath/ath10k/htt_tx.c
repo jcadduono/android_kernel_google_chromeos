@@ -79,11 +79,9 @@ static void __ath10k_htt_tx_txq_recalc(struct ieee80211_hw *hw,
 	ieee80211_txq_get_depth(txq, &frame_cnt, &byte_cnt);
 	if (txq->sta) {
 		ieee80211_txq_get_q(txq, &q);
-		if ((txq->ac + q) < 64) {
+		if ((txq->ac + q) < 68) {
 			arsta->txq_stats.txq_len[txq->ac] = frame_cnt;
 			arsta->txq_stats.q = q + txq->ac;
-		} else {
-			ath10k_warn(ar, "ac %hhu q %hhu\n", txq->ac, q);
 		}
 	}
 	count = ath10k_htt_tx_txq_calc_size(byte_cnt);
