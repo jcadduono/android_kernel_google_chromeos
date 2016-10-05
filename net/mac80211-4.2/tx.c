@@ -1321,7 +1321,7 @@ struct sk_buff *ieee80211_tx_dequeue(struct ieee80211_hw *hw,
 	struct ieee80211_local *local = hw_to_local(hw);
 	struct ieee80211_sub_if_data *sdata = vif_to_sdata(txq->vif);
 	struct txq_info *txqi = container_of(txq, struct txq_info, txq);
-	struct sta_info *sta = container_of(txq->sta, struct sta_info, sta);
+	struct sta_info *sta;
 	struct ieee80211_hdr *hdr;
 	struct sk_buff *skb = NULL;
 	u8 ac = txq->ac;
@@ -1342,6 +1342,7 @@ struct sk_buff *ieee80211_tx_dequeue(struct ieee80211_hw *hw,
 	txqi->byte_cnt -= skb->len;
 
 	if (txq->sta) {
+		sta = container_of(txq->sta, struct sta_info, sta);
 		pending = atomic_sub_return(1, &sta->txqs_len[ac]);
 		sq = ac + sta->sta_id_off;
 		nq = sq + IEEE80211_NUM_ACS;
