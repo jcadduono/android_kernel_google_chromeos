@@ -1765,6 +1765,7 @@ static int ar40xx_probe(struct platform_device *pdev)
 {
 	struct device_node *switch_node;
 	struct device_node *psgmii_node;
+	const __be32 *mac_mode;
 	struct device_node *mdio_node;
 	struct clk *ess_clk;
 	struct switch_dev *swdev;
@@ -1809,6 +1810,13 @@ static int ar40xx_probe(struct platform_device *pdev)
 		return PTR_ERR(priv->psgmii_hw_addr);
 	}
 
+	mac_mode = of_get_property(switch_node, "switch_mac_mode", &len);
+	if (!mac_mode) {
+		dev_err(&pdev->dev, "Failed to read switch_mac_mode\n");
+		return -EINVAL;
+	}
+	priv->mac_mode = be32_to_cpup(mac_mode);
+
 	ess_clk = of_clk_get_by_name(switch_node, "ess_clk");
 	if (ess_clk)
 		clk_prepare_enable(ess_clk);
@@ -1824,11 +1832,9 @@ static int ar40xx_probe(struct platform_device *pdev)
 	    of_property_read_u32(switch_node, "switch_lan_bmp",
 				 &priv->lan_bmp) ||
 	    of_property_read_u32(switch_node, "switch_wan_bmp",
-				 &priv->wan_bmp) ||
-	    of_property_read_u32(switch_node, "switch_mac_mode",
-				 &priv->mac_mode)) {
+				 &priv->wan_bmp)) {
 		dev_err(&pdev->dev, "Failed to read port properties\n");
-		return -EINVAL;
+		return -EIO;
 	}
 
 	mdio_node = of_find_node_by_name(NULL, "mdio");
