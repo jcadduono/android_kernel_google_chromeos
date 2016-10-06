@@ -25,10 +25,11 @@
 #include <linux/workqueue.h>
 #include <linux/of_device.h>
 #include <linux/of_address.h>
-#include <linux/of_mdio.h>
 #include <linux/mdio.h>
 
 #include "ar40xx.h"
+
+static struct ar40xx_priv *ar40xx_priv;
 
 #define MIB_DESC(_s , _o, _n)	\
 	{			\
@@ -1759,6 +1760,103 @@ static const struct switch_dev_ops ar40xx_sw_ops = {
 	.get_port_link = ar40xx_sw_get_port_link,
 };
 
+/* Start of phy driver support */
+
+static const u32 ar40xx_phy_ids[] = {
+	0x004dd0b1,
+	0x004dd0b2, /* AR40xx */
+};
+
+static bool
+ar40xx_phy_match(u32 phy_id)
+{
+	int i;
+
+	for (i = 0; i < ARRAY_SIZE(ar40xx_phy_ids); i++)
+		if (phy_id == ar40xx_phy_ids[i])
+			return true;
+
+	return false;
+}
+
+static bool
+is_ar40xx_phy(struct mii_bus *bus)
+{
+	unsigned i;
+
+	for (i = 0; i < 4; i++) {
+		u32 phy_id;
+
+		phy_id = mdiobus_read(bus, i, MII_PHYSID1) << 16;
+		phy_id |= mdiobus_read(bus, i, MII_PHYSID2);
+		if (!ar40xx_phy_match(phy_id))
+			return false;
+	}
+
+	return true;
+}
+
+static int
+ar40xx_phy_probe(struct phy_device *phydev)
+{
+	if (!is_ar40xx_phy(phydev->bus))
+		return -ENODEV;
+
+	ar40xx_priv->mii_bus = phydev->bus;
+	phydev->priv = ar40xx_priv;
+	if (phydev->addr == 0)
+		ar40xx_priv->phy = phydev;
+	phydev->supported |= SUPPORTED_1000baseT_Full;
+	phydev->advertising |= ADVERTISED_1000baseT_Full;
+	return 0;
+}
+
+static void
+ar40xx_phy_remove(struct phy_device *phydev)
+{
+	ar40xx_priv->mii_bus = NULL;
+	phydev->priv = NULL;
+}
+
+static int
+ar40xx_phy_config_init(struct phy_device *phydev)
+{
+	return 0;
+}
+
+static int
+ar40xx_phy_read_status(struct phy_device *phydev)
+{
+	if (phydev->addr != 0)
+		return genphy_read_status(phydev);
+
+	return 0;
+}
+
+static int
+ar40xx_phy_config_aneg(struct phy_device *phydev)
+{
+	if (phydev->addr == 0)
+		return 0;
+
+	return genphy_config_aneg(phydev);
+}
+
+static struct phy_driver ar40xx_phy_driver = {
+	.phy_id		= 0x004d0000,
+	.name		= "QCA Malibu",
+	.phy_id_mask	= 0xffff0000,
+	.features	= PHY_BASIC_FEATURES,
+	.probe		= ar40xx_phy_probe,
+	.remove		= ar40xx_phy_remove,
+	.config_init	= ar40xx_phy_config_init,
+	.config_aneg	= ar40xx_phy_config_aneg,
+	.read_status	= ar40xx_phy_read_status,
+	.driver		= { .owner = THIS_MODULE },
+};
+
+/* End of phy driver support */
+
 /* Platform driver probe function */
 
 static int ar40xx_probe(struct platform_device *pdev)
@@ -1766,7 +1864,6 @@ static int ar40xx_probe(struct platform_device *pdev)
 	struct device_node *switch_node;
 	struct device_node *psgmii_node;
 	const __be32 *mac_mode;
-	struct device_node *mdio_node;
 	struct clk *ess_clk;
 	struct switch_dev *swdev;
 	struct ar40xx_priv *priv;
@@ -1780,13 +1877,11 @@ static int ar40xx_probe(struct platform_device *pdev)
 	if (!priv)
 		return -ENOMEM;
 
-	platform_set_drvdata(pdev, priv);
+	ar40xx_priv = priv;
 
 	switch_node = of_node_get(pdev->dev.of_node);
-	if (of_address_to_resource(switch_node, 0, &switch_base) != 0) {
-		dev_err(&pdev->dev, "Failed to translate switch address!\n");
-		return -EINVAL;
-	}
+	if (of_address_to_resource(switch_node, 0, &switch_base) != 0)
+		return -EIO;
 
 	priv->hw_addr = devm_ioremap_resource(&pdev->dev, &switch_base);
 	if (IS_ERR(priv->hw_addr)) {
@@ -1837,14 +1932,9 @@ static int ar40xx_probe(struct platform_device *pdev)
 		return -EIO;
 	}
 
-	mdio_node = of_find_node_by_name(NULL, "mdio");
-	if (!mdio_node) {
-		dev_err(&pdev->dev, "Failed to find mdio node!\n");
-		return -EINVAL;
-	}
-	priv->mii_bus = of_mdio_find_bus(mdio_node);
-	if (!priv->mii_bus) {
-		dev_err(&pdev->dev, "Failed to find mdio bus!\n");
+	ret = phy_driver_register(&ar40xx_phy_driver);
+	if (ret) {
+		dev_err(&pdev->dev, "Failed to register ar40xx phy driver!\n");
 		return -EIO;
 	}
 
@@ -1862,7 +1952,7 @@ static int ar40xx_probe(struct platform_device *pdev)
 	swdev->ops = &ar40xx_sw_ops,
 	ret = register_switch(swdev, NULL);
 	if (ret)
-		return ret;
+		goto err_unregister_phy;
 
 	num_mibs = ARRAY_SIZE(ar40xx_mibs);
 	len = priv->dev.ports * num_mibs *
@@ -1873,25 +1963,27 @@ static int ar40xx_probe(struct platform_device *pdev)
 		goto err_unregister_switch;
 	}
 
-	ret = ar40xx_start(priv);
-	if (ret)
-		goto err_unregister_switch;
+	ar40xx_start(priv);
 
 	return 0;
 
 err_unregister_switch:
 	unregister_switch(&priv->dev);
+err_unregister_phy:
+	phy_driver_unregister(&ar40xx_phy_driver);
 	return ret;
 }
 
 static int ar40xx_remove(struct platform_device *pdev)
 {
-	struct ar40xx_priv *priv = platform_get_drvdata(pdev);
+	struct ar40xx_priv *priv = ar40xx_priv;
 
 	cancel_delayed_work_sync(&priv->qm_dwork);
 	cancel_delayed_work_sync(&priv->mib_work);
 
 	unregister_switch(&priv->dev);
+
+	phy_driver_unregister(&ar40xx_phy_driver);
 
 	return 0;
 }
