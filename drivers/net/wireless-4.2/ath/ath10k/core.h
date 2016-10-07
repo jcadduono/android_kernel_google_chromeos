@@ -1060,7 +1060,7 @@ struct ath10k {
 	struct ath10k_peer_ratecode_list ratecode_list;
 	struct ath10k_smart_ant_info smart_ant_info;
 #endif
-
+	const unsigned int *debug_mask;
 	/* must be last */
 	u8 drv_priv[0] __aligned(sizeof(void *));
 };

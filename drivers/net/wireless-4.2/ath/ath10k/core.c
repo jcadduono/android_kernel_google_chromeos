@@ -32,7 +32,6 @@
 #include "fwlog.h"
 
 unsigned int ath10k_debug_mask;
-EXPORT_SYMBOL(ath10k_debug_mask);
 static unsigned int ath10k_cryptmode_param;
 static bool uart_print;
 static bool skip_otp;
@@ -2205,6 +2204,8 @@ struct ath10k *ath10k_core_create(size_t priv_size, struct device *dev,
 		ret = -ENOTSUPP;
 		goto err_free_mac;
 	}
+
+	ar->debug_mask = &ath10k_debug_mask;
 
 	init_completion(&ar->scan.started);
 	init_completion(&ar->scan.completed);
