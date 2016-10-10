@@ -39,7 +39,7 @@ static bool skip_otp;
 static bool rawmode;
 static bool hw_csum = true;
 #ifdef CONFIG_ATH10K_SMART_ANTENNA
-bool ath10k_enable_smart_antenna = 1;
+bool ath10k_enable_smart_antenna;
 #endif
 u32 ath10k_default_antenna_2g = ATH10K_DEFAULT_ANTENNA_2G;
 u32 ath10k_default_antenna_5g = ATH10K_DEFAULT_ANTENNA_5G;

@@ -63,6 +63,6 @@ config ATH10K_SMART_ANTENNA
 config ATH10K_SMART_ANT_ALG
 	bool "Smart antenna algorithm support"
 	depends on ATH10K
-	default y
+	default n
 	---help---
 	This option enables smart antenna algorithm.
