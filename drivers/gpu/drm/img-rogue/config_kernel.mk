@@ -1,4 +1,4 @@
-override PVRSRV_MODNAME := pvrsrvkm
+override PVRSRV_MODNAME := pvrsrvkm-1_6
 override PVR_BUILD_DIR := mt8173_linux
 override PVR_DVFS := 1
 override PVR_HANDLE_BACKEND := idr

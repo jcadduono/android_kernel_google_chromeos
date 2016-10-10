@@ -1,4 +1,4 @@
-pvrsrvkm-y += \
+pvrsrvkm-1_6-y += \
  server_breakpoint_bridge.o \
  client_cachegeneric_direct_bridge.o \
  server_cachegeneric_bridge.o \
@@ -109,14 +109,14 @@ pvrsrvkm-y += \
  rgxsrvinit_script.o \
  os_srvinit_param.o \
  srvinit_km.o
-pvrsrvkm-$(CONFIG_DRM_POWERVR_ROGUE_DEBUG) += \
+pvrsrvkm-1_6-$(CONFIG_DRM_POWERVR_ROGUE_DEBUG) += \
  client_devicememhistory_direct_bridge.o \
  server_devicememhistory_bridge.o \
  client_ri_direct_bridge.o \
  server_ri_bridge.o \
  devicemem_history_server.o \
  ri_server.o
-pvrsrvkm-$(CONFIG_DRM_POWERVR_ROGUE_PDUMP) += \
+pvrsrvkm-1_6-$(CONFIG_DRM_POWERVR_ROGUE_PDUMP) += \
  client_pdump_direct_bridge.o \
  server_pdump_bridge.o \
  client_pdumpctrl_direct_bridge.o \
@@ -131,6 +131,6 @@ pvrsrvkm-$(CONFIG_DRM_POWERVR_ROGUE_PDUMP) += \
  rgxpdump.o \
  devicemem_pdump.o \
  devicememx_pdump.o
-pvrsrvkm-$(CONFIG_ARM64) += osfunc_arm64.o
-pvrsrvkm-$(CONFIG_EVENT_TRACING) += trace_events.o
-pvrsrvkm-$(CONFIG_X86) += osfunc_x86.o
+pvrsrvkm-1_6-$(CONFIG_ARM64) += osfunc_arm64.o
+pvrsrvkm-1_6-$(CONFIG_EVENT_TRACING) += trace_events.o
+pvrsrvkm-1_6-$(CONFIG_X86) += osfunc_x86.o

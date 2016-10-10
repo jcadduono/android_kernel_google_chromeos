@@ -1,7 +1,7 @@
 img_basedir := drivers/gpu/drm/img-rogue
 include $(img_basedir)/config_kernel.mk
 
-obj-$(CONFIG_DRM_POWERVR_ROGUE) += pvrsrvkm.o
+obj-$(CONFIG_DRM_POWERVR_ROGUE) += pvrsrvkm-1_6.o
 
 ccflags-y += \
  -include config_kernel.h \
@@ -11,7 +11,7 @@ ccflags-y += \
  -I$(img_basedir)/km \
  -D__linux__
 
-include $(img_basedir)/pvrsrvkm.mk
+include $(img_basedir)/pvrsrvkm-1_6.mk
 include $(img_basedir)/mt8173/Makefile
 
 obj-$(CONFIG_DRM_POWERVR_ROGUE_PDUMP) += dbgdrv.o
