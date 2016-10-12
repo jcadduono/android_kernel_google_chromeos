@@ -27,6 +27,8 @@
 
 #define MTK_VDEC_IRQ_STATUS_DEC_SUCCESS        0x10000
 
+#define FAKE_FLUSH_BUF_INDEX	VIDEO_MAX_FRAME
+
 /**
  * struct vdec_fb  - decoder frame buffer
  * @base_y	: Y plane memory info
