@@ -2090,18 +2090,18 @@ static void ath10k_htt_rx_tx_fetch_ind(struct ath10k *ar, struct sk_buff *skb)
 		txq = ath10k_mac_txq_lookup(ar, peer_id, tid);
 		spin_unlock_bh(&ar->data_lock);
 
-		if (txq->sta) {
-			arsta = (void *)txq->sta->drv_priv;
-			arsta->txq_stats.tx_fetch_ind[txq->ac] = jiffies;
-		}
 		/* It is okay to release the lock and use txq because RCU read
 		 * lock is held.
 		 */
-
 		if (unlikely(!txq)) {
 			ath10k_warn(ar, "failed to lookup txq for peer_id %hu tid %hhu\n",
 				    peer_id, tid);
 			continue;
+		}
+
+		if (txq->sta) {
+			arsta = (void *)txq->sta->drv_priv;
+			arsta->txq_stats.tx_fetch_ind[txq->ac] = jiffies;
 		}
 
 		num_msdus = 0;
