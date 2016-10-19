@@ -3145,7 +3145,8 @@ static void ieee80211_rx_handlers(struct ieee80211_rx_data *rx,
 #define CALL_RXH(rxh)			\
 	do {                            \
 		res = rxh(rx);          \
-		WIFI_DIAG_RX_DBG(rx, res, "%s", #rxh);	\
+		if (res != RX_QUEUED && res != RX_CONTINUE)     \
+			WIFI_DIAG_RX_DBG(rx, res, "%s", #rxh);	\
 		if (res != RX_CONTINUE)	\
 			goto rxh_next;  \
 	} while (0);
@@ -3219,7 +3220,8 @@ static void ieee80211_invoke_rx_handlers(struct ieee80211_rx_data *rx)
 #define CALL_RXH(rxh)			\
 	do {                            \
 		res = rxh(rx);          \
-		WIFI_DIAG_RX_DBG(rx, res, "%s", #rxh);	\
+		if (res != RX_QUEUED && res != RX_CONTINUE)     \
+			WIFI_DIAG_RX_DBG(rx, res, "%s", #rxh);	\
 		if (res != RX_CONTINUE)	\
 			goto rxh_next;  \
 	} while (0);

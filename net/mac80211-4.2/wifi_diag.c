@@ -1319,13 +1319,18 @@ void wifi_diag_set_tx_info(struct ieee80211_local *local,
 			   struct sk_buff *skb)
 {
 	struct wifi_diag *cfg = local->wifi_diag_config;
-	struct ieee80211_hdr *hdr = (void *)skb->data;
-	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
+	struct ieee80211_hdr *hdr;
+	struct ieee80211_tx_info *info;
 	struct wifi_diag_cookie *cookie;
 	u8 *addr;
 	const char *dev_name;
 	char cookie_str[LOG_COOKIE_STR_SZ];
 
+	if (!cfg || !skb)
+		return;
+
+	hdr = (void *)skb->data;
+	info = IEEE80211_SKB_CB(skb);
 	info->wifi_diag_cookie = 0;
 
 	if (!IS_ERR_OR_NULL(sta)) {
@@ -1352,14 +1357,19 @@ void wifi_diag_set_rx_status(struct ieee80211_local *local,
 			     struct sk_buff *skb)
 {
 	struct wifi_diag *cfg = local->wifi_diag_config;
-	struct ieee80211_hdr *hdr = (void *)skb->data;
-	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
+	struct ieee80211_hdr *hdr;
+	struct ieee80211_rx_status *status;
 	struct wifi_diag_cookie *cookie;
 	u8 *addr;
 	const char *dev_name;
 	u16 sn;
 	char cookie_str[LOG_COOKIE_STR_SZ];
 
+	if (!cfg || !skb)
+		return;
+
+	hdr = (void *)skb->data;
+	status = IEEE80211_SKB_RXCB(skb);
 	status->wifi_diag_cookie = 0;
 
 	if (!IS_ERR_OR_NULL(sta)) {
@@ -1386,9 +1396,13 @@ EXPORT_SYMBOL(wifi_diag_set_rx_status);
 
 bool wifi_diag_tx_marked(struct sk_buff *skb)
 {
-	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
+	struct ieee80211_tx_info *info;
 	struct wifi_diag_cookie *cookie;
 
+	if (!skb)
+		return false;
+
+	info = IEEE80211_SKB_CB(skb);
 	cookie = (struct wifi_diag_cookie *)&info->wifi_diag_cookie;
 
 	return cookie->flags & F_IS_MARKED;
@@ -1397,9 +1411,13 @@ EXPORT_SYMBOL(wifi_diag_tx_marked);
 
 bool wifi_diag_rx_marked(struct sk_buff *skb)
 {
-	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
+	struct ieee80211_rx_status *status;
 	struct wifi_diag_cookie *cookie;
 
+	if (!skb)
+		return false;
+
+	status = IEEE80211_SKB_RXCB(skb);
 	cookie = (struct wifi_diag_cookie *)&status->wifi_diag_cookie;
 
 	return cookie->flags & F_IS_MARKED;
@@ -1412,7 +1430,7 @@ void wifi_diag_tx_log_dbg(struct ieee80211_local *local,
 			  const char *driver,
 			  const char *fmt, ...)
 {
-	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
+	struct ieee80211_tx_info *info;
 	struct wifi_diag_cookie *cookie;
 	struct ieee80211_hdr *hdr;
 	char cookie_str[LOG_COOKIE_STR_SZ];
@@ -1425,6 +1443,10 @@ void wifi_diag_tx_log_dbg(struct ieee80211_local *local,
 	};
 	va_list args;
 
+	if (!skb)
+		return;
+
+	info = IEEE80211_SKB_CB(skb);
 	cookie = (struct wifi_diag_cookie *)&info->wifi_diag_cookie;
 	if (!(cookie->flags & F_IS_MARKED))
 		return;
@@ -1458,7 +1480,7 @@ void wifi_diag_tx_status_log_dbg(struct ieee80211_local *local,
 				 const char *driver,
 				 const char *fmt, ...)
 {
-	struct ieee80211_tx_info *info = IEEE80211_SKB_CB(skb);
+	struct ieee80211_tx_info *info;
 	struct wifi_diag_cookie *cookie;
 	struct ieee80211_hdr *hdr;
 	char cookie_str[LOG_COOKIE_STR_SZ];
@@ -1473,6 +1495,10 @@ void wifi_diag_tx_status_log_dbg(struct ieee80211_local *local,
 	};
 	va_list args;
 
+	if (!skb)
+		return;
+
+	info = IEEE80211_SKB_CB(skb);
 	cookie = (struct wifi_diag_cookie *)&info->wifi_diag_cookie;
 	if (!(cookie->flags & F_IS_MARKED))
 		return;
@@ -1508,7 +1534,7 @@ void wifi_diag_rx_status_log_dbg(struct ieee80211_local *local,
 				 const char *driver,
 				 const char *fmt, ...)
 {
-	struct ieee80211_rx_status *status = IEEE80211_SKB_RXCB(skb);
+	struct ieee80211_rx_status *status;
 	struct wifi_diag_cookie *cookie;
 	struct ieee80211_hdr *hdr;
 	char cookie_str[LOG_COOKIE_STR_SZ];
@@ -1521,6 +1547,10 @@ void wifi_diag_rx_status_log_dbg(struct ieee80211_local *local,
 	};
 	va_list args;
 
+	if (!skb)
+		return;
+
+	status = IEEE80211_SKB_RXCB(skb);
 	cookie = (struct wifi_diag_cookie *)&status->wifi_diag_cookie;
 	if (!(cookie->flags & F_IS_MARKED))
 		return;

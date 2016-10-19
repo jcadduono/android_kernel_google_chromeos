@@ -1309,9 +1309,6 @@ static void ieee80211_drv_tx(struct ieee80211_local *local,
 	return;
 
 tx_normal:
-#ifdef CONFIG_MAC80211_WIFI_DIAG
-	WIFI_DIAG_TX_SDATA_DBG(sdata, skb, TX_CONTINUE, "%s", __func__);
-#endif
 	drv_tx(local, &control, skb);
 }
 
@@ -1530,7 +1527,8 @@ static int invoke_tx_handlers(struct ieee80211_tx_data *tx)
 #define CALL_TXH(txh) \
 	do {				\
 		res = txh(tx);		\
-		WIFI_DIAG_TX_SDATA_DBG(sdata, skb, res, "%s", #txh); \
+		if (res != TX_CONTINUE) \
+			WIFI_DIAG_TX_SDATA_DBG(sdata, skb, res, "%s", #txh); \
 		if (res != TX_CONTINUE)	\
 			goto txh_done;	\
 	} while (0)
@@ -1594,7 +1592,9 @@ bool ieee80211_tx_prepare_skb(struct ieee80211_hw *hw,
 
 	r = ieee80211_tx_prepare(sdata, &tx, NULL, skb);
 #ifdef CONFIG_MAC80211_WIFI_DIAG
-	WIFI_DIAG_TX_SDATA_DBG(sdata, skb, r, "ieee80211_tx_prepare");
+	if (r != TX_CONTINUE)
+		WIFI_DIAG_TX_SDATA_DBG(sdata, skb, r,
+				       "ieee80211_tx_prepare_skb");
 #endif
 	if (r == TX_DROP)
 		return false;
@@ -2912,7 +2912,8 @@ static bool ieee80211_xmit_fast(struct ieee80211_sub_if_data *sdata,
 		tx.skb = skb;
 		r = ieee80211_tx_h_rate_ctrl(&tx);
 #ifdef CONFIG_MAC80211_WIFI_DIAG
-		WIFI_DIAG_TX_DBG(&tx, r, "%s, %d", __func__, __LINE__);
+		if (r != TX_CONTINUE)
+			WIFI_DIAG_TX_DBG(&tx, r, "ieee80211_xmit_fast");
 #endif
 		skb = tx.skb;
 		tx.skb = NULL;
