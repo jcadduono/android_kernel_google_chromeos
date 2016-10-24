@@ -913,7 +913,7 @@ static void get_crop_info(struct vdec_vp9_inst *inst, struct v4l2_crop *cr)
 	cr->c.left = 0;
 	cr->c.top = 0;
 	cr->c.width = inst->vsi->pic_w;
-	cr->c.height = inst->vsi->buf_h;
+	cr->c.height = inst->vsi->pic_h;
 	mtk_vcodec_debug(inst, "get crop info l=%d, t=%d, w=%d, h=%d\n",
 			 cr->c.left, cr->c.top, cr->c.width, cr->c.height);
 }
