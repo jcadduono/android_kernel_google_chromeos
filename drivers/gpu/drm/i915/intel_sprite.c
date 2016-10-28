@@ -334,7 +334,7 @@ vlv_update_plane(struct drm_plane *dplane, struct drm_crtc *crtc,
 	int plane = intel_plane->plane;
 	u32 sprctl;
 	unsigned long sprsurf_offset, linear_offset;
-	int cpp = drm_format_plane_cpp(fb->pixel_format, 0);
+	int pixel_size = drm_format_plane_cpp(fb->pixel_format, 0);
 	const struct drm_intel_sprite_colorkey *key =
 		&to_intel_plane_state(dplane->state)->ckey;
 
@@ -398,9 +398,10 @@ vlv_update_plane(struct drm_plane *dplane, struct drm_crtc *crtc,
 	crtc_w--;
 	crtc_h--;
 
-	linear_offset = y * fb->pitches[0] + x * cpp;
+	linear_offset = y * fb->pitches[0] + x * pixel_size;
 	sprsurf_offset = intel_compute_tile_offset(dev_priv, &x, &y,
-						   fb->modifier[0], cpp,
+						   fb->modifier[0],
+						   pixel_size,
 						   fb->pitches[0]);
 	linear_offset -= sprsurf_offset;
 
@@ -409,7 +410,7 @@ vlv_update_plane(struct drm_plane *dplane, struct drm_crtc *crtc,
 
 		x += src_w;
 		y += src_h;
-		linear_offset += src_h * fb->pitches[0] + src_w * cpp;
+		linear_offset += src_h * fb->pitches[0] + src_w * pixel_size;
 	}
 
 	if (key->flags) {
@@ -471,7 +472,7 @@ ivb_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 	enum pipe pipe = intel_plane->pipe;
 	u32 sprctl, sprscale = 0;
 	unsigned long sprsurf_offset, linear_offset;
-	int cpp = drm_format_plane_cpp(fb->pixel_format, 0);
+	int pixel_size = drm_format_plane_cpp(fb->pixel_format, 0);
 	const struct drm_intel_sprite_colorkey *key =
 		&to_intel_plane_state(plane->state)->ckey;
 
@@ -526,9 +527,10 @@ ivb_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 	if (crtc_w != src_w || crtc_h != src_h)
 		sprscale = SPRITE_SCALE_ENABLE | (src_w << 16) | src_h;
 
-	linear_offset = y * fb->pitches[0] + x * cpp;
+	linear_offset = y * fb->pitches[0] + x * pixel_size;
 	sprsurf_offset = intel_compute_tile_offset(dev_priv, &x, &y,
-						   fb->modifier[0], cpp,
+						   fb->modifier[0],
+						   pixel_size,
 						   fb->pitches[0]);
 	linear_offset -= sprsurf_offset;
 
@@ -539,7 +541,8 @@ ivb_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 		if (!IS_HASWELL(dev) && !IS_BROADWELL(dev)) {
 			x += src_w;
 			y += src_h;
-			linear_offset += src_h * fb->pitches[0] + src_w * cpp;
+			linear_offset += src_h * fb->pitches[0] +
+				src_w * pixel_size;
 		}
 	}
 
@@ -607,7 +610,7 @@ ilk_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 	int pipe = intel_plane->pipe;
 	unsigned long dvssurf_offset, linear_offset;
 	u32 dvscntr, dvsscale;
-	int cpp = drm_format_plane_cpp(fb->pixel_format, 0);
+	int pixel_size = drm_format_plane_cpp(fb->pixel_format, 0);
 	const struct drm_intel_sprite_colorkey *key =
 		&to_intel_plane_state(plane->state)->ckey;
 
@@ -658,9 +661,10 @@ ilk_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 	if (crtc_w != src_w || crtc_h != src_h)
 		dvsscale = DVS_SCALE_ENABLE | (src_w << 16) | src_h;
 
-	linear_offset = y * fb->pitches[0] + x * cpp;
+	linear_offset = y * fb->pitches[0] + x * pixel_size;
 	dvssurf_offset = intel_compute_tile_offset(dev_priv, &x, &y,
-						   fb->modifier[0], cpp,
+						   fb->modifier[0],
+						   pixel_size,
 						   fb->pitches[0]);
 	linear_offset -= dvssurf_offset;
 
@@ -669,7 +673,7 @@ ilk_update_plane(struct drm_plane *plane, struct drm_crtc *crtc,
 
 		x += src_w;
 		y += src_h;
-		linear_offset += src_h * fb->pitches[0] + src_w * cpp;
+		linear_offset += src_h * fb->pitches[0] + src_w * pixel_size;
 	}
 
 	if (key->flags) {
@@ -734,6 +738,7 @@ intel_check_sprite_plane(struct drm_plane *plane,
 	int hscale, vscale;
 	int max_scale, min_scale;
 	bool can_scale;
+	int pixel_size;
 
 	if (!fb) {
 		state->visible = false;
@@ -859,7 +864,6 @@ intel_check_sprite_plane(struct drm_plane *plane,
 	/* Check size restrictions when scaling */
 	if (state->visible && (src_w != crtc_w || src_h != crtc_h)) {
 		unsigned int width_bytes;
-		int cpp = drm_format_plane_cpp(fb->pixel_format, 0);
 
 		WARN_ON(!can_scale);
 
@@ -871,7 +875,9 @@ intel_check_sprite_plane(struct drm_plane *plane,
 		if (src_w < 3 || src_h < 3)
 			state->visible = false;
 
-		width_bytes = ((src_x * cpp) & 63) + src_w * cpp;
+		pixel_size = drm_format_plane_cpp(fb->pixel_format, 0);
+		width_bytes = ((src_x * pixel_size) & 63) +
+					src_w * pixel_size;
 
 		if (INTEL_INFO(dev)->gen < 9 && (src_w > 2048 || src_h > 2048 ||
 		    width_bytes > 4096 || fb->pitches[0] > 4096)) {

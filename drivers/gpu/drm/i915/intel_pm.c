@@ -600,7 +600,7 @@ static const struct intel_watermark_params i845_wm_info = {
  * intel_calculate_wm - calculate watermark level
  * @clock_in_khz: pixel clock
  * @wm: chip FIFO params
- * @cpp: bytes per pixel
+ * @pixel_size: display pixel size
  * @latency_ns: memory latency for the platform
  *
  * Calculate the watermark level (the level at which the display plane will
@@ -616,7 +616,8 @@ static const struct intel_watermark_params i845_wm_info = {
  */
 static unsigned long intel_calculate_wm(unsigned long clock_in_khz,
 					const struct intel_watermark_params *wm,
-					int fifo_size, int cpp,
+					int fifo_size,
+					int pixel_size,
 					unsigned long latency_ns)
 {
 	long entries_required, wm_size;
@@ -627,7 +628,7 @@ static unsigned long intel_calculate_wm(unsigned long clock_in_khz,
 	 * clocks go from a few thousand to several hundred thousand.
 	 * latency is usually a few thousand
 	 */
-	entries_required = ((clock_in_khz / 1000) * cpp * latency_ns) /
+	entries_required = ((clock_in_khz / 1000) * pixel_size * latency_ns) /
 		1000;
 	entries_required = DIV_ROUND_UP(entries_required, wm->cacheline_size);
 
@@ -691,7 +692,7 @@ static void pineview_update_wm(struct drm_crtc *unused_crtc)
 	crtc = single_enabled_crtc(dev);
 	if (crtc) {
 		const struct drm_display_mode *adjusted_mode;
-		int cpp = drm_format_plane_cpp(crtc->primary->state->fb->pixel_format, 0);
+		int pixel_size = crtc->primary->state->fb->bits_per_pixel / 8;
 		int clock;
 
 		adjusted_mode = &to_intel_crtc(crtc)->config->base.adjusted_mode;
@@ -700,7 +701,7 @@ static void pineview_update_wm(struct drm_crtc *unused_crtc)
 		/* Display SR */
 		wm = intel_calculate_wm(clock, &pineview_display_wm,
 					pineview_display_wm.fifo_size,
-					cpp, latency->display_sr);
+					pixel_size, latency->display_sr);
 		reg = I915_READ(DSPFW1);
 		reg &= ~DSPFW_SR_MASK;
 		reg |= FW_WM(wm, SR);
@@ -710,7 +711,7 @@ static void pineview_update_wm(struct drm_crtc *unused_crtc)
 		/* cursor SR */
 		wm = intel_calculate_wm(clock, &pineview_cursor_wm,
 					pineview_display_wm.fifo_size,
-					cpp, latency->cursor_sr);
+					pixel_size, latency->cursor_sr);
 		reg = I915_READ(DSPFW3);
 		reg &= ~DSPFW_CURSOR_SR_MASK;
 		reg |= FW_WM(wm, CURSOR_SR);
@@ -719,7 +720,7 @@ static void pineview_update_wm(struct drm_crtc *unused_crtc)
 		/* Display HPLL off SR */
 		wm = intel_calculate_wm(clock, &pineview_display_hplloff_wm,
 					pineview_display_hplloff_wm.fifo_size,
-					cpp, latency->display_hpll_disable);
+					pixel_size, latency->display_hpll_disable);
 		reg = I915_READ(DSPFW3);
 		reg &= ~DSPFW_HPLL_SR_MASK;
 		reg |= FW_WM(wm, HPLL_SR);
@@ -728,7 +729,7 @@ static void pineview_update_wm(struct drm_crtc *unused_crtc)
 		/* cursor HPLL off SR */
 		wm = intel_calculate_wm(clock, &pineview_cursor_hplloff_wm,
 					pineview_display_hplloff_wm.fifo_size,
-					cpp, latency->cursor_hpll_disable);
+					pixel_size, latency->cursor_hpll_disable);
 		reg = I915_READ(DSPFW3);
 		reg &= ~DSPFW_HPLL_CURSOR_MASK;
 		reg |= FW_WM(wm, HPLL_CURSOR);
@@ -752,7 +753,7 @@ static bool g4x_compute_wm0(struct drm_device *dev,
 {
 	struct drm_crtc *crtc;
 	const struct drm_display_mode *adjusted_mode;
-	int htotal, hdisplay, clock, cpp;
+	int htotal, hdisplay, clock, pixel_size;
 	int line_time_us, line_count;
 	int entries, tlb_miss;
 
@@ -767,10 +768,10 @@ static bool g4x_compute_wm0(struct drm_device *dev,
 	clock = adjusted_mode->crtc_clock;
 	htotal = adjusted_mode->crtc_htotal;
 	hdisplay = to_intel_crtc(crtc)->config->pipe_src_w;
-	cpp = drm_format_plane_cpp(crtc->primary->state->fb->pixel_format, 0);
+	pixel_size = crtc->primary->state->fb->bits_per_pixel / 8;
 
 	/* Use the small buffer method to calculate plane watermark */
-	entries = ((clock * cpp / 1000) * display_latency_ns) / 1000;
+	entries = ((clock * pixel_size / 1000) * display_latency_ns) / 1000;
 	tlb_miss = display->fifo_size*display->cacheline_size - hdisplay * 8;
 	if (tlb_miss > 0)
 		entries += tlb_miss;
@@ -782,7 +783,7 @@ static bool g4x_compute_wm0(struct drm_device *dev,
 	/* Use the large buffer method to calculate cursor watermark */
 	line_time_us = max(htotal * 1000 / clock, 1);
 	line_count = (cursor_latency_ns / line_time_us + 1000) / 1000;
-	entries = line_count * crtc->cursor->state->crtc_w * cpp;
+	entries = line_count * crtc->cursor->state->crtc_w * pixel_size;
 	tlb_miss = cursor->fifo_size*cursor->cacheline_size - hdisplay * 8;
 	if (tlb_miss > 0)
 		entries += tlb_miss;
@@ -838,7 +839,7 @@ static bool g4x_compute_srwm(struct drm_device *dev,
 {
 	struct drm_crtc *crtc;
 	const struct drm_display_mode *adjusted_mode;
-	int hdisplay, htotal, cpp, clock;
+	int hdisplay, htotal, pixel_size, clock;
 	unsigned long line_time_us;
 	int line_count, line_size;
 	int small, large;
@@ -854,21 +855,21 @@ static bool g4x_compute_srwm(struct drm_device *dev,
 	clock = adjusted_mode->crtc_clock;
 	htotal = adjusted_mode->crtc_htotal;
 	hdisplay = to_intel_crtc(crtc)->config->pipe_src_w;
-	cpp = drm_format_plane_cpp(crtc->primary->state->fb->pixel_format, 0);
+	pixel_size = crtc->primary->state->fb->bits_per_pixel / 8;
 
 	line_time_us = max(htotal * 1000 / clock, 1);
 	line_count = (latency_ns / line_time_us + 1000) / 1000;
-	line_size = hdisplay * cpp;
+	line_size = hdisplay * pixel_size;
 
 	/* Use the minimum of the small and large buffer method for primary */
-	small = ((clock * cpp / 1000) * latency_ns) / 1000;
+	small = ((clock * pixel_size / 1000) * latency_ns) / 1000;
 	large = line_count * line_size;
 
 	entries = DIV_ROUND_UP(min(small, large), display->cacheline_size);
 	*display_wm = entries + display->guard_size;
 
 	/* calculate the self-refresh watermark for display cursor */
-	entries = line_count * cpp * crtc->cursor->state->crtc_w;
+	entries = line_count * pixel_size * crtc->cursor->state->crtc_w;
 	entries = DIV_ROUND_UP(entries, cursor->cacheline_size);
 	*cursor_wm = entries + cursor->guard_size;
 
@@ -962,13 +963,13 @@ enum vlv_wm_level {
 static unsigned int vlv_wm_method2(unsigned int pixel_rate,
 				   unsigned int pipe_htotal,
 				   unsigned int horiz_pixels,
-				   unsigned int cpp,
+				   unsigned int bytes_per_pixel,
 				   unsigned int latency)
 {
 	unsigned int ret;
 
 	ret = (latency * pixel_rate) / (pipe_htotal * 10000);
-	ret = (ret + 1) * horiz_pixels * cpp;
+	ret = (ret + 1) * horiz_pixels * bytes_per_pixel;
 	ret = DIV_ROUND_UP(ret, 64);
 
 	return ret;
@@ -993,7 +994,7 @@ static uint16_t vlv_compute_wm_level(struct intel_plane *plane,
 				     int level)
 {
 	struct drm_i915_private *dev_priv = to_i915(plane->base.dev);
-	int clock, htotal, cpp, width, wm;
+	int clock, htotal, pixel_size, width, wm;
 
 	if (dev_priv->wm.pri_latency[level] == 0)
 		return USHRT_MAX;
@@ -1001,7 +1002,7 @@ static uint16_t vlv_compute_wm_level(struct intel_plane *plane,
 	if (!state->visible)
 		return 0;
 
-	cpp = drm_format_plane_cpp(state->base.fb->pixel_format, 0);
+	pixel_size = drm_format_plane_cpp(state->base.fb->pixel_format, 0);
 	clock = crtc->config->base.adjusted_mode.crtc_clock;
 	htotal = crtc->config->base.adjusted_mode.crtc_htotal;
 	width = crtc->config->pipe_src_w;
@@ -1018,7 +1019,7 @@ static uint16_t vlv_compute_wm_level(struct intel_plane *plane,
 		 */
 		wm = 63;
 	} else {
-		wm = vlv_wm_method2(clock, htotal, width, cpp,
+		wm = vlv_wm_method2(clock, htotal, width, pixel_size,
 				    dev_priv->wm.pri_latency[level] * 10);
 	}
 
@@ -1522,7 +1523,7 @@ static void i965_update_wm(struct drm_crtc *unused_crtc)
 		int clock = adjusted_mode->crtc_clock;
 		int htotal = adjusted_mode->crtc_htotal;
 		int hdisplay = to_intel_crtc(crtc)->config->pipe_src_w;
-		int cpp = drm_format_plane_cpp(crtc->primary->state->fb->pixel_format, 0);
+		int pixel_size = crtc->primary->state->fb->bits_per_pixel / 8;
 		unsigned long line_time_us;
 		int entries;
 
@@ -1530,7 +1531,7 @@ static void i965_update_wm(struct drm_crtc *unused_crtc)
 
 		/* Use ns/us then divide to preserve precision */
 		entries = (((sr_latency_ns / line_time_us) + 1000) / 1000) *
-			cpp * hdisplay;
+			pixel_size * hdisplay;
 		entries = DIV_ROUND_UP(entries, I915_FIFO_LINE_SIZE);
 		srwm = I965_FIFO_SIZE - entries;
 		if (srwm < 0)
@@ -1540,7 +1541,7 @@ static void i965_update_wm(struct drm_crtc *unused_crtc)
 			      entries, srwm);
 
 		entries = (((sr_latency_ns / line_time_us) + 1000) / 1000) *
-			cpp * crtc->cursor->state->crtc_w;
+			pixel_size * crtc->cursor->state->crtc_w;
 		entries = DIV_ROUND_UP(entries,
 					  i965_cursor_wm_info.cacheline_size);
 		cursor_sr = i965_cursor_wm_info.fifo_size -
@@ -1601,7 +1602,7 @@ static void i9xx_update_wm(struct drm_crtc *unused_crtc)
 	crtc = intel_get_crtc_for_plane(dev, 0);
 	if (intel_crtc_active(crtc)) {
 		const struct drm_display_mode *adjusted_mode;
-		int cpp = drm_format_plane_cpp(crtc->primary->state->fb->pixel_format, 0);
+		int cpp = crtc->primary->state->fb->bits_per_pixel / 8;
 		if (IS_GEN2(dev))
 			cpp = 4;
 
@@ -1623,7 +1624,7 @@ static void i9xx_update_wm(struct drm_crtc *unused_crtc)
 	crtc = intel_get_crtc_for_plane(dev, 1);
 	if (intel_crtc_active(crtc)) {
 		const struct drm_display_mode *adjusted_mode;
-		int cpp = drm_format_plane_cpp(crtc->primary->state->fb->pixel_format, 0);
+		int cpp = crtc->primary->state->fb->bits_per_pixel / 8;
 		if (IS_GEN2(dev))
 			cpp = 4;
 
@@ -1670,7 +1671,7 @@ static void i9xx_update_wm(struct drm_crtc *unused_crtc)
 		int clock = adjusted_mode->crtc_clock;
 		int htotal = adjusted_mode->crtc_htotal;
 		int hdisplay = to_intel_crtc(enabled)->config->pipe_src_w;
-		int cpp = drm_format_plane_cpp(enabled->primary->state->fb->pixel_format, 0);
+		int pixel_size = enabled->primary->state->fb->bits_per_pixel / 8;
 		unsigned long line_time_us;
 		int entries;
 
@@ -1678,7 +1679,7 @@ static void i9xx_update_wm(struct drm_crtc *unused_crtc)
 
 		/* Use ns/us then divide to preserve precision */
 		entries = (((sr_latency_ns / line_time_us) + 1000) / 1000) *
-			cpp * hdisplay;
+			pixel_size * hdisplay;
 		entries = DIV_ROUND_UP(entries, wm_info->cacheline_size);
 		DRM_DEBUG_KMS("self-refresh entries: %d\n", entries);
 		srwm = wm_info->fifo_size - entries;
@@ -1769,14 +1770,15 @@ uint32_t ilk_pipe_pixel_rate(const struct intel_crtc_state *pipe_config)
 }
 
 /* latency must be in 0.1us units. */
-static uint32_t ilk_wm_method1(uint32_t pixel_rate, uint8_t cpp, uint32_t latency)
+static uint32_t ilk_wm_method1(uint32_t pixel_rate, uint8_t bytes_per_pixel,
+			       uint32_t latency)
 {
 	uint64_t ret;
 
 	if (WARN(latency == 0, "Latency value missing\n"))
 		return UINT_MAX;
 
-	ret = (uint64_t) pixel_rate * cpp * latency;
+	ret = (uint64_t) pixel_rate * bytes_per_pixel * latency;
 	ret = DIV_ROUND_UP_ULL(ret, 64 * 10000) + 2;
 
 	return ret;
@@ -1784,7 +1786,7 @@ static uint32_t ilk_wm_method1(uint32_t pixel_rate, uint8_t cpp, uint32_t latenc
 
 /* latency must be in 0.1us units. */
 static uint32_t ilk_wm_method2(uint32_t pixel_rate, uint32_t pipe_htotal,
-			       uint32_t horiz_pixels, uint8_t cpp,
+			       uint32_t horiz_pixels, uint8_t bytes_per_pixel,
 			       uint32_t latency)
 {
 	uint32_t ret;
@@ -1795,13 +1797,13 @@ static uint32_t ilk_wm_method2(uint32_t pixel_rate, uint32_t pipe_htotal,
 		return UINT_MAX;
 
 	ret = (latency * pixel_rate) / (pipe_htotal * 10000);
-	ret = (ret + 1) * horiz_pixels * cpp;
+	ret = (ret + 1) * horiz_pixels * bytes_per_pixel;
 	ret = DIV_ROUND_UP(ret, 64) + 2;
 	return ret;
 }
 
 static uint32_t ilk_wm_fbc(uint32_t pri_val, uint32_t horiz_pixels,
-			   uint8_t cpp)
+			   uint8_t bytes_per_pixel)
 {
 	/*
 	 * Neither of these should be possible since this function shouldn't be
@@ -1809,12 +1811,12 @@ static uint32_t ilk_wm_fbc(uint32_t pri_val, uint32_t horiz_pixels,
 	 * extra paranoid to avoid a potential divide-by-zero if we screw up
 	 * elsewhere in the driver.
 	 */
-	if (WARN_ON(!cpp))
+	if (WARN_ON(!bytes_per_pixel))
 		return 0;
 	if (WARN_ON(!horiz_pixels))
 		return 0;
 
-	return DIV_ROUND_UP(pri_val * 64, horiz_pixels * cpp) + 2;
+	return DIV_ROUND_UP(pri_val * 64, horiz_pixels * bytes_per_pixel) + 2;
 }
 
 struct ilk_wm_maximums {
@@ -1833,14 +1835,13 @@ static uint32_t ilk_compute_pri_wm(const struct intel_crtc_state *cstate,
 				   uint32_t mem_value,
 				   bool is_lp)
 {
-	int cpp = pstate->base.fb ?
-		drm_format_plane_cpp(pstate->base.fb->pixel_format, 0) : 0;
+	int bpp = pstate->base.fb ? pstate->base.fb->bits_per_pixel / 8 : 0;
 	uint32_t method1, method2;
 
 	if (!cstate->base.active || !pstate->visible)
 		return 0;
 
-	method1 = ilk_wm_method1(ilk_pipe_pixel_rate(cstate), cpp, mem_value);
+	method1 = ilk_wm_method1(ilk_pipe_pixel_rate(cstate), bpp, mem_value);
 
 	if (!is_lp)
 		return method1;
@@ -1848,7 +1849,8 @@ static uint32_t ilk_compute_pri_wm(const struct intel_crtc_state *cstate,
 	method2 = ilk_wm_method2(ilk_pipe_pixel_rate(cstate),
 				 cstate->base.adjusted_mode.crtc_htotal,
 				 drm_rect_width(&pstate->dst),
-				 cpp, mem_value);
+				 bpp,
+				 mem_value);
 
 	return min(method1, method2);
 }
@@ -1861,18 +1863,18 @@ static uint32_t ilk_compute_spr_wm(const struct intel_crtc_state *cstate,
 				   const struct intel_plane_state *pstate,
 				   uint32_t mem_value)
 {
-	int cpp = pstate->base.fb ?
-		drm_format_plane_cpp(pstate->base.fb->pixel_format, 0) : 0;
+	int bpp = pstate->base.fb ? pstate->base.fb->bits_per_pixel / 8 : 0;
 	uint32_t method1, method2;
 
 	if (!cstate->base.active || !pstate->visible)
 		return 0;
 
-	method1 = ilk_wm_method1(ilk_pipe_pixel_rate(cstate), cpp, mem_value);
+	method1 = ilk_wm_method1(ilk_pipe_pixel_rate(cstate), bpp, mem_value);
 	method2 = ilk_wm_method2(ilk_pipe_pixel_rate(cstate),
 				 cstate->base.adjusted_mode.crtc_htotal,
 				 drm_rect_width(&pstate->dst),
-				 cpp, mem_value);
+				 bpp,
+				 mem_value);
 	return min(method1, method2);
 }
 
@@ -1884,8 +1886,7 @@ static uint32_t ilk_compute_cur_wm(const struct intel_crtc_state *cstate,
 				   const struct intel_plane_state *pstate,
 				   uint32_t mem_value)
 {
-	int cpp = pstate->base.fb ?
-		drm_format_plane_cpp(pstate->base.fb->pixel_format, 0) : 0;
+	int bpp = pstate->base.fb ? pstate->base.fb->bits_per_pixel / 8 : 0;
 
 	if (!cstate->base.active || !pstate->visible)
 		return 0;
@@ -1893,7 +1894,8 @@ static uint32_t ilk_compute_cur_wm(const struct intel_crtc_state *cstate,
 	return ilk_wm_method2(ilk_pipe_pixel_rate(cstate),
 			      cstate->base.adjusted_mode.crtc_htotal,
 			      drm_rect_width(&pstate->dst),
-			      cpp, mem_value);
+			      bpp,
+			      mem_value);
 }
 
 /* Only for WM_LP. */
@@ -1901,13 +1903,12 @@ static uint32_t ilk_compute_fbc_wm(const struct intel_crtc_state *cstate,
 				   const struct intel_plane_state *pstate,
 				   uint32_t pri_val)
 {
-	int cpp = pstate->base.fb ?
-		drm_format_plane_cpp(pstate->base.fb->pixel_format, 0) : 0;
+	int bpp = pstate->base.fb ? pstate->base.fb->bits_per_pixel / 8 : 0;
 
 	if (!cstate->base.active || !pstate->visible)
 		return 0;
 
-	return ilk_wm_fbc(pri_val, drm_rect_width(&pstate->dst), cpp);
+	return ilk_wm_fbc(pri_val, drm_rect_width(&pstate->dst), bpp);
 }
 
 static unsigned int ilk_display_fifo_size(const struct drm_device *dev)
@@ -3188,25 +3189,26 @@ static uint32_t skl_pipe_pixel_rate(const struct intel_crtc_state *config)
 
 /*
  * The max latency should be 257 (max the punit can code is 255 and we add 2us
- * for the read latency) and cpp should always be <= 8, so that
+ * for the read latency) and bytes_per_pixel should always be <= 8, so that
  * should allow pixel_rate up to ~2 GHz which seems sufficient since max
  * 2xcdclk is 1350 MHz and the pixel rate should never exceed that.
 */
-static uint32_t skl_wm_method1(uint32_t pixel_rate, uint8_t cpp, uint32_t latency)
+static uint32_t skl_wm_method1(uint32_t pixel_rate, uint8_t bytes_per_pixel,
+			       uint32_t latency)
 {
 	uint32_t wm_intermediate_val, ret;
 
 	if (latency == 0)
 		return UINT_MAX;
 
-	wm_intermediate_val = latency * pixel_rate * cpp / 512;
+	wm_intermediate_val = latency * pixel_rate * bytes_per_pixel / 512;
 	ret = DIV_ROUND_UP(wm_intermediate_val, 1000);
 
 	return ret;
 }
 
 static uint32_t skl_wm_method2(uint32_t pixel_rate, uint32_t pipe_htotal,
-			       uint32_t horiz_pixels, uint8_t cpp,
+			       uint32_t horiz_pixels, uint8_t bytes_per_pixel,
 			       uint64_t tiling, uint32_t latency)
 {
 	uint32_t ret;
@@ -3216,7 +3218,7 @@ static uint32_t skl_wm_method2(uint32_t pixel_rate, uint32_t pipe_htotal,
 	if (latency == 0)
 		return UINT_MAX;
 
-	plane_bytes_per_line = horiz_pixels * cpp;
+	plane_bytes_per_line = horiz_pixels * bytes_per_pixel;
 
 	if (tiling == I915_FORMAT_MOD_Y_TILED ||
 	    tiling == I915_FORMAT_MOD_Yf_TILED) {
@@ -3266,21 +3268,23 @@ static bool skl_compute_plane_wm(const struct drm_i915_private *dev_priv,
 	uint32_t plane_bytes_per_line, plane_blocks_per_line;
 	uint32_t res_blocks, res_lines;
 	uint32_t selected_result;
-	uint8_t cpp;
+	uint8_t bytes_per_pixel;
 
 	if (latency == 0 || !cstate->base.active || !fb)
 		return false;
 
-	cpp = drm_format_plane_cpp(fb->pixel_format, 0);
+	bytes_per_pixel = drm_format_plane_cpp(fb->pixel_format, 0);
 	method1 = skl_wm_method1(skl_pipe_pixel_rate(cstate),
-				 cpp, latency);
+				 bytes_per_pixel,
+				 latency);
 	method2 = skl_wm_method2(skl_pipe_pixel_rate(cstate),
 				 cstate->base.adjusted_mode.crtc_htotal,
 				 cstate->pipe_src_w,
-				 cpp, fb->modifier[0],
+				 bytes_per_pixel,
+				 fb->modifier[0],
 				 latency);
 
-	plane_bytes_per_line = cstate->pipe_src_w * cpp;
+	plane_bytes_per_line = cstate->pipe_src_w * bytes_per_pixel;
 	plane_blocks_per_line = DIV_ROUND_UP(plane_bytes_per_line, 512);
 
 	if (fb->modifier[0] == I915_FORMAT_MOD_Y_TILED ||
@@ -3288,11 +3292,11 @@ static bool skl_compute_plane_wm(const struct drm_i915_private *dev_priv,
 		uint32_t min_scanlines = 4;
 		uint32_t y_tile_minimum;
 		if (intel_rotation_90_or_270(plane->state->rotation)) {
-			int cpp = (fb->pixel_format == DRM_FORMAT_NV12) ?
+			int bpp = (fb->pixel_format == DRM_FORMAT_NV12) ?
 				drm_format_plane_cpp(fb->pixel_format, 1) :
 				drm_format_plane_cpp(fb->pixel_format, 0);
 
-			switch (cpp) {
+			switch (bpp) {
 			case 1:
 				min_scanlines = 16;
 				break;
