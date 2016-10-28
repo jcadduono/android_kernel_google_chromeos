@@ -799,18 +799,15 @@ void drm_helper_dpms_attached_encoders(struct drm_crtc *crtc, int mode)
  * implementing the DPMS connector attribute. It computes the new desired DPMS
  * state for all encoders and crtcs in the output mesh and calls the ->dpms()
  * callback provided by the driver appropriately.
- *
- * Returns:
- * Always returns 0.
  */
-int drm_helper_connector_dpms(struct drm_connector *connector, int mode)
+void drm_helper_connector_dpms(struct drm_connector *connector, int mode)
 {
 	struct drm_encoder *encoder = connector->encoder;
 	struct drm_crtc *crtc = encoder ? encoder->crtc : NULL;
 	int old_dpms, encoder_dpms = DRM_MODE_DPMS_OFF;
 
 	if (mode == connector->dpms)
-		return 0;
+		return;
 
 	old_dpms = connector->dpms;
 	connector->dpms = mode;
@@ -842,7 +839,7 @@ int drm_helper_connector_dpms(struct drm_connector *connector, int mode)
 		}
 	}
 
-	return 0;
+	return;
 }
 EXPORT_SYMBOL(drm_helper_connector_dpms);
 

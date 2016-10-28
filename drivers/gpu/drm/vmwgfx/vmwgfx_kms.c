@@ -1808,9 +1808,8 @@ void vmw_du_crtc_gamma_set(struct drm_crtc *crtc,
 	}
 }
 
-int vmw_du_connector_dpms(struct drm_connector *connector, int mode)
+void vmw_du_connector_dpms(struct drm_connector *connector, int mode)
 {
-	return 0;
 }
 
 void vmw_du_connector_save(struct drm_connector *connector)
