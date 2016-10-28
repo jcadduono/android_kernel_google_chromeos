@@ -941,7 +941,9 @@ int cfg80211_change_iface(struct cfg80211_registered_device *rdev,
 	/* if it's part of a bridge, reject changing type to station/ibss */
 	if ((dev->priv_flags & IFF_BRIDGE_PORT) &&
 	    (ntype == NL80211_IFTYPE_ADHOC ||
+#ifdef DONT_ALLOW_STA_MODE_BRIDGE
 	     ntype == NL80211_IFTYPE_STATION ||
+#endif
 	     ntype == NL80211_IFTYPE_P2P_CLIENT))
 		return -EBUSY;
 
