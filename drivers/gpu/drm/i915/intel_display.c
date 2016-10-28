@@ -15164,15 +15164,11 @@ static bool primary_get_hw_state(struct intel_plane *plane)
 /* FIXME read out full plane state for all planes */
 static void readout_plane_state(struct intel_crtc *crtc)
 {
-	struct drm_plane *primary = crtc->base.primary;
 	struct intel_plane_state *plane_state =
-		to_intel_plane_state(primary->state);
+		to_intel_plane_state(crtc->base.primary->state);
 
 	plane_state->visible =
-		primary_get_hw_state(to_intel_plane(primary));
-
-	if (plane_state->visible)
-		crtc->base.state->plane_mask |= 1 << drm_plane_index(primary);
+		primary_get_hw_state(to_intel_plane(crtc->base.primary));
 }
 
 static void intel_modeset_readout_hw_state(struct drm_device *dev)
