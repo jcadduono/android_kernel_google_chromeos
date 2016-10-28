@@ -2091,18 +2091,11 @@ static void ilk_compute_wm_level(const struct drm_i915_private *dev_priv,
 		cur_latency *= 5;
 	}
 
-	if (pristate) {
-		result->pri_val = ilk_compute_pri_wm(cstate, pristate,
-						     pri_latency, level);
-		result->fbc_val = ilk_compute_fbc_wm(cstate, pristate, result->pri_val);
-	}
-
-	if (sprstate)
-		result->spr_val = ilk_compute_spr_wm(cstate, sprstate, spr_latency);
-
-	if (curstate)
-		result->cur_val = ilk_compute_cur_wm(cstate, curstate, cur_latency);
-
+	result->pri_val = ilk_compute_pri_wm(cstate, pristate,
+					     pri_latency, level);
+	result->spr_val = ilk_compute_spr_wm(cstate, sprstate, spr_latency);
+	result->cur_val = ilk_compute_cur_wm(cstate, curstate, cur_latency);
+	result->fbc_val = ilk_compute_fbc_wm(cstate, pristate, result->pri_val);
 	result->enable = true;
 }
 
@@ -2385,49 +2378,49 @@ static bool ilk_validate_pipe_wm(struct drm_device *dev,
 }
 
 /* Compute new watermarks for the pipe */
-static int ilk_compute_pipe_wm(struct intel_crtc_state *cstate)
+static int ilk_compute_pipe_wm(struct intel_crtc *intel_crtc,
+			       struct drm_atomic_state *state)
 {
-	struct drm_atomic_state *state = cstate->base.state;
-	struct intel_crtc *intel_crtc = to_intel_crtc(cstate->base.crtc);
 	struct intel_pipe_wm *pipe_wm;
-	struct drm_device *dev = state->dev;
+	struct drm_device *dev = intel_crtc->base.dev;
 	const struct drm_i915_private *dev_priv = dev->dev_private;
+	struct intel_crtc_state *cstate = NULL;
 	struct intel_plane *intel_plane;
+	struct drm_plane_state *ps;
 	struct intel_plane_state *pristate = NULL;
 	struct intel_plane_state *sprstate = NULL;
 	struct intel_plane_state *curstate = NULL;
 	int level, max_level = ilk_wm_max_level(dev);
 	struct ilk_wm_maximums max;
 
+	cstate = intel_atomic_get_crtc_state(state, intel_crtc);
+	if (IS_ERR(cstate))
+		return PTR_ERR(cstate);
+
 	pipe_wm = &cstate->wm.optimal.ilk;
 
 	for_each_intel_plane_on_crtc(dev, intel_crtc, intel_plane) {
-		struct intel_plane_state *ps;
-
-		ps = intel_atomic_get_existing_plane_state(state,
-							   intel_plane);
-		if (!ps)
-			continue;
+		ps = drm_atomic_get_plane_state(state,
+						&intel_plane->base);
+		if (IS_ERR(ps))
+			return PTR_ERR(ps);
 
 		if (intel_plane->base.type == DRM_PLANE_TYPE_PRIMARY)
-			pristate = ps;
+			pristate = to_intel_plane_state(ps);
 		else if (intel_plane->base.type == DRM_PLANE_TYPE_OVERLAY)
-			sprstate = ps;
+			sprstate = to_intel_plane_state(ps);
 		else if (intel_plane->base.type == DRM_PLANE_TYPE_CURSOR)
-			curstate = ps;
+			curstate = to_intel_plane_state(ps);
 	}
 
 	pipe_wm->pipe_enabled = cstate->base.active;
-	if (sprstate) {
-		pipe_wm->sprites_enabled = sprstate->visible;
-		pipe_wm->sprites_scaled = sprstate->visible &&
-			(drm_rect_width(&sprstate->dst) != drm_rect_width(&sprstate->src) >> 16 ||
-			 drm_rect_height(&sprstate->dst) != drm_rect_height(&sprstate->src) >> 16);
-	}
-
+	pipe_wm->sprites_enabled = sprstate->visible;
+	pipe_wm->sprites_scaled = sprstate->visible &&
+		(drm_rect_width(&sprstate->dst) != drm_rect_width(&sprstate->src) >> 16 ||
+		drm_rect_height(&sprstate->dst) != drm_rect_height(&sprstate->src) >> 16);
 
 	/* ILK/SNB: LP2+ watermarks only w/o sprites */
-	if (INTEL_INFO(dev)->gen <= 6 && pipe_wm->sprites_enabled)
+	if (INTEL_INFO(dev)->gen <= 6 && sprstate->visible)
 		max_level = 1;
 
 	/* ILK/SNB/IVB: LP1+ watermarks only w/o scaling */
