@@ -6392,6 +6392,8 @@ int intel_connector_dpms(struct drm_connector *connector, int mode)
 	if (connector->encoder)
 		intel_encoder_dpms(to_intel_encoder(connector->encoder), mode);
 
+	intel_modeset_check_state(connector->dev);
+
 	return 0;
 }
 
@@ -12838,9 +12840,8 @@ check_shared_dpll_state(struct drm_device *dev)
 	}
 }
 
-static void
-intel_modeset_check_state(struct drm_device *dev,
-			  struct drm_atomic_state *old_state)
+void
+intel_modeset_check_state(struct drm_device *dev)
 {
 	check_wm_state(dev);
 	check_connector_state(dev);
@@ -13247,11 +13248,10 @@ static int intel_atomic_commit(struct drm_device *dev,
 
 	drm_atomic_helper_wait_for_vblanks(dev, state);
 	drm_atomic_helper_cleanup_planes(dev, state);
+	drm_atomic_state_free(state);
 
 	if (any_ms)
-		intel_modeset_check_state(dev, state);
-
-	drm_atomic_state_free(state);
+		intel_modeset_check_state(dev);
 
 	return 0;
 }
