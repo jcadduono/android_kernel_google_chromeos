@@ -2313,10 +2313,11 @@ intel_pin_and_fence_fb_obj(struct drm_plane *plane,
 	 */
 	intel_runtime_pm_get(dev_priv);
 
+	dev_priv->mm.interruptible = false;
 	ret = i915_gem_object_pin_to_display_plane(obj, alignment, pipelined,
 						   pipelined_request, &view);
 	if (ret)
-		goto err_pm;
+		goto err_interruptible;
 
 	/* Install a fence for tiled scan-out. Pre-i965 always needs a
 	 * fence, whereas 965+ only requires a fence if using
@@ -2329,12 +2330,14 @@ intel_pin_and_fence_fb_obj(struct drm_plane *plane,
 
 	i915_gem_object_pin_fence(obj);
 
+	dev_priv->mm.interruptible = true;
 	intel_runtime_pm_put(dev_priv);
 	return 0;
 
 err_unpin:
 	i915_gem_object_unpin_from_display_plane(obj, &view);
-err_pm:
+err_interruptible:
+	dev_priv->mm.interruptible = true;
 	intel_runtime_pm_put(dev_priv);
 	return ret;
 }
@@ -13397,9 +13400,7 @@ intel_prepare_plane_fb(struct drm_plane *plane,
 	if (!obj && !old_obj)
 		return 0;
 
-	ret = i915_mutex_lock_interruptible(dev);
-	if (ret)
-		return ret;
+	mutex_lock(&dev->struct_mutex);
 
 	if (!obj) {
 		ret = 0;
