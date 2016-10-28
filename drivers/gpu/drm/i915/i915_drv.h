@@ -1683,13 +1683,6 @@ struct i915_execbuffer_params {
 	struct drm_i915_gem_request     *request;
 };
 
-/* used in computing the new watermarks state */
-struct intel_wm_config {
-	unsigned int num_pipes_active;
-	bool sprites_enabled;
-	bool sprites_scaled;
-};
-
 struct drm_i915_private {
 	struct drm_device *dev;
 	struct kmem_cache *objects;
@@ -1908,9 +1901,6 @@ struct drm_i915_private {
 		 * in 1us units.
 		 */
 		uint16_t skl_latency[8];
-
-		/* Committed wm config */
-		struct intel_wm_config config;
 
 		/*
 		 * The skl_wm_values structure is a bit too big for stack
