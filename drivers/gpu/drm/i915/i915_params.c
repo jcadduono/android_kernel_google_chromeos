@@ -53,7 +53,7 @@ struct i915_params i915 __read_mostly = {
 	.mmio_debug = 0,
 	.verbose_state_checks = 1,
 	.edp_vswing = 0,
-	.enable_dp_mst = false,
+	.enable_dp_mst = true,
 };
 
 module_param_named(modeset, i915.modeset, int, 0400);
