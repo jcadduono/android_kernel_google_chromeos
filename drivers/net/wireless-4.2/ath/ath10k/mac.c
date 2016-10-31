@@ -5019,7 +5019,11 @@ static int ath10k_add_interface(struct ieee80211_hw *hw,
 		goto err_peer_delete;
 	}
 
-	ret = ath10k_mac_set_rts(arvif, ar->hw->wiphy->rts_threshold);
+	if (vif->type == NL80211_IFTYPE_MESH_POINT) {
+		ret = ath10k_mac_set_rts(arvif, 1);
+	} else {
+		ret = ath10k_mac_set_rts(arvif, ar->hw->wiphy->rts_threshold);
+	}
 	if (ret) {
 		ath10k_warn(ar, "failed to set rts threshold for vdev %d: %d\n",
 			    arvif->vdev_id, ret);
