@@ -1759,6 +1759,38 @@ static const struct switch_dev_ops ar40xx_sw_ops = {
 	.get_port_link = ar40xx_sw_get_port_link,
 };
 
+/* /sys attributes for MII register read */
+static ssize_t phy_id1_show(struct device *dev,
+			    struct device_attribute *attr, char *buf)
+{
+	struct ar40xx_priv *priv = dev_get_drvdata(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "0x%x\n",
+			 mdiobus_read(priv->mii_bus, 0, 0x2));
+}
+static DEVICE_ATTR_RO(phy_id1);
+
+static ssize_t phy_id2_show(struct device *dev,
+			    struct device_attribute *attr, char *buf)
+{
+	struct ar40xx_priv *priv = dev_get_drvdata(dev);
+
+	return scnprintf(buf, PAGE_SIZE, "0x%x\n",
+			 mdiobus_read(priv->mii_bus, 0, 0x3));
+}
+static DEVICE_ATTR_RO(phy_id2);
+
+static struct attribute *mii_info_attrs[] = {
+	&dev_attr_phy_id1.attr,
+	&dev_attr_phy_id2.attr,
+	NULL
+};
+
+static struct attribute_group mii_info_group = {
+	.name = "mii_info",
+	.attrs = mii_info_attrs
+};
+
 /* Platform driver probe function */
 
 static int ar40xx_probe(struct platform_device *pdev)
@@ -1778,9 +1810,7 @@ static int ar40xx_probe(struct platform_device *pdev)
 	priv = devm_kzalloc(&pdev->dev, sizeof(*priv), GFP_KERNEL);
 	if (!priv)
 		return -ENOMEM;
-
 	platform_set_drvdata(pdev, priv);
-
 	switch_node = of_node_get(pdev->dev.of_node);
 	if (of_address_to_resource(switch_node, 0, &switch_base) != 0) {
 		dev_err(&pdev->dev, "Failed to translate switch address!\n");
@@ -1867,6 +1897,11 @@ static int ar40xx_probe(struct platform_device *pdev)
 		goto err_unregister_switch;
 	}
 
+	ret = sysfs_create_group(&pdev->dev.kobj, &mii_info_group);
+	if (ret != 0) {
+		dev_err(&pdev->dev, "Failed to create attribute group\n");
+		return -EIO;
+	}
 	ret = ar40xx_start(priv);
 	if (ret)
 		goto err_unregister_switch;
@@ -1886,6 +1921,7 @@ static int ar40xx_remove(struct platform_device *pdev)
 	cancel_delayed_work_sync(&priv->mib_work);
 
 	unregister_switch(&priv->dev);
+	sysfs_remove_group(&pdev->dev.kobj, &mii_info_group);
 
 	return 0;
 }
