@@ -3237,6 +3237,8 @@ int chromiumos_security_load_module(struct file *file);
 int chromiumos_security_load_firmware(struct file *file, char *buf,
 				      size_t size);
 void chromiumos_security_sb_free(struct super_block *sb);
+int chromiumos_security_inode_follow_link(struct dentry *dentry,
+					  struct nameidata *nd);
 #else
 static inline
 int chromiumos_security_sb_mount(const char *dev_name, struct path *path,
@@ -3259,6 +3261,12 @@ int chromiumos_security_load_module(struct file *file)
 static inline
 void chromiumos_security_sb_free(struct super_block *sb)
 {
+}
+static inline
+int chromiumos_security_inode_follow_link(struct dentry *dentry,
+					  struct nameidata *nd)
+{
+	return 0;
 }
 #endif /* CONFIG_SECURITY_CHROMIUMOS */
 

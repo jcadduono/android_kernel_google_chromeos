@@ -587,8 +587,15 @@ int security_inode_readlink(struct dentry *dentry)
 
 int security_inode_follow_link(struct dentry *dentry, struct nameidata *nd)
 {
+	int ret;
+
 	if (unlikely(IS_PRIVATE(dentry->d_inode)))
 		return 0;
+
+	ret = chromiumos_security_inode_follow_link(dentry, nd);
+	if (ret)
+		return ret;
+
 	return security_ops->inode_follow_link(dentry, nd);
 }
 
