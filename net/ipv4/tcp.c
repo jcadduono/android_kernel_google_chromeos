@@ -284,6 +284,8 @@
 #include <asm/ioctls.h>
 #include <net/busy_poll.h>
 
+#define ADB_PORT 5555
+
 int sysctl_tcp_fin_timeout __read_mostly = TCP_FIN_TIMEOUT;
 
 int sysctl_tcp_min_tso_segs __read_mostly = 2;
@@ -3179,22 +3181,6 @@ void __init tcp_init(void)
 	tcp_tasklet_init();
 }
 
-static int tcp_is_local(struct net *net, __be32 addr) {
-	struct rtable *rt;
-	struct flowi4 fl4 = { .daddr = addr };
-	rt = ip_route_output_key(net, &fl4);
-	if (IS_ERR_OR_NULL(rt))
-		return 0;
-	return rt->dst.dev && (rt->dst.dev->flags & IFF_LOOPBACK);
-}
-
-#if defined(CONFIG_IPV6)
-static int tcp_is_local6(struct net *net, struct in6_addr *addr) {
-	struct rt6_info *rt6 = rt6_lookup(net, addr, addr, 0, 0);
-	return rt6 && rt6->dst.dev && (rt6->dst.dev->flags & IFF_LOOPBACK);
-}
-#endif
-
 /*
  * tcp_nuke_addr - destroy all sockets on the given local address
  * if local address is the unspecified address (0.0.0.0 or ::), destroy all
@@ -3202,22 +3188,19 @@ static int tcp_is_local6(struct net *net, struct in6_addr *addr) {
  */
 int tcp_nuke_addr(struct net *net, struct sockaddr *addr)
 {
-	int family = addr->sa_family;
+#if defined(CONFIG_IPV6)
+	int source_addr_family = addr->sa_family;
 	unsigned int bucket;
 
-	struct in_addr *in;
-#if defined(CONFIG_IPV6)
+	struct in_addr *in = NULL;
 	struct in6_addr *in6 = NULL;
-#endif
-	if (family == AF_INET) {
+
+	if (source_addr_family == AF_INET)
 		in = &((struct sockaddr_in *)addr)->sin_addr;
-#if defined(CONFIG_IPV6)
-	} else if (family == AF_INET6) {
+	else if (source_addr_family == AF_INET6)
 		in6 = &((struct sockaddr_in6 *)addr)->sin6_addr;
-#endif
-	} else {
+	else
 		return -EAFNOSUPPORT;
-	}
 
 	if (!sysctl_tcp_enable_nuke_addr)
 		return 0;
@@ -3231,6 +3214,9 @@ restart:
 		spin_lock_bh(lock);
 		sk_nulls_for_each(sk, node, &tcp_hashinfo.ehash[bucket].chain) {
 			struct inet_sock *inet = inet_sk(sk);
+			__be32 s4 = inet->inet_rcv_saddr;
+			const struct in6_addr *s6 = &sk->sk_v6_rcv_saddr;
+			const unsigned short socket_family = sk->sk_family;
 
 			if (sk->sk_state == TCP_TIME_WAIT) {
 				/*
@@ -3248,37 +3234,52 @@ restart:
 			if (sock_flag(sk, SOCK_DEAD))
 				continue;
 
-			if (family != sk->sk_family)
-				continue;
-
+			/* Stay inside the local netns. */
 			if (sock_net(sk) != net)
 				continue;
 
-			if (family == AF_INET) {
-				__be32 s4 = inet->inet_rcv_saddr;
-				if (s4 == LOOPBACK4_IPV6)
+			/* HACK: Never nuke adb sockets, because that breaks
+			 * CTS. See b/31635190 for details.
+			 */
+			if (ntohs(inet->inet_sport) == ADB_PORT)
+				continue;
+
+			/* AF_INET sockets have an IPv4 addr in
+			 * inet_rcv_saddr, and all zeroes in sk_v6_rcv_saddr.
+			 *
+			 * AF_INET6 IPv4 (mapped) sockets have an IPv4 addr in
+			 * inet_rcv_saddr, and a mapped addr in sk_v6_rcv_saddr.
+			 *
+			 * AF_INET6 IPv6 sockets have LOOPBACK4_IPV6 in
+			 * inet_rcv_saddr, and an IPv6 addr in sk_v6_rcv_saddr.
+			 */
+			if (socket_family == AF_INET ||
+			    ipv6_addr_type(s6) == IPV6_ADDR_MAPPED) {
+				/* Ignore if the victim address isn't IPv4 */
+				if (source_addr_family != AF_INET)
 					continue;
 
-				if (in->s_addr != s4 &&
-				    !(in->s_addr == INADDR_ANY &&
-				      !tcp_is_local(net, s4)))
-					continue;
-			}
-
-#if defined(CONFIG_IPV6)
-			if (family == AF_INET6) {
-				struct in6_addr *s6;
-
-				s6 = &sk->sk_v6_rcv_saddr;
-				if (ipv6_addr_type(s6) == IPV6_ADDR_MAPPED)
+				/* Never nuke connections on 127.x.x.x */
+				if (IN_LOOPBACK(ntohl(s4)))
 					continue;
 
-				if (!ipv6_addr_equal(in6, s6) &&
-				    !(ipv6_addr_equal(in6, &in6addr_any) &&
-				      !tcp_is_local6(net, s6)))
+				/* Only nuke on 0.0.0.0 or exact match */
+				if (in->s_addr != INADDR_ANY &&
+				    in->s_addr != s4)
+					continue;
+			} else if (socket_family == AF_INET6 &&
+				   source_addr_family == AF_INET6) {
+				/* Never nuke connections on ::1 */
+				if (ipv6_addr_equal(s6, &in6addr_loopback))
+					continue;
+
+				/* Only nuke on :: or exact match */
+				if (!ipv6_addr_equal(in6, &in6addr_any) &&
+				    !ipv6_addr_equal(in6, s6))
+					continue;
+			} else {
 				continue;
 			}
-#endif
 
 			sock_hold(sk);
 			spin_unlock_bh(lock);
@@ -3299,5 +3300,9 @@ restart:
 	}
 
 	return 0;
+#else /* defined(CONFIG_IPV6) */
+	/* Android always requires IPv6 support. */
+	return -EOPNOTSUPP;
+#endif
 }
 EXPORT_SYMBOL(tcp_nuke_addr);
