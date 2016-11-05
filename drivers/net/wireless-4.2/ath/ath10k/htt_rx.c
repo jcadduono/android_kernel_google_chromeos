@@ -543,7 +543,7 @@ int ath10k_htt_rx_alloc(struct ath10k_htt *htt)
 
 	size = htt->rx_ring.size * sizeof(htt->rx_ring.paddrs_ring);
 
-	vaddr = dma_alloc_coherent(htt->ar->dev, size, &paddr, GFP_KERNEL);
+	vaddr = dma_alloc_coherent(htt->ar->dev, size, &paddr, GFP_ATOMIC);
 	if (!vaddr)
 		goto err_dma_ring;
 
@@ -552,7 +552,7 @@ int ath10k_htt_rx_alloc(struct ath10k_htt *htt)
 
 	vaddr = dma_alloc_coherent(htt->ar->dev,
 				   sizeof(*htt->rx_ring.alloc_idx.vaddr),
-				   &paddr, GFP_KERNEL);
+				   &paddr, GFP_ATOMIC);
 	if (!vaddr)
 		goto err_dma_idx;
 
