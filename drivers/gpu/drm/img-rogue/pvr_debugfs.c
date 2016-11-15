@@ -866,6 +866,7 @@ static IMG_BOOL _UnrefAndMaybeDestroyStatEntry(PVR_DEBUGFS_DRIVER_STAT *psStatEn
 				/* call function to drop reference on the memory holding the stat */
 				psStatEntry->pfnDecStatMemRefCount((void*)psStatEntry->pvData);
 			}
+			OSFreeMemNoStats(psStatEntry);
 		}
 		else
 		{
