@@ -45,6 +45,15 @@ config COMPAT_NETLINK_MESSAGES
 	  Newly written code should NEVER need this option but do
 	  compat-independent messages instead!
 
+config NETDEV_ALLOC_SKB_FROM_SLAB
+	bool "use kmalloc instead of page fragment for netdev_alloc_skb()"
+	default n
+	help
+	  If this option is selected, netdev_alloc_skb() will not use page
+	  fragment based allocation.
+
+	  If you are not sure, say N here.
+
 menu "Networking options"
 
 source "net/packet/Kconfig"

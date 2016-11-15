@@ -426,7 +426,8 @@ struct sk_buff *__netdev_alloc_skb(struct net_device *dev,
 	unsigned int fragsz = SKB_DATA_ALIGN(length + NET_SKB_PAD) +
 			      SKB_DATA_ALIGN(sizeof(struct skb_shared_info));
 
-	if (fragsz <= PAGE_SIZE && !(gfp_mask & (__GFP_WAIT | GFP_DMA))) {
+	if (!IS_ENABLED(CONFIG_NETDEV_ALLOC_SKB_FROM_SLAB) &&
+	    fragsz <= PAGE_SIZE && !(gfp_mask & (__GFP_WAIT | GFP_DMA))) {
 		void *data;
 
 		if (sk_memalloc_socks())
