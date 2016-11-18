@@ -421,11 +421,12 @@ static const HANDLE_IMPL_FUNCTAB g_sHandleFuncTab =
 	.pfnDestroyHandleBase = DestroyHandleBase
 };
 
+static IMG_BOOL bFuncTableAcquired;
+
 PVRSRV_ERROR PVRSRVHandleGetFuncTable(HANDLE_IMPL_FUNCTAB const **ppsFuncs)
 {
-	static IMG_BOOL bAcquired = IMG_FALSE;
 
-	if (bAcquired)
+	if (bFuncTableAcquired)
 	{
 		PVR_DPF((PVR_DBG_ERROR, "%s: Function table already acquired", 
 			 __FUNCTION__));
@@ -439,7 +440,22 @@ PVRSRV_ERROR PVRSRVHandleGetFuncTable(HANDLE_IMPL_FUNCTAB const **ppsFuncs)
 
 	*ppsFuncs = &g_sHandleFuncTab;
 
-	bAcquired = IMG_TRUE;
+	bFuncTableAcquired = IMG_TRUE;
 
 	return PVRSRV_OK;
+}
+
+void PVRSRVHandlePutFuncTable(HANDLE_IMPL_FUNCTAB const **ppsFuncs)
+{
+
+	if (!bFuncTableAcquired)
+	{
+		PVR_DPF((PVR_DBG_WARNING, "%s: Function table not acquired",
+			 __FUNCTION__));
+		return;
+	}
+
+	*ppsFuncs = NULL;
+
+	bFuncTableAcquired = IMG_FALSE;
 }

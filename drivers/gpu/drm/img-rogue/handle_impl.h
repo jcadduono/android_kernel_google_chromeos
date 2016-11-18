@@ -85,5 +85,6 @@ typedef struct _HANDLE_IMPL_FUNCTAB_
 } HANDLE_IMPL_FUNCTAB;
 
 PVRSRV_ERROR PVRSRVHandleGetFuncTable(HANDLE_IMPL_FUNCTAB const **ppsFuncs);
+void PVRSRVHandlePutFuncTable(HANDLE_IMPL_FUNCTAB const **ppsFuncs);
 
 #endif /* !defined(__HANDLE_IMPL_H__) */

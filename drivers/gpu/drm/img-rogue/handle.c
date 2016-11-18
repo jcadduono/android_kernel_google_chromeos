@@ -2111,7 +2111,7 @@ PVRSRV_ERROR PVRSRVHandleDeInit(void)
 
 		if (eError == PVRSRV_OK)
 		{
-			gpsHandleFuncs = NULL;
+			PVRSRVHandlePutFuncTable(&gpsHandleFuncs);
 		}
 	}
 	else
