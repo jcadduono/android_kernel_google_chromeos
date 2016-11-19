@@ -19,6 +19,8 @@
 #define MESH_ROOT_INTERVAL     5000
 #define MESH_ROOT_CONFIRMATION_INTERVAL 2000
 #define MESH_DEFAULT_PLINK_TIMEOUT	1800 /* timeout in seconds */
+#define MESH_DEFAULT_VHT_CAPA		0
+#define MESH_DEFAULT_VHT_CAPA_MASK	0
 
 /*
  * Minimum interval between two consecutive PREQs originated by the same
@@ -77,6 +79,8 @@ const struct mesh_config default_mesh_config = {
 	.power_mode = NL80211_MESH_POWER_ACTIVE,
 	.dot11MeshAwakeWindowDuration = MESH_DEFAULT_AWAKE_WINDOW,
 	.plink_timeout = MESH_DEFAULT_PLINK_TIMEOUT,
+	.vht_capa = MESH_DEFAULT_VHT_CAPA,
+	.vht_capa_mask = MESH_DEFAULT_VHT_CAPA_MASK,
 };
 
 const struct mesh_setup default_mesh_setup = {

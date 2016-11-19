@@ -495,7 +495,9 @@ int mesh_add_vht_cap_ie(struct ieee80211_sub_if_data *sdata,
 	struct ieee80211_local *local = sdata->local;
 	enum ieee80211_band band = ieee80211_get_sdata_band(sdata);
 	struct ieee80211_supported_band *sband;
+	struct ieee80211_if_mesh *ifmsh = &sdata->u.mesh;
 	u8 *pos;
+	u32 cap;
 
 	sband = local->hw.wiphy->bands[band];
 	if (!sband->vht_cap.vht_supported ||
@@ -507,8 +509,14 @@ int mesh_add_vht_cap_ie(struct ieee80211_sub_if_data *sdata,
 	if (skb_tailroom(skb) < 2 + sizeof(struct ieee80211_vht_cap))
 		return -ENOMEM;
 
+	cap = sband->vht_cap.cap;
+	if (ifmsh->mshcfg.vht_capa_mask) {
+		cap &= ~ifmsh->mshcfg.vht_capa_mask;
+		cap |= (ifmsh->mshcfg.vht_capa & ifmsh->mshcfg.vht_capa_mask);
+	}
+
 	pos = skb_put(skb, 2 + sizeof(struct ieee80211_vht_cap));
-	ieee80211_ie_build_vht_cap(pos, &sband->vht_cap, sband->vht_cap.cap);
+	ieee80211_ie_build_vht_cap(pos, &sband->vht_cap, cap);
 
 	return 0;
 }
