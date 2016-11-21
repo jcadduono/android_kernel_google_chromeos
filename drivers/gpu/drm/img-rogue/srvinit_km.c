@@ -83,11 +83,11 @@ static void SrvInitDevice_ForEachVaCb(PVRSRV_DEVICE_NODE *psDeviceNode, va_list 
 PVRSRV_ERROR SrvInit(void)
 {
 	PVRSRV_DATA *psPVRSRVData = PVRSRVGetPVRSRVData();
-	static IMG_BOOL bInitSuccessful = IMG_FALSE;
+	IMG_BOOL bInitSuccessful = IMG_FALSE;
 	PVRSRV_ERROR eError = PVRSRV_OK;
 	PVRSRV_ERROR eRet;
 
-	if (bInitSuccessful)
+	if (PVRSRVGetInitServerState(PVRSRV_INIT_SERVER_RAN))
 	{
 		eRet = eError;
 		goto exit;

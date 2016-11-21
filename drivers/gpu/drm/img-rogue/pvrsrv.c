@@ -1216,6 +1216,11 @@ void IMG_CALLCONV PVRSRVDeInit(void *hDevice)
 
 	OSFreeMem(gpsPVRSRVData);
 	gpsPVRSRVData = NULL;
+
+	/* Reset initialisation server state */
+	PVRSRVSetInitServerState(PVRSRV_INIT_SERVER_RUNNING, IMG_FALSE);
+	PVRSRVSetInitServerState(PVRSRV_INIT_SERVER_RAN, IMG_FALSE);
+	PVRSRVSetInitServerState(PVRSRV_INIT_SERVER_SUCCESSFUL, IMG_FALSE);
 }
 
 PVRSRV_ERROR LMA_PhyContigPagesAlloc(PVRSRV_DEVICE_NODE *psDevNode, size_t uiSize,
