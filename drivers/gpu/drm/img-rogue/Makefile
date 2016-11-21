@@ -1,1 +1,0 @@
-obj-$(CONFIG_DRM_POWERVR_ROGUE) += 1.6/

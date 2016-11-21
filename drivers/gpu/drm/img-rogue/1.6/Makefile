@@ -1,7 +1,7 @@
 img_basedir := drivers/gpu/drm/img-rogue/1.6
 include $(img_basedir)/config_kernel.mk
 
-obj-$(CONFIG_DRM_POWERVR_ROGUE) += pvrsrvkm-1_6.o
+obj-$(CONFIG_DRM_POWERVR_ROGUE_1_6) += pvrsrvkm-1_6.o
 
 ccflags-y += \
  -include config_kernel.h \
