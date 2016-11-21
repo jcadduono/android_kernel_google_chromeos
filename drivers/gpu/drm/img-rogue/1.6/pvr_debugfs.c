@@ -47,7 +47,11 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 #include "pvr_debugfs.h"
 #include "allocmem.h"
 
+#ifdef MODULE
+#define PVR_DEBUGFS_DIR_NAME "pvr" PVRSRV_GPUVIRT_OSID_STR "_1_6"
+#else
 #define PVR_DEBUGFS_DIR_NAME "pvr" PVRSRV_GPUVIRT_OSID_STR
+#endif
 
 /* Define to set the PVR_DPF debug output level for pvr_debugfs.
  * Normally, leave this set to PVR_DBGDRIV_MESSAGE, but when debugging

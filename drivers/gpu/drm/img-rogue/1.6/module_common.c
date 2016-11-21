@@ -103,26 +103,7 @@ MODULE_PARM_DESC(gPMRAllocFail, "When number of PMR allocs reaches"
  * Kernel symbol clash if re-exported by guest drivers in multi-driver model
  */
 #else
-/* 
- * Export some symbols that may be needed by other drivers
- * 
- * When support for GPU virtualization is present and the multi-driver
- * model (multi-drivers in same OS instance) is being used, then only
- * the hyperv driver is a true device drivers (i.e. is registered with
- * the kernel to manage the physical device), the other guest drivers
- * are all modules.
- */
-EXPORT_SYMBOL(PVRSRVCheckStatus);
-EXPORT_SYMBOL(PVRSRVGetErrorStringKM);
-
 #include "rgxapi_km.h"
-EXPORT_SYMBOL(RGXHWPerfConnect);
-EXPORT_SYMBOL(RGXHWPerfDisconnect);
-EXPORT_SYMBOL(RGXHWPerfControl);
-EXPORT_SYMBOL(RGXHWPerfConfigureAndEnableCounters);
-EXPORT_SYMBOL(RGXHWPerfDisableCounters);
-EXPORT_SYMBOL(RGXHWPerfAcquireData);
-EXPORT_SYMBOL(RGXHWPerfReleaseData);
 #endif
 
 DEFINE_MUTEX(gPVRSRVLock);

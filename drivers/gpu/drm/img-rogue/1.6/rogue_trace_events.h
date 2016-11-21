@@ -39,7 +39,11 @@ IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN
 CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 */ /**************************************************************************/
 #undef TRACE_SYSTEM
+#ifdef MODULE
+#define TRACE_SYSTEM rogue_1_6
+#else
 #define TRACE_SYSTEM rogue
+#endif
 
 #if !defined(_ROGUE_TRACE_EVENTS_H) || defined(TRACE_HEADER_MULTI_READ)
 #define _ROGUE_TRACE_EVENTS_H

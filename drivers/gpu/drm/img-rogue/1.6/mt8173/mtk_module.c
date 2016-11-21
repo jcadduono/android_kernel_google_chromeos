@@ -60,7 +60,7 @@ CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
  * DRVNAME is the name we use to register our driver.
  * DEVNAME is the name we use to register actual device nodes.
  */
-#define DRVNAME  PVR_LDM_DRIVER_REGISTRATION_NAME
+#define DRVNAME  PVR_LDM_DRIVER_REGISTRATION_NAME "_1_6"
 #define DEVNAME  PVRSRV_MODNAME
 
 /*
@@ -81,8 +81,6 @@ static const struct of_device_id mt_powervr_of_match[] = {
 	{ .compatible = "mediatek,HAN", },
 	{},
 };
-
-MODULE_DEVICE_TABLE(of, mt_powervr_of_match);
 
 static struct platform_driver powervr_driver = {
 	.driver = {
