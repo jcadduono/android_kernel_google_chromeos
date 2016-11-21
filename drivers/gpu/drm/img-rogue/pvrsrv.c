@@ -1060,6 +1060,10 @@ void IMG_CALLCONV PVRSRVDeInit(void *hDevice)
 		PVR_LOG_IF_ERROR(eError, "OSEventObjectDestroy");
 	}
 
+#if defined(PVR_DVFS)
+	DeinitDVFS(gpsPVRSRVData, hDevice);
+#endif
+
 	/* Tear down the HTB before PVRSRVHandleDeInit() removes its TL handle */
 	HTBDeInit();
 
@@ -1107,10 +1111,6 @@ void IMG_CALLCONV PVRSRVDeInit(void *hDevice)
 #endif
 
 	SysDestroyConfigData(gpsSysConfig);
-
-#if defined(PVR_DVFS)
-	DeinitDVFS(gpsPVRSRVData, hDevice);
-#endif
 
 	/* Clean up Transport Layer resources that remain. 
 	 * Done after RGX node clean up as HWPerf stream is destroyed during 
