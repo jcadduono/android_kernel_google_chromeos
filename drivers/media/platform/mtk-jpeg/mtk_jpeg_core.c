@@ -1105,6 +1105,7 @@ static int mtk_jpeg_probe(struct platform_device *pdev)
 	struct resource *res;
 	int dec_irq;
 	int ret;
+	DEFINE_DMA_ATTRS(attrs);
 
 	jpeg = devm_kzalloc(&pdev->dev, sizeof(*jpeg), GFP_KERNEL);
 	if (!jpeg)
@@ -1158,7 +1159,8 @@ static int mtk_jpeg_probe(struct platform_device *pdev)
 		goto err_m2m_init;
 	}
 
-	jpeg->alloc_ctx = vb2_dma_contig_init_ctx(&pdev->dev);
+	dma_set_attr(DMA_ATTR_NON_CONSISTENT, &attrs);
+	jpeg->alloc_ctx = vb2_dma_contig_init_ctx_attrs(&pdev->dev, &attrs);
 	if (IS_ERR(jpeg->alloc_ctx)) {
 		v4l2_err(&jpeg->v4l2_dev, "Failed to init memory allocator\n");
 		ret = PTR_ERR(jpeg->alloc_ctx);
