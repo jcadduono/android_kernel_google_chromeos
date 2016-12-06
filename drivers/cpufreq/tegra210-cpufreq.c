@@ -243,7 +243,7 @@ static int tegra210_cpufreq_init(struct cpufreq_policy *policy)
 	ret = dev_pm_opp_init_cpufreq_table(priv.cpu_dev, &freq_table);
 	if (ret) {
 		pr_err("failed to init cpufreq table: %d\n", ret);
-		goto out_put_node;
+		goto out_free_opp;
 	}
 
 	policy->clk = priv.cpu_clk;
@@ -263,7 +263,8 @@ static int tegra210_cpufreq_init(struct cpufreq_policy *policy)
 	return 0;
 out_unregister:
 	dev_pm_opp_free_cpufreq_table(priv.cpu_dev, &freq_table);
-out_put_node:
+out_free_opp:
+	dev_pm_opp_of_remove_table(priv.cpu_dev);
 	of_node_put(np);
 
 	return ret;
@@ -407,6 +408,7 @@ static int tegra210_cpufreq_remove(struct platform_device *pdev)
 
 	cancel_work_sync(&priv.emc_rate_work);
 	destroy_workqueue(priv.emc_rate_wq);
+	dev_pm_opp_of_remove_table(priv.cpu_dev);
 	clk_disable_unprepare(priv.emc_clk);
 	clk_put(priv.emc_clk);
 	clk_put(priv.pllp_clk);
