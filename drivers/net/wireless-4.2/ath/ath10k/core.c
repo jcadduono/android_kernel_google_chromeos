@@ -1004,10 +1004,26 @@ out:
 	return 0;
 }
 
+static bool ath10k_core_fetch_coutry_code(struct device_node *node,
+					  char *country_code)
+{
+	int cc_len;
+
+	if (!of_get_property(node, "cc", &cc_len) || cc_len > 3 ||
+	    of_property_read_u8_array(node, "cc", country_code, cc_len))
+		return false;
+
+	return true;
+}
+
 static int ath10k_core_fetch_board_file(struct ath10k *ar)
 {
 	char boardname[100];
 	int ret;
+	struct device_node *node;
+	char country_code[3], board_bin[100];
+
+	node = ar->dev->of_node;
 
 	ret = ath10k_core_create_board_name(ar, boardname, sizeof(boardname));
 	if (ret) {
@@ -1016,6 +1032,19 @@ static int ath10k_core_fetch_board_file(struct ath10k *ar)
 	}
 
 	ar->bd_api = 2;
+
+	if (node) {
+		if (ath10k_core_fetch_coutry_code(node, country_code)) {
+			scnprintf(board_bin, sizeof(board_bin),
+				  "board-2-%s.bin",
+				  country_code);
+			ret = ath10k_core_fetch_board_data_api_n(ar, boardname,
+								 board_bin);
+			if (!ret)
+				goto success;
+		}
+	}
+
 	ret = ath10k_core_fetch_board_data_api_n(ar, boardname,
 						 ATH10K_BOARD_API2_FILE);
 	if (!ret)
