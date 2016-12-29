@@ -1004,16 +1004,29 @@ out:
 	return 0;
 }
 
-static bool ath10k_core_fetch_coutry_code(struct device_node *node,
-					  char *country_code)
+static bool ath10k_core_fetch_country_str(struct device_node *node,
+					  char *country_str)
 {
 	int cc_len;
 
-	if (!of_get_property(node, "cc", &cc_len) || cc_len > 3 ||
-	    of_property_read_u8_array(node, "cc", country_code, cc_len))
+	if (!of_get_property(node, "qcom,ath10k-country-code", &cc_len) ||
+	    cc_len > 3 ||
+	    of_property_read_u8_array(node, "qcom,ath10k-country-code",
+				      country_str, cc_len))
 		return false;
 
 	return true;
+}
+
+static void ath10k_country_str_sanitize(char *country_str)
+{
+	int i;
+
+	/* Make sure country string is in caps */
+	for (i = 0; i < strlen(country_str); i++) {
+		if (country_str[i] >= 'a')
+			country_str[i] = country_str[i] - 32;
+	}
 }
 
 static int ath10k_core_fetch_board_file(struct ath10k *ar)
@@ -1021,7 +1034,8 @@ static int ath10k_core_fetch_board_file(struct ath10k *ar)
 	char boardname[100];
 	int ret;
 	struct device_node *node;
-	char country_code[3], board_bin[100];
+	char country_str[3], board_bin[100];
+	u16 rd;
 
 	node = ar->dev->of_node;
 
@@ -1034,10 +1048,16 @@ static int ath10k_core_fetch_board_file(struct ath10k *ar)
 	ar->bd_api = 2;
 
 	if (node) {
-		if (ath10k_core_fetch_coutry_code(node, country_code)) {
+		if (ath10k_core_fetch_country_str(node, country_str)) {
 			scnprintf(board_bin, sizeof(board_bin),
 				  "board-2-%s.bin",
-				  country_code);
+				  country_str);
+			ath10k_country_str_sanitize(country_str);
+			rd = ath_regd_find_country_by_name(country_str);
+			if (rd != 0xffff)
+				ar->ath_common.regulatory.current_rd =
+						rd | COUNTRY_ERD_FLAG;
+
 			ret = ath10k_core_fetch_board_data_api_n(ar, boardname,
 								 board_bin);
 			if (!ret)
