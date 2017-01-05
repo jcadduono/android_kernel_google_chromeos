@@ -29,6 +29,8 @@
 #include <linux/interrupt.h>
 #include <linux/module.h>
 #include <linux/platform_device.h>
+#include <linux/gpio_keys.h>
+#include <uapi/linux/input.h>
 
 #define ATMEL_TP_I2C_ADDR	0x4b
 #define ATMEL_TP_I2C_BL_ADDR	0x25
@@ -79,6 +81,8 @@ struct i2c_peripheral {
 struct chromeos_laptop {
 	struct i2c_peripheral i2c_peripherals[MAX_I2C_PERIPHERALS];
 	bool has_keyboard_backlight;
+	int (*platform_init)(void);
+	int (*platform_exit)(void);
 };
 
 static struct chromeos_laptop *cros_laptop;
@@ -341,10 +345,86 @@ static int __init chromeos_laptop_dmi_matched(const struct dmi_system_id *id)
 	return 1;
 }
 
+static int gpiochip_match_name(struct gpio_chip *chip, void *data)
+{
+	const char *name = data;
+
+	return !strcmp(chip->label, name);
+}
+
+static struct gpio_chip *find_gpiochip_by_name(const char *name)
+{
+	return gpiochip_find((void *)name, gpiochip_match_name);
+}
+
+static struct gpio_keys_button caroline_buttons[] = {
+	{
+		.code = SW_PEN_INSERTED,
+		.active_low = 1,
+		.desc = "Pen Eject",
+		.type = EV_SW,
+	},
+};
+
+static struct gpio_keys_platform_data caroline_gpio_keys_data = {
+	.buttons = caroline_buttons,
+	.nbuttons = 1,
+};
+
+static struct platform_device caroline_gpio_keys_dev = {
+	.name = "gpio-keys",
+	.dev = {
+		.platform_data = &caroline_gpio_keys_data,
+	},
+};
+
+#define CAROLINE_GPIO_B19   (43)
+
+static bool caroline_gpio_keys_dev_registered;
+
+static int caroline_platform_init(void)
+{
+	int ret;
+	struct gpio_chip *gc;
+
+	if (caroline_gpio_keys_dev_registered)
+		return 0;
+
+	gc = find_gpiochip_by_name("INT344B:00");
+	if (!gc)
+		return -EPROBE_DEFER;
+
+	if (gc->ngpio <= CAROLINE_GPIO_B19) {
+		pr_err("%s: INT344B:00 has no pin for gpio-keys (%d)?\n",
+		       __func__, CAROLINE_GPIO_B19);
+		return -ENODEV;
+	}
+	caroline_buttons[0].gpio = gc->base + CAROLINE_GPIO_B19;
+
+	ret = platform_device_register(&caroline_gpio_keys_dev);
+	if (ret)
+		return ret;
+
+	caroline_gpio_keys_dev_registered = true;
+	return 0;
+}
+
+static int caroline_platform_exit(void)
+{
+	if (caroline_gpio_keys_dev_registered)
+		platform_device_unregister(&caroline_gpio_keys_dev);
+
+	caroline_gpio_keys_dev_registered = false;
+	return 0;
+}
+
 static int chromeos_laptop_probe(struct platform_device *pdev)
 {
 	int i;
 	int ret = 0;
+
+	if (cros_laptop->platform_init)
+		ret = cros_laptop->platform_init();
 
 	for (i = 0; i < MAX_I2C_PERIPHERALS; i++) {
 		struct i2c_peripheral *i2c_dev;
@@ -392,6 +472,14 @@ static int chromeos_laptop_probe(struct platform_device *pdev)
 		setup_keyboard_backlight();
 
 	return ret;
+}
+
+static int chromeos_laptop_remove(struct platform_device *pdev)
+{
+	if (cros_laptop->platform_exit)
+		return cros_laptop->platform_exit();
+
+	return 0;
 }
 
 static struct chromeos_laptop samsung_series_5_550 = {
@@ -508,6 +596,11 @@ static struct chromeos_laptop bolt = {
 	.has_keyboard_backlight = true,
 };
 
+static struct chromeos_laptop caroline = {
+	.platform_init = caroline_platform_init,
+	.platform_exit = caroline_platform_exit,
+};
+
 #define _CBDD(board_) \
 	.callback = chromeos_laptop_dmi_matched, \
 	.driver_data = (void *)&board_
@@ -619,6 +712,13 @@ static struct dmi_system_id chromeos_laptop_dmi_table[] __initdata = {
 		},
 		_CBDD(bolt),
 	},
+	{
+		.ident = "Caroline",
+		.matches = {
+			DMI_MATCH(DMI_PRODUCT_NAME, "Caroline"),
+		},
+		_CBDD(caroline),
+	},
 	{ }
 };
 MODULE_DEVICE_TABLE(dmi, chromeos_laptop_dmi_table);
@@ -631,6 +731,7 @@ static struct platform_driver cros_platform_driver = {
 		.owner = THIS_MODULE,
 	},
 	.probe = chromeos_laptop_probe,
+	.remove = chromeos_laptop_remove,
 };
 
 static int __init chromeos_laptop_init(void)
