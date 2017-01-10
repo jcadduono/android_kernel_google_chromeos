@@ -32,7 +32,7 @@ while [ $# != 0 ]; do
 	shift
 done
 
-[ "$TARGET" ] || TARGET=google
+[ "$TARGET" ] || TARGET=nethunter
 [ "$DEVICE" ] || DEVICE=dragon
 
 DEFCONFIG=${TARGET}_${DEVICE}_defconfig
